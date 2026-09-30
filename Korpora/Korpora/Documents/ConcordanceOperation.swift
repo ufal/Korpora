@@ -68,7 +68,7 @@ enum ConcordanceOperation: Codable {
         }
     }
 
-    func apply(to live: LiveConcordance) async throws {
+    func apply(to live: any ConcordanceHandle) async throws {
         switch self {
         case .sort(let criteria, let unique, _):
             try await live.sort(criteria, unique: unique)

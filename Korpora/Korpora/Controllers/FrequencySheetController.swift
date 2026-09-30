@@ -86,7 +86,7 @@ final class FrequencySheetController: NSViewController {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let corpus = try Corpus(name: corpusName)
+                let corpus = try await Engines.default.openCorpus(name: corpusName)
                 let info = try await corpus.info()
                 var attributes = info.attributes
                 for structure in info.structures {

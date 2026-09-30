@@ -226,17 +226,37 @@ final class NewSubcorpusPopoverController: NSViewController {
 
     // MARK: Model plumbing
 
+    /// Opens the corpus on first use (opening is async now, and the loaders
+    /// are created synchronously), then keeps it for later requests.
+    private actor CorpusOpener {
+        private let name: String?
+        private var opened: (any CorpusHandle)?
+
+        init(name: String?) { self.name = name }
+
+        func corpus() async throws -> any CorpusHandle {
+            if let opened { return opened }
+            guard let name else { throw PickerError.corpusUnavailable }
+            let corpus: any CorpusHandle
+            do {
+                corpus = try await Engines.default.openCorpus(name: name)
+            } catch {
+                throw PickerError.corpusUnavailable
+            }
+            opened = corpus
+            return corpus
+        }
+    }
+
     private func makeLoaders() -> SubcorpusValuePickerModel.Loaders {
-        let corpus = corpusName.flatMap { try? Corpus(name: $0) }
+        let opener = CorpusOpener(name: corpusName)
         return .init(
             values: { attribute, limit in
-                guard let corpus else { throw PickerError.corpusUnavailable }
-                return try await corpus.topAttributeValues(attribute: attribute, limit: limit)
+                try await opener.corpus().topAttributeValues(attribute: attribute, limit: limit)
                     .map { .init(value: $0.value, count: $0.frequency) }
             },
             search: { attribute, text, limit in
-                guard let corpus else { throw PickerError.corpusUnavailable }
-                return try await corpus.topAttributeValues(
+                try await opener.corpus().topAttributeValues(
                     attribute: attribute, matching: SubcorpusRestriction.containsPattern(text),
                     ignoreCase: true, limit: limit)
                     .map { .init(value: $0.value, count: $0.frequency) }

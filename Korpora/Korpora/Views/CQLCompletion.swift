@@ -241,7 +241,7 @@ final class CQLCompletionProvider {
         guard !corpusName.isEmpty else { return }
         Task { @MainActor [weak self] in
             do {
-                let corpus = try await Corpus(name: corpusName)
+                let corpus = try await Engines.default.openCorpus(name: corpusName)
                 self?.attributeNames = Self.attributeNames(from: try await corpus.info())
             } catch {
                 // Completion is an optional convenience - a corpus that

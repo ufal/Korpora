@@ -147,7 +147,7 @@ final class NewConcordanceSheetController: NSViewController {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let corpus = try Corpus(name: name)
+                let corpus = try await Engines.default.openCorpus(name: name)
                 let info = try await corpus.info()
                 currentCorpusInfo = info
                 // Rebuilt per selected corpus, from the info() we just
@@ -205,7 +205,7 @@ final class NewConcordanceSheetController: NSViewController {
             guard let self else { return }
             Task { @MainActor in
                 do {
-                    let corpus = try Corpus(name: corpusName)
+                    let corpus = try await Engines.default.openCorpus(name: corpusName)
                     _ = try await corpus.createSubcorpus(named: name, structure: structure, query: query)
                     self.reloadSubcorpusList(for: corpusName)
                     self.subcorpusPopUp.selectItem(withTitle: name)

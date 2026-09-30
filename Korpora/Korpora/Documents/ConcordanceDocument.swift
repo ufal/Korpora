@@ -59,6 +59,9 @@ final class ConcordanceDocument: NSDocument {
     /// except in tests.
     var historyDefaults: UserDefaults = .standard
 
+    /// The engine corpora are opened with; tests can substitute a fake.
+    var engine: any CorpusEngine = Engines.default
+
     var corpusName: String = ""
     /// Path to a subcorpus (see `SubcorpusStore`) to query instead of the
     /// whole corpus, or nil to query `corpusName` directly.
@@ -130,7 +133,7 @@ final class ConcordanceDocument: NSDocument {
     /// line-group state to run against, without re-executing the whole
     /// operation chain from scratch. `nil` before the first successful query
     /// and after a failed replay (see `replay()`'s catch branch).
-    private var liveConcordance: LiveConcordance?
+    private var liveConcordance: (any ConcordanceHandle)?
 
     /// The `Corpus` (or opened subcorpus) behind the most recent successful
     /// replay - kept around, same reasoning as `liveConcordance`, so
@@ -138,7 +141,7 @@ final class ConcordanceDocument: NSDocument {
     /// structural attributes (e.g. "doc.author") on demand later, without
     /// needing a live `LiveConcordance`/iterator (structural lookups are
     /// pure `Corpus`-level position queries - see `KWICLine.position`).
-    private var queryCorpus: Corpus?
+    private var queryCorpus: (any CorpusHandle)?
 
     /// Once any line-group operation exists, sort/filter/shuffle/sample are
     /// disabled - mirrors KonText's own mutual-exclusion rule, since a fresh
@@ -455,14 +458,14 @@ final class ConcordanceDocument: NSDocument {
             guard generation == replayGeneration else { return }
             await beforeSearchHook?()
             do {
-                let corpus = try Corpus(name: corpusName)
-                let queryCorpus: Corpus
+                let corpus = try await engine.openCorpus(name: corpusName)
+                let queryCorpus: any CorpusHandle
                 if let subcorpusPath {
-                    queryCorpus = try await corpus.openSubcorpus(atPath: subcorpusPath)
+                    queryCorpus = try await corpus.openSubcorpusHandle(atPath: subcorpusPath)
                 } else {
                     queryCorpus = corpus
                 }
-                let live = try await LiveConcordance(corpus: queryCorpus, cql: query)
+                let live = try await engine.openConcordance(query: query, in: queryCorpus)
                 for op in operations {
                     try await op.apply(to: live)
                     try Task.checkCancellation()
@@ -525,8 +528,8 @@ final class ConcordanceDocument: NSDocument {
     /// sequence - both are per-row engine round trips, so this matters
     /// more the more rows there are.
     private static func buildRows(
-        from lines: [KWICLine], live: LiveConcordance, descendingSort: Bool,
-        queryCorpus: Corpus, structuralAttributeToShow: String?
+        from lines: [KWICLine], live: any ConcordanceHandle, descendingSort: Bool,
+        queryCorpus: any CorpusHandle, structuralAttributeToShow: String?
     ) async -> [ConcordanceRow] {
         var newRows = [ConcordanceRow?](repeating: nil, count: lines.count)
         await withTaskGroup(of: (Int, ConcordanceRow).self) { group in
@@ -586,7 +589,7 @@ final class ConcordanceDocument: NSDocument {
     /// would put them off the end.
     func hitDistribution(bins: Int = 100) async throws -> HitDistribution {
         guard let liveConcordance else { throw AnalysisError.noResultsYet }
-        let corpusSize = try await Corpus(name: corpusName).size
+        let corpusSize = try await engine.openCorpus(name: corpusName).size
         let counts = try await liveConcordance.hitHistogram(bins: bins, corpusSize: corpusSize)
         return HitDistribution(counts: counts, corpusSize: corpusSize)
     }

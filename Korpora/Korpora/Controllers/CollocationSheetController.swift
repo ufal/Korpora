@@ -131,7 +131,7 @@ final class CollocationSheetController: NSViewController {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let corpus = try Corpus(name: corpusName)
+                let corpus = try await Engines.default.openCorpus(name: corpusName)
                 let info = try await corpus.info()
                 attributePopUp.addItems(withTitles: info.attributes)
             } catch {

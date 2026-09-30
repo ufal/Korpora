@@ -142,7 +142,7 @@ final class AttributeDisplayPopoverController: NSViewController {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let corpus = try Corpus(name: corpusName)
+                let corpus = try await Engines.default.openCorpus(name: corpusName)
                 let info = try await corpus.info()
                 populateRows(attributes: info.attributes.filter { $0 != primaryAttribute })
                 populateStructuralRows(structures: info.structures)
