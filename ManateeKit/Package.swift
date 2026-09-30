@@ -96,6 +96,7 @@ let package = Package(
     name: "ManateeKit",
     platforms: [.macOS(.v13)],
     products: [
+        .library(name: "CorpusEngine", targets: ["CorpusEngine"]),
         .library(name: "ManateeKit", targets: ["ManateeKit"]),
         .executable(name: "manateekit-cli", targets: ["manateekit-cli"]),
     ],
@@ -105,9 +106,12 @@ let package = Package(
             cxxSettings: [.unsafeFlags(cManateeCxxFlags)],
             linkerSettings: [.unsafeFlags(cManateeLinkerFlags)]
         ),
+        // Engine-neutral protocols and value types (see docs/pando-analysis.md,
+        // Phase B): no engine code, so a second engine can share them.
+        .target(name: "CorpusEngine"),
         .target(
             name: "ManateeKit",
-            dependencies: ["CManatee"]
+            dependencies: ["CManatee", "CorpusEngine"]
         ),
         .executableTarget(
             name: "manateekit-cli",
@@ -115,7 +119,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ManateeKitTests",
-            dependencies: ["ManateeKit"]
+            dependencies: ["ManateeKit", "CorpusEngine"]
         ),
     ],
     cxxLanguageStandard: .cxx14

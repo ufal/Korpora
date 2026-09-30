@@ -1,4 +1,5 @@
 import CManatee
+@_exported import CorpusEngine
 import Foundation
 
 public enum ManateeError: Error, CustomStringConvertible {
@@ -17,57 +18,10 @@ func consumeError(_ error: UnsafeMutablePointer<CChar>?) -> String {
     return msg
 }
 
-/// One token's positional-attribute values within a `KWICLine`. `word` is
-/// whichever attribute `LiveConcordance.kwicLines` was called with as its
-/// primary `kwicAttr` (default "word"); `secondaryAttributes` holds any
-/// additional attributes requested via `kwicLines(secondaryAttributes:)`
-/// (e.g. "lemma"/"tag"), keyed by attribute name - empty when none were
-/// requested.
-public struct KWICToken: Sendable, Equatable {
-    public let word: String
-    public let secondaryAttributes: [String: String]
-
-    public init(word: String, secondaryAttributes: [String: String]) {
-        self.word = word
-        self.secondaryAttributes = secondaryAttributes
-    }
-}
-
-public struct KWICLine: Sendable {
-    public let leftTokens: [KWICToken]
-    public let kwicTokens: [KWICToken]
-    public let rightTokens: [KWICToken]
-    /// The match's corpus-wide token start position - stable and meaningful
-    /// independent of the `LiveConcordance`/iterator that produced this
-    /// line, so a caller can look up this specific hit's enclosing
-    /// structural attributes (e.g. "doc.author") later, on demand, via
-    /// `Corpus.structuralAttributeValue(at:attribute:)`, without keeping
-    /// anything else alive.
-    public let position: Int
-
-    /// Plain space-joined display text, for callers that don't need
-    /// per-token/secondary-attribute detail - the whole `KWICLine` API
-    /// before secondary attributes existed.
-    public var left: String { Self.joined(leftTokens) }
-    public var kwic: String { Self.joined(kwicTokens) }
-    public var right: String { Self.joined(rightTokens) }
-
-    public init(leftTokens: [KWICToken], kwicTokens: [KWICToken], rightTokens: [KWICToken], position: Int) {
-        self.leftTokens = leftTokens
-        self.kwicTokens = kwicTokens
-        self.rightTokens = rightTokens
-        self.position = position
-    }
-
-    private static func joined(_ tokens: [KWICToken]) -> String {
-        tokens.map(\.word).joined(separator: " ")
-    }
-}
-
 /// One Manatee corpus handle plus everything derived from it. Not proven
 /// thread-safe upstream, so all access is serialized through this actor
 /// rather than assumed safe for concurrent queries.
-public actor Corpus {
+public actor Corpus: CorpusHandle {
     /// The name (or subcorpus path) this handle was opened with - kept
     /// around for `createSubcorpus`'s own directory naming and so a
     /// subcorpus `Corpus` can still report the corpus it belongs to.
@@ -339,41 +293,15 @@ public actor Corpus {
     /// subcorpus's range, since `SubCorpus` overrides `filter_query` in C++
     /// and every existing shim call (`mtc_query`, sort/filter/etc.) already
     /// goes through that virtually, unchanged.
+    public func openSubcorpusHandle(atPath path: String) throws -> any CorpusHandle {
+        try openSubcorpus(atPath: path)
+    }
+
     public func openSubcorpus(atPath path: String) throws -> Corpus {
         var error: UnsafeMutablePointer<CChar>?
         guard let h = mtc_subcorpus_open(handle, path, &error) else {
             throw ManateeError.failure(consumeError(error))
         }
         return Corpus(wrapping: h, name: name)
-    }
-}
-
-// Both of these carry `public let`s but had only their synthesized
-// *internal* initializers, so a client could read one but never build one -
-// which also meant a client couldn't unit-test anything taking a
-// `CorpusInfo` without opening a real corpus. They're plain value types
-// describing a schema, so being constructible is the intended shape.
-
-public struct StructureInfo: Sendable {
-    public let name: String
-    public let attributes: [String]
-
-    public init(name: String, attributes: [String]) {
-        self.name = name
-        self.attributes = attributes
-    }
-}
-
-public struct CorpusInfo: Sendable {
-    public let name: String
-    public let sizeTokens: Int
-    public let attributes: [String]
-    public let structures: [StructureInfo]
-
-    public init(name: String, sizeTokens: Int, attributes: [String], structures: [StructureInfo]) {
-        self.name = name
-        self.sizeTokens = sizeTokens
-        self.attributes = attributes
-        self.structures = structures
     }
 }
