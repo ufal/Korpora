@@ -231,6 +231,27 @@ the OS cache); cancellation (no API for it: a query cannot be interrupted).
   bugs upstream now, keep the spike scripts, and start Phase B (engine seam), which is useful regardless,
   while pando matures. Phase C/D after the author confirms format stability.
 
+## Phase B (engine seam) - done 2026-09-30
+
+No behaviour change; the app now talks to an engine through protocols.
+- New SwiftPM target `CorpusEngine` in the ManateeKit package (also a library product): the engine-neutral value
+  types (`KWICLine`, `CorpusInfo`, `SortCriteria`, `PNFilterSpec`, `CollocationSpec`, `FrequencyCriterion`, ...)
+  moved out of ManateeKit, plus the protocols `CorpusHandle`, `ConcordanceHandle` (both actors) and `CorpusEngine`
+  (`id`, `openCorpus`, `openConcordance`). `ManateeKit` re-exports it, so `import ManateeKit` still works everywhere.
+  Manatee's own grammar for sort/frequency criteria stayed in ManateeKit (`ManateeGrammar.swift`).
+- `Corpus` and `LiveConcordance` conform; `ManateeEngine` is the implementation (`openCorpus`, `openConcordance`).
+  Subcorpora open through `openSubcorpusHandle(atPath:)`.
+- App: `ConcordanceDocument` holds `any CorpusHandle` / `any ConcordanceHandle` and has an injectable `engine`
+  property; all seven direct `Corpus(name:)` call sites (sheets, popovers, completion) go through `Engines.default`.
+  `Engines` also resolves an engine by id.
+- Saved `.corpconc` documents now carry `formatVersion` (2) and `engine` (`"manatee"`); version-1 files read as
+  Manatee, a newer format or an unknown engine is refused with a clear message instead of a half-read.
+- Tests: ManateeKit 112 -> 119 (protocol-only tests, foreign-handle rejection); app 160 -> 169 (a scripted fake
+  engine drives `ConcordanceDocument` end to end without Manatee; document-format tests). No existing test changed.
+- **Left for Phase C, deliberately**: the query language (CQL colouring/completion, `SubcorpusRestriction`), the
+  corpus list and import (`CorpusLibrary`, `CorpusRegistry`, `CorpusImporter`, registry files), subcorpus storage
+  (`SubcorpusStore`), and per-engine capability flags for features an engine lacks (sort, line groups, cancellation).
+
 ## Recommendation
 
 Do **not** replace Manatee. Run Phase A now (a few days of work, no risk), decide from its numbers.

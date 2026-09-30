@@ -141,3 +141,62 @@ private struct FakeEngine: CorpusEngine {
         #expect(document.rows.isEmpty)
     }
 }
+
+/// The saved-document format carries a version and the engine id.
+@MainActor @Suite struct DocumentFormatTests {
+    private func json(_ data: Data) throws -> [String: Any] {
+        try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func state(_ extra: [String: Any] = [:]) throws -> Data {
+        var object: [String: Any] = [
+            "corpusName": "syn", "initialQuery": "[word=\"a\"]", "leftContext": "-10", "rightContext": "10",
+            "kwicAttr": "word", "operations": [],
+        ]
+        object.merge(extra) { $1 }
+        return try JSONSerialization.data(withJSONObject: object)
+    }
+
+    @Test func savingWritesTheVersionAndTheEngine() throws {
+        let document = ConcordanceDocument()
+        document.corpusName = "syn"
+        let saved = try json(document.data(ofType: "corpconc"))
+        #expect(saved["formatVersion"] as? Int == ConcordanceDocument.currentFormatVersion)
+        #expect(saved["engine"] as? String == "manatee")
+    }
+
+    @Test func aVersionOneDocumentStillOpensAsManatee() throws {
+        let document = ConcordanceDocument()
+        try document.read(from: state(), ofType: "corpconc")
+        #expect(document.corpusName == "syn" && document.initialQuery == "[word=\"a\"]")
+        #expect(document.engine.id == "manatee")
+    }
+
+    @Test func roundTripKeepsTheContent() throws {
+        let document = ConcordanceDocument()
+        document.corpusName = "syn"
+        document.subcorpusPath = "/x/y.subc"
+        let copy = ConcordanceDocument()
+        try copy.read(from: document.data(ofType: "corpconc"), ofType: "corpconc")
+        #expect(copy.corpusName == "syn" && copy.subcorpusPath == "/x/y.subc" && copy.engine.id == "manatee")
+    }
+
+    @Test func aDocumentFromAnUnknownEngineIsRefusedClearly() throws {
+        let document = ConcordanceDocument()
+        #expect(throws: DocumentFormatError.self) {
+            try document.read(from: state(["formatVersion": 2, "engine": "pando"]), ofType: "corpconc")
+        }
+        let message = (try? document.read(from: state(["engine": "pando"]), ofType: "corpconc")) == nil
+        #expect(message)
+        #expect(DocumentFormatError.unknownEngine("pando").localizedDescription.contains("pando"))
+    }
+
+    @Test func aNewerFormatIsRefusedClearly() throws {
+        let document = ConcordanceDocument()
+        #expect(throws: DocumentFormatError.self) {
+            try document.read(from: state(["formatVersion": ConcordanceDocument.currentFormatVersion + 1]),
+                              ofType: "corpconc")
+        }
+        #expect(DocumentFormatError.newerFormat(9).localizedDescription.contains("newer"))
+    }
+}

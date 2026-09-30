@@ -691,7 +691,17 @@ final class ConcordanceDocument: NSDocument {
 
     // MARK: - Persistence (query + operation chain only, never the materialized rows)
 
+    /// Version of the saved-document format. 1: the original (no version or
+    /// engine keys, always Manatee); 2: adds `formatVersion` and `engine`.
+    /// Older documents still read; a newer one is refused with a clear error
+    /// rather than half-read.
+    static let currentFormatVersion = 2
+
     private struct DocumentState: Codable {
+        /// Missing in version 1 documents.
+        var formatVersion: Int?
+        /// The `CorpusEngine.id` the query and corpus name are for; missing means Manatee.
+        var engine: String?
         var corpusName: String
         var subcorpusPath: String?
         var initialQuery: String
@@ -718,6 +728,7 @@ final class ConcordanceDocument: NSDocument {
 
     override func data(ofType typeName: String) throws -> Data {
         let state = DocumentState(
+            formatVersion: Self.currentFormatVersion, engine: engine.id,
             corpusName: corpusName, subcorpusPath: subcorpusPath, initialQuery: initialQuery,
             leftContext: leftContext, rightContext: rightContext, kwicAttr: kwicAttr,
             inlineAttributes: inlineAttributes, tooltipAttributes: tooltipAttributes,
@@ -728,6 +739,14 @@ final class ConcordanceDocument: NSDocument {
 
     override func read(from data: Data, ofType typeName: String) throws {
         let state = try JSONDecoder().decode(DocumentState.self, from: data)
+        if let version = state.formatVersion, version > Self.currentFormatVersion {
+            throw DocumentFormatError.newerFormat(version)
+        }
+        let engineID = state.engine ?? "manatee"
+        guard let engine = Engines.engine(withID: engineID) else {
+            throw DocumentFormatError.unknownEngine(engineID)
+        }
+        self.engine = engine
         corpusName = state.corpusName
         subcorpusPath = state.subcorpusPath
         initialQuery = state.initialQuery
