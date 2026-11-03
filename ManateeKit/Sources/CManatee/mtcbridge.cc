@@ -241,6 +241,9 @@ int mtc_cancel_token_is_cancelled(MTCCancelToken *token) {
 }
 void mtc_cancel_token_free(MTCCancelToken *token) { delete token; }
 
+// Serializes every use of Manatee's CQL parser (see mtc_query_cancellable).
+static std::mutex cql_parse_mutex;
+
 MTCConcordance *mtc_query(MTCCorpus *corp, const char *cql, char **error) {
     return mtc_query_cancellable(corp, cql, nullptr, error);
 }
@@ -259,8 +262,7 @@ MTCConcordance *mtc_query_cancellable(MTCCorpus *corp, const char *cql, MTCCance
             // of file" on a valid query). Only parsing and building the
             // stream is serialized; evaluation runs in the concordance's own
             // worker thread, so searches still overlap.
-            static std::mutex parse_mutex;
-            std::lock_guard<std::mutex> lock(parse_mutex);
+            std::lock_guard<std::mutex> lock(cql_parse_mutex);
             rs = corp->corp->filter_query(eval_cqpquery(query.c_str(), corp->corp));
         }
         MTCConcordance *mc = new MTCConcordance;
@@ -481,6 +483,7 @@ int mtc_concordance_set_collocation(MTCConcordance *conc, int collnum, const cha
     try {
         // eval_cqpquery (invoked internally for this sub-query, same as for
         // the main query in mtc_query) expects a `;`-terminated statement.
+        std::lock_guard<std::mutex> lock(cql_parse_mutex);  // parses the sub-query
         conc->conc->set_collocation(collnum, std::string(query) + ";", left_ctx, right_ctx, rank,
                                      exclude_kwic != 0);
         return 1;
@@ -915,6 +918,7 @@ int mtc_create_subcorpus(MTCCorpus *corp, const char *subc_path, const char *str
         return 0;
     }
     try {
+        std::lock_guard<std::mutex> lock(cql_parse_mutex);  // parses the restriction query
         if (!create_subcorpus(subc_path, corp->corp, struct_name, query)) {
             set_error(error, "failed to create subcorpus (empty result?)");
             return 0;
