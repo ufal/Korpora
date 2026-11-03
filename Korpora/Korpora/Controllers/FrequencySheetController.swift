@@ -1,5 +1,5 @@
 import Cocoa
-import ManateeKit
+import KorporaEngine
 
 /// The sheet behind the toolbar's Frequencies button - an attribute to group
 /// by (positional, e.g. "lemma", or structural, written "struct.attr", e.g.

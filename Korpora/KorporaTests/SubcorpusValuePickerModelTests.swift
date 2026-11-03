@@ -1,5 +1,5 @@
 import Cocoa
-import ManateeKit
+import KorporaEngine
 import Testing
 @testable import Korpora
 
@@ -119,12 +119,13 @@ import Testing
         await m.reload()
         #expect(m.isSelected("fiction") && m.isSelected("essay"))
         #expect(m.selectedCount == 3)
-        #expect(m.restriction.query == #"(genre="essay"|genre="fiction") & year="1876""#)
+        #expect(m.restriction.filter == "match.doc_genre = /essay|fiction/ & match.doc_year = /1876/")
+        #expect(m.restriction.summary == "genre: essay, fiction \u{00B7} year: 1876")
 
         m.toggle("essay")
-        #expect(m.restriction.query == #"genre="fiction" & year="1876""#)
+        #expect(m.restriction.filter == "match.doc_genre = /fiction/ & match.doc_year = /1876/")
         m.clearSelection()
-        #expect(m.selectedCount == 0 && m.restriction.query.isEmpty)
+        #expect(m.selectedCount == 0 && m.restriction.isEmpty)
     }
 
     @Test func changingTheStructureStartsOver() async {
@@ -211,12 +212,11 @@ import Testing
         return controller
     }
 
-    @Test func layoutGivesTheListRoomAndShowsValuesMode() async {
+    @Test func layoutGivesTheListRoom() async {
         let controller = await popover()
         let root = controller.view
         #expect(root.frame.size == NSSize(width: 420, height: 440))
         #expect(!controller.valuesContainer.isHidden)
-        #expect(controller.cqlContainer.isHidden)
         // The list must not collapse: it's the point of the popover.
         #expect(controller.scrollView.frame.height >= 120)
         #expect(controller.scrollView.frame.width >= 380)
@@ -239,11 +239,11 @@ import Testing
         let (fiction, fictionCount) = try cell(controller, row: 1)
         #expect(essay.title == "essay" && essayCount.stringValue == "3")
         #expect(fiction.title == "fiction" && fictionCount.stringValue == "2")
-        #expect(essayCount.toolTip == "3 doc with this value")
+        #expect(essayCount.toolTip == "3 with this value")
 
         essay.performClick(nil)
         #expect(controller.model.isSelected("essay") && !controller.model.isSelected("fiction"))
-        #expect(controller.model.restriction.query == #"genre="essay""#)
+        #expect(controller.model.restriction.filter == "match.doc_genre = /essay/")
     }
 
     @Test func createNeedsANameAndAPick() async throws {
@@ -259,47 +259,29 @@ import Testing
         #expect(!controller.createButton.isEnabled)  // picked, unnamed
     }
 
-    @Test func createHandsOverTheGeneratedRestriction() async throws {
+    @Test func createHandsOverANamedSubcorpus() async throws {
         let controller = await popover()
-        var created: (String, String, String)?
-        controller.onCreate = { created = ($0, $1, $2) }
+        var created: Subcorpus?
+        controller.onCreate = { created = $0 }
         controller.nameField.stringValue = "  Fiction and essays  "
         controller.model.toggle("fiction")
         controller.model.toggle("essay")
         controller.createButton.isEnabled = true
         controller.createButton.performClick(nil)
-        let (name, structure, query) = try #require(created)
-        #expect(name == "Fiction and essays")
-        #expect(structure == "doc")
-        #expect(query == #"(genre="essay"|genre="fiction")"#)
+        let subcorpus = try #require(created)
+        #expect(subcorpus.name == "Fiction and essays")
+        #expect(subcorpus.restriction.structure == "doc")
+        #expect(subcorpus.restriction.selections == [.init(attribute: "genre", values: ["essay", "fiction"])])
+        #expect(subcorpus.restriction.apply(to: "[]") == "[] :: match.doc_genre = /essay|fiction/")
     }
 
-    /// The typed restriction still works, and starts from the picks.
-    @Test func cqlModeStartsFromThePicksAndCreatesWhatIsTyped() async throws {
-        let controller = await popover()
-        controller.model.toggle("fiction")
-        controller.modeControl.selectedSegment = 1
-        _ = controller.modeControl.sendAction(controller.modeControl.action, to: controller.modeControl.target)
-        #expect(controller.valuesContainer.isHidden && !controller.cqlContainer.isHidden)
-        #expect(controller.queryField.text == #"genre="fiction""#)
-
-        var created: (String, String, String)?
-        controller.onCreate = { created = ($0, $1, $2) }
-        controller.queryField.text = #"genre="fiction" & year!="1901""#
-        controller.nameField.stringValue = "typed"
-        controller.createButton.isEnabled = true
-        controller.createButton.performClick(nil)
-        #expect(created?.2 == #"genre="fiction" & year!="1901""#)
-    }
-
-    /// A corpus with no structure attributes can't be picked from; the popover
-    /// opens where typing is possible.
-    @Test func withoutAttributesItOpensInCQLMode() async {
-        let bare = CorpusInfo(name: "t", sizeTokens: 1, attributes: ["word"],
+    /// A corpus with no structure attributes can't be picked from: it says so, and nothing can be created.
+    @Test func withoutAttributesItSaysThereIsNothingToPick() async {
+        let bare = CorpusInfo(name: "t", sizeTokens: 1, attributes: ["form"],
                               structures: [StructureInfo(name: "s", attributes: [])])
         let controller = await popover(info: bare)
-        #expect(controller.valuesContainer.isHidden && !controller.cqlContainer.isHidden)
-        #expect(controller.modeControl.selectedSegment == 1)
+        #expect(controller.model.attribute == nil)
+        #expect(!controller.createButton.isEnabled)
     }
 
     /// No corpus to read from (or one that won't open): reported, not a crash.

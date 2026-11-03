@@ -13,8 +13,8 @@ import Testing
 
     @Test func recordAddsNewestFirst() {
         let defaults = freshDefaults()
-        QueryHistoryStore.record(corpusName: "corpus1", subcorpusPath: nil, query: "[word=\"a\"]", date: Date(timeIntervalSince1970: 1), defaults: defaults)
-        QueryHistoryStore.record(corpusName: "corpus1", subcorpusPath: nil, query: "[word=\"b\"]", date: Date(timeIntervalSince1970: 2), defaults: defaults)
+        QueryHistoryStore.record(corpusName: "corpus1", subcorpusName: nil, query: "[word=\"a\"]", date: Date(timeIntervalSince1970: 1), defaults: defaults)
+        QueryHistoryStore.record(corpusName: "corpus1", subcorpusName: nil, query: "[word=\"b\"]", date: Date(timeIntervalSince1970: 2), defaults: defaults)
 
         let entries = QueryHistoryStore.recentEntries(defaults: defaults)
         #expect(entries.map(\.query) == ["[word=\"b\"]", "[word=\"a\"]"])
@@ -22,9 +22,9 @@ import Testing
 
     @Test func recordMovesRepeatedQueryToFrontAndRefreshesItsTimestamp() {
         let defaults = freshDefaults()
-        QueryHistoryStore.record(corpusName: "corpus1", subcorpusPath: nil, query: "[word=\"a\"]", date: Date(timeIntervalSince1970: 1), defaults: defaults)
-        QueryHistoryStore.record(corpusName: "corpus1", subcorpusPath: nil, query: "[word=\"b\"]", date: Date(timeIntervalSince1970: 2), defaults: defaults)
-        QueryHistoryStore.record(corpusName: "corpus1", subcorpusPath: nil, query: "[word=\"a\"]", date: Date(timeIntervalSince1970: 3), defaults: defaults)
+        QueryHistoryStore.record(corpusName: "corpus1", subcorpusName: nil, query: "[word=\"a\"]", date: Date(timeIntervalSince1970: 1), defaults: defaults)
+        QueryHistoryStore.record(corpusName: "corpus1", subcorpusName: nil, query: "[word=\"b\"]", date: Date(timeIntervalSince1970: 2), defaults: defaults)
+        QueryHistoryStore.record(corpusName: "corpus1", subcorpusName: nil, query: "[word=\"a\"]", date: Date(timeIntervalSince1970: 3), defaults: defaults)
 
         let entries = QueryHistoryStore.recentEntries(defaults: defaults)
         #expect(entries.map(\.query) == ["[word=\"a\"]", "[word=\"b\"]"])
@@ -33,16 +33,16 @@ import Testing
 
     @Test func recordKeepsRepeatIfCorpusOrSubcorpusDiffers() {
         let defaults = freshDefaults()
-        QueryHistoryStore.record(corpusName: "corpus1", subcorpusPath: nil, query: "[word=\"a\"]", defaults: defaults)
-        QueryHistoryStore.record(corpusName: "corpus2", subcorpusPath: nil, query: "[word=\"a\"]", defaults: defaults)
-        QueryHistoryStore.record(corpusName: "corpus2", subcorpusPath: "/tmp/sub.subc", query: "[word=\"a\"]", defaults: defaults)
+        QueryHistoryStore.record(corpusName: "corpus1", subcorpusName: nil, query: "[word=\"a\"]", defaults: defaults)
+        QueryHistoryStore.record(corpusName: "corpus2", subcorpusName: nil, query: "[word=\"a\"]", defaults: defaults)
+        QueryHistoryStore.record(corpusName: "corpus2", subcorpusName: "/tmp/sub.subc", query: "[word=\"a\"]", defaults: defaults)
 
         #expect(QueryHistoryStore.recentEntries(defaults: defaults).count == 3)
     }
 
     @Test func recordIgnoresBlankQueries() {
         let defaults = freshDefaults()
-        QueryHistoryStore.record(corpusName: "corpus1", subcorpusPath: nil, query: "   ", defaults: defaults)
+        QueryHistoryStore.record(corpusName: "corpus1", subcorpusName: nil, query: "   ", defaults: defaults)
         #expect(QueryHistoryStore.recentEntries(defaults: defaults).isEmpty)
     }
 
@@ -50,7 +50,7 @@ import Testing
         let defaults = freshDefaults()
         for i in 0..<(QueryHistoryStore.maxEntries + 50) {
             QueryHistoryStore.record(
-                corpusName: "corpus1", subcorpusPath: nil, query: "query-\(i)",
+                corpusName: "corpus1", subcorpusName: nil, query: "query-\(i)",
                 date: Date(timeIntervalSince1970: Double(i)), defaults: defaults)
         }
         let entries = QueryHistoryStore.recentEntries(defaults: defaults)
@@ -60,7 +60,7 @@ import Testing
 
     @Test func clearRemovesEverything() {
         let defaults = freshDefaults()
-        QueryHistoryStore.record(corpusName: "corpus1", subcorpusPath: nil, query: "[word=\"a\"]", defaults: defaults)
+        QueryHistoryStore.record(corpusName: "corpus1", subcorpusName: nil, query: "[word=\"a\"]", defaults: defaults)
         QueryHistoryStore.clear(defaults: defaults)
         #expect(QueryHistoryStore.recentEntries(defaults: defaults).isEmpty)
     }

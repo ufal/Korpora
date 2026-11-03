@@ -1,5 +1,5 @@
 import Foundation
-import ManateeKit
+import KorporaEngine
 
 /// What the New Subcorpus popover shows and remembers while the user picks
 /// values (docs/project-plan.md, 6.9): which structure and attribute, the
@@ -187,7 +187,7 @@ final class SubcorpusValuePickerModel {
     /// The picks as a restriction, attributes in registry order and values
     /// in reading order so the string is stable.
     var restriction: SubcorpusRestriction {
-        SubcorpusRestriction(selections: attributes.compactMap { name in
+        SubcorpusRestriction(structure: structure, selections: attributes.compactMap { name in
             guard let values = selected[name], !values.isEmpty else { return nil }
             return .init(attribute: name, values: Self.sorted(Array(values)))
         })

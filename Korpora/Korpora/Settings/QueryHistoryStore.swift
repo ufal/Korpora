@@ -6,7 +6,7 @@ import Foundation
 /// anything the engine or a corpus registry needs to know about.
 struct QueryHistoryEntry: Codable, Equatable {
     var corpusName: String
-    var subcorpusPath: String?
+    var subcorpusName: String?
     var query: String
     var date: Date
 }
@@ -18,7 +18,7 @@ struct QueryHistoryEntry: Codable, Equatable {
 /// only on a successful search - simpler, and "what did I just search for"
 /// is still useful to recall even if it happened to be a CQL typo.
 ///
-/// Entries are unique by (corpusName, subcorpusPath, query): re-running an
+/// Entries are unique by (corpusName, subcorpusName, query): re-running an
 /// already-recorded query moves it to the front with a refreshed timestamp
 /// instead of inserting a second entry - otherwise re-running a favorite
 /// query from the History popover would just keep duplicating it at the
@@ -43,19 +43,19 @@ enum QueryHistoryStore {
     }
 
     /// Records a query as just having been run. If an entry with the same
-    /// (corpusName, subcorpusPath, query) already exists anywhere in the
+    /// (corpusName, subcorpusName, query) already exists anywhere in the
     /// list, it's removed and reinserted at the front with `date` as its
     /// new timestamp - a "move to front + touch" upsert, not a plain
     /// append, so the list stays a set of unique queries ordered by last
     /// use rather than accumulating one row per run of the same query.
     static func record(
-        corpusName: String, subcorpusPath: String?, query: String,
+        corpusName: String, subcorpusName: String?, query: String,
         date: Date = Date(), defaults: UserDefaults = .standard
     ) {
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         var entries = recentEntries(defaults: defaults)
-        entries.removeAll { $0.corpusName == corpusName && $0.subcorpusPath == subcorpusPath && $0.query == query }
-        entries.insert(QueryHistoryEntry(corpusName: corpusName, subcorpusPath: subcorpusPath, query: query, date: date), at: 0)
+        entries.removeAll { $0.corpusName == corpusName && $0.subcorpusName == subcorpusName && $0.query == query }
+        entries.insert(QueryHistoryEntry(corpusName: corpusName, subcorpusName: subcorpusName, query: query, date: date), at: 0)
         if entries.count > maxEntries {
             entries.removeLast(entries.count - maxEntries)
         }

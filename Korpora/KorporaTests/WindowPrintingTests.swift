@@ -1,6 +1,6 @@
 import Cocoa
 import PDFKit
-import ManateeKit
+import KorporaEngine
 import Testing
 @testable import Korpora
 

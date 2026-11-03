@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import ManateeKit
+import KorporaEngine
 @testable import Korpora
 
 @Suite struct ConcordanceOperationTests {
@@ -51,17 +51,13 @@ import ManateeKit
             SortCriteria(SortLevel(attribute: "word", anchor: .kwic)), unique: false, descending: false)
         #expect(sort.summary == "Sort: word at Match, ascending")
 
-        let filter = ConcordanceOperation.filter(PNFilterSpec(positive: true, query: #"[word="fox"]"#))
-        #expect(filter.summary == #"Filter: keep lines matching [word="fox"]"#)
-
         #expect(ConcordanceOperation.shuffle.summary == "Shuffle")
         #expect(ConcordanceOperation.sample(lines: 1).summary == "Sample: 1 line")
         #expect(ConcordanceOperation.sample(lines: 5).summary == "Sample: 5 lines")
     }
 
     // `ConcordanceDocument.replay()` no-ops when corpusName/initialQuery are
-    // empty, so a bare `ConcordanceDocument()` - with no corpus, window, or
-    // MANATEE_REGISTRY - is enough to test the operations-array bookkeeping
+    // empty, so a bare `ConcordanceDocument()` - with no corpus or window - is enough to test the operations-array bookkeeping
     // itself, independent of the engine.
     @Test func removeOperationDropsExactlyOneAndKeepsOrder() {
         let doc = ConcordanceDocument()

@@ -1,5 +1,5 @@
 import Cocoa
-import ManateeKit
+import KorporaEngine
 
 /// The sheet behind the toolbar's Collocations button - mirrors KonText's own
 /// collocation form (attribute/measure/window/frequency thresholds), same

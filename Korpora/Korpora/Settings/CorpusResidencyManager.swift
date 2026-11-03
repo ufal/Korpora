@@ -1,5 +1,5 @@
 import Foundation
-import ManateeKit
+import KorporaEngine
 
 /// Owns the app-lifetime side of `CorpusMemoryResidency`: re-warming corpora
 /// flagged `keepResident` at launch (available memory can differ session to
@@ -21,11 +21,11 @@ final class CorpusResidencyManager {
     }
 
     /// Corpora flagged "Keep in Memory" that can be found now, with their
-    /// data directories - built or added, no difference.
+    /// index folders - built or linked, no difference.
     private func flaggedCorpora() -> [(name: String, directory: URL)] {
         AppSettings.shared.corpusLibraryEntries().compactMap { entry in
-            guard AppSettings.shared.isKeepResident(entry.name), let directory = entry.dataDirectory else { return nil }
-            return (entry.name, directory)
+            guard AppSettings.shared.isKeepResident(entry.name) else { return nil }
+            return (entry.name, entry.directory.resolvingSymlinksInPath())
         }
     }
 

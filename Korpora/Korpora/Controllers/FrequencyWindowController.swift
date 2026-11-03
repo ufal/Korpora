@@ -1,5 +1,5 @@
 import Cocoa
-import ManateeKit
+import KorporaEngine
 
 /// A disposable, re-runnable results window for `ConcordanceDocument.
 /// frequencyDistribution(_:minFrequency:)` - same non-document rationale as

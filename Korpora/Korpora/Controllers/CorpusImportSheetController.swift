@@ -1,579 +1,314 @@
 import Cocoa
-import ManateeKit
+import KorporaEngine
 
-/// The sheet behind Corpora settings' "Import Corpus…" button - takes a
-/// vertical file the caller already picked (see
-/// `CorporaSettingsViewController.importCorpusTapped`), sniffs a starting
-/// schema from it (`CorpusImporter.sniffSchema`), and lets the user review/
-/// edit it before compiling (`CorpusImporter.importCorpus`) - this is the
-/// whole point of the feature: no hand-written registry file, no terminal.
-/// A plain, thread-safe accumulator `onProgress` callbacks append to -
-/// decoupled from actually updating the log view (see `flushLog()`) so a
-/// flood of very fast/frequent output can't force one expensive
-/// `NSTextView` relayout per chunk. Also tracks the most recent "Processed
-/// N lines" count parsed out of that output, for the determinate progress
-/// bar - parsing happens here (off the main actor, wherever `onProgress` is
-/// actually called from) rather than in the UI-updating timer, so a flood
-/// of output doesn't turn into a flood of regex work on the main thread.
-private final class LogBuffer: @unchecked Sendable {
-    private static let processedLinePattern = try! Regex(#"Processed (\d+) lines"#)
-
-    private let lock = NSLock()
-    private var pending = ""
-    private var _linesProcessed: Int?
-
-    func append(_ text: String) {
-        lock.lock()
-        pending += text
-        if let match = text.matches(of: Self.processedLinePattern).last,
-           let count = match.output[1].substring.flatMap({ Int($0) }) {
-            _linesProcessed = count
-        }
-        lock.unlock()
-    }
-
-    func drain() -> (text: String, linesProcessed: Int?) {
-        lock.lock()
-        defer { pending = "" }
-        let result = (pending, _linesProcessed)
-        lock.unlock()
-        return result
-    }
-}
-
+/// The sheet behind Corpora settings' "Import Annotated Text…": takes the files or folders the
+/// caller picked (CoNLL-U, or CWB-style verticals), asks for a name, and builds the corpus with
+/// `CorpusImporter` (docs/pando-gui-plan.md). One screen of choices, then one of progress.
 final class CorpusImportSheetController: NSViewController {
-    private let verticalFile: URL
+    private let inputs: [URL]
     var onImported: (() -> Void)?
 
     private let nameField = NSTextField(string: "")
-    private let attributesField = NSTextField(string: "Detecting…")
-    private let structuresView = NSTextView()
-    // A fixed-height, scrollable error display, not a plain wrapping label -
-    // found the hard way that an unbounded NSTextField showing a long error
-    // (e.g. several KB of encodevert output) has no height cap of its own,
-    // so Auto Layout has no choice but to grow the *window* to fit it,
-    // reintroducing the exact class of runaway-sheet-size bug the fixed
-    // progress-view size was meant to eliminate - this needed the same fix.
-    private let errorTextView = NSTextView()
-    private let errorScroll = NSScrollView()
-    private let compileButton = NSButton(title: "Compile", target: nil, action: nil)
+    private let summaryLabel = NSTextField(wrappingLabelWithString: "")
+    private let importButton = NSButton(title: "Import", target: nil, action: nil)
+    private let cancelButton = NSButton(title: "Cancel", target: nil, action: nil)
 
-    private let formStack = NSView()
-    private let progressStack = NSView()
+    private let formView = NSView()
+    private let progressView = NSView()
     private let progressIndicator = NSProgressIndicator()
-    private let statusLabel = NSTextField(labelWithString: "Preparing\u{2026}")
+    private let statusLabel = NSTextField(labelWithString: "Starting\u{2026}")
+    private let tokensLabel = NSTextField(labelWithString: "")
     private let disclosureButton = NSButton(title: "Show Log", target: nil, action: nil)
-    private let progressLog = NSTextView()
+    private let logView = NSTextView()
     private let logScroll = NSScrollView()
-    private var logHeightConstraint: NSLayoutConstraint!
-    private var isLogExpanded = false
+    private var logHeight: NSLayoutConstraint!
     private var importTask: Task<Void, Never>?
-    private var totalLines: Int?
-    private var importHandle: CorpusImporter.ImportHandle?
-    private var isPaused = false
-    private let pauseButton = NSButton(title: "Pause", target: nil, action: nil)
+    private let log = ImportLog()
 
-    // `encodevert`'s output rate is unbounded - on a real corpus, something
-    // going wrong partway through can make it spew output far faster than
-    // once-per-chunk UI updates can keep up with, which visibly corrupts
-    // the text view's rendering rather than just lagging (found via a real
-    // ~162M-line corpus import). `logBuffer` absorbs progress at whatever
-    // rate it arrives; `logFlushTimer` drains it into the view on a fixed,
-    // gentle cadence instead, and `maxDisplayedLogLength` keeps the view
-    // itself from becoming enormous - independent of `CorpusImporter`'s own
-    // full-output capture used for the eventual error message. The raw log
-    // is collapsed behind a disclosure toggle by default - a determinate
-    // progress bar plus a "N / total (X%)" status line is what most people
-    // want to see; the full log is there for anyone who needs it.
-    private let logBuffer = LogBuffer()
-    private var logFlushTimer: Timer?
-    private static let maxDisplayedLogLength = 200_000
-    // Fixed for the sheet's entire lifetime, covering both the form and the
-    // progress view (expanded log included) - never changed programmatically
-    // after loadView(). A previous version resized the window dynamically
-    // when the log was toggled, which turned out to interact badly with an
-    // improperly-configured NSTextView (see progressLog's setup below) and
-    // let the window balloon far off-screen on a real, long-running import -
-    // fixed size is a hard backstop against that whole class of bug, not
-    // just a fix for the one specific cause.
-    private static let fixedContentSize = NSSize(width: 480, height: 440)
-    private static let expandedLogHeight: CGFloat = 180
-
-    init(verticalFile: URL) {
-        self.verticalFile = verticalFile
+    init(inputs: [URL]) {
+        self.inputs = inputs
         super.init(nibName: nil, bundle: nil)
-        // Quitting the app must not leave an orphaned encodevert subprocess
-        // running (found the hard way: it couldn't even be quit normally
-        // after a crash and had to be force-killed from Xcode). This runs
-        // before the app actually exits, giving the subprocess a chance to
-        // receive SIGTERM instead of surviving its parent.
-        NotificationCenter.default.addObserver(
-            self, selector: #selector(applicationWillTerminate),
-            name: NSApplication.willTerminateNotification, object: nil)
     }
 
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    // MARK: What is being imported
+
+    /// How many input files there are (a folder counts the files inside) and their size.
+    static func describe(_ inputs: [URL]) -> (files: Int, bytes: Int64) {
+        let fm = FileManager.default
+        var files = 0
+        var bytes: Int64 = 0
+        let wanted: Set<String> = ["conllu", "conll", "vrt", "vert", "jsonl", "ndjson", "txt"]
+        func add(_ url: URL) {
+            guard wanted.contains(url.pathExtension.lowercased()) else { return }
+            files += 1
+            bytes += Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+        for input in inputs {
+            var isDirectory: ObjCBool = false
+            fm.fileExists(atPath: input.path, isDirectory: &isDirectory)
+            if isDirectory.boolValue {
+                let walker = fm.enumerator(at: input, includingPropertiesForKeys: [.fileSizeKey],
+                                           options: [.skipsHiddenFiles])
+                while let url = walker?.nextObject() as? URL { add(url) }
+            } else {
+                files += 1
+                bytes += Int64((try? input.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+            }
+        }
+        return (files, bytes)
     }
 
-    deinit {
-        NotificationCenter.default.removeObserver(self)
+    /// A first name for the corpus: the folder or file name; for several files, their folder's.
+    static func suggestedName(for inputs: [URL]) -> String {
+        guard let first = inputs.first else { return "Corpus" }
+        let base = inputs.count == 1 ? first.deletingPathExtension().lastPathComponent
+            : first.deletingLastPathComponent().lastPathComponent
+        let cleaned = base.trimmingCharacters(in: .whitespaces)
+        return CorpusLibrary.uniqueName(cleaned.isEmpty ? "Corpus" : cleaned, taken: Set(CorpusLibrary.names()))
     }
 
-    @objc private func applicationWillTerminate() {
-        importTask?.cancel()
-    }
+    // MARK: View
 
     override func loadView() {
-        let root = NSView(frame: NSRect(origin: .zero, size: Self.fixedContentSize))
-        view = root
-        preferredContentSize = Self.fixedContentSize
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 480, height: 230))
 
-        buildFormStack()
-        buildProgressStack()
-        for stack in [formStack, progressStack] {
-            stack.translatesAutoresizingMaskIntoConstraints = false
-            root.addSubview(stack)
-            NSLayoutConstraint.activate([
-                stack.topAnchor.constraint(equalTo: root.topAnchor),
-                stack.leadingAnchor.constraint(equalTo: root.leadingAnchor),
-                stack.trailingAnchor.constraint(equalTo: root.trailingAnchor),
-                stack.bottomAnchor.constraint(equalTo: root.bottomAnchor),
-            ])
-        }
-        showForm()
-    }
-
-    /// `formStack`/`progressStack` must never both be visible at once (found
-    /// the hard way: a real import's log content and the schema form ended
-    /// up overlapping on screen) - routing every visibility change through
-    /// these two methods, rather than setting each flag inline at each call
-    /// site, is what actually guarantees that instead of just being
-    /// disciplined about remembering to set both every time.
-    private func showForm() {
-        progressStack.isHidden = true
-        formStack.isHidden = false
-    }
-
-    private func showProgress() {
-        formStack.isHidden = true
-        progressStack.isHidden = false
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        nameField.stringValue = verticalFile.deletingPathExtension().lastPathComponent
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                let schema = try await CorpusImporter.sniffSchema(verticalFile: verticalFile)
-                attributesField.stringValue = schema.attributes.joined(separator: ", ")
-                structuresView.string = schema.structures.map { structure in
-                    structure.attributes.isEmpty
-                        ? structure.name
-                        : "\(structure.name): \(structure.attributes.joined(separator: ", "))"
-                }.joined(separator: "\n")
-            } catch {
-                attributesField.stringValue = ""
-                showFormError("Couldn’t detect a schema: \(error)")
-            }
-        }
-    }
-
-    private func showFormError(_ message: String) {
-        // 20,000 chars is generous headroom for a scrollable view (unlike
-        // the old plain-label cap of 4,000, which existed only to limit how
-        // tall an *unbounded* label could grow) - errorScroll's own height
-        // is fixed regardless, so this is just a sanity bound against
-        // truly pathological output, not load-bearing for layout anymore.
-        errorTextView.string = message.count > 20_000 ? "…" + message.suffix(20_000) : message
-        errorScroll.isHidden = false
-    }
-
-    private func buildFormStack() {
         let title = NSTextField(labelWithString: "Import Corpus")
         title.font = .boldSystemFont(ofSize: 13)
-        let fileLabel = NSTextField(labelWithString: "Vertical file:")
-        let filePathLabel = NSTextField(labelWithString: verticalFile.path)
-        filePathLabel.lineBreakMode = .byTruncatingMiddle
-        filePathLabel.font = .systemFont(ofSize: 11)
-        filePathLabel.textColor = .secondaryLabelColor
 
-        let nameLabel = NSTextField(labelWithString: "Corpus name:")
-        let attributesLabel = NSTextField(labelWithString: "Positional attributes (after \u{201c}word\u{201d}), comma-separated:")
-        let structuresLabel = NSTextField(labelWithString: "Structures - one per line, \u{201c}name: attr1, attr2\u{201d} or just \u{201c}name\u{201d}:")
-
-        structuresView.isRichText = false
-        structuresView.font = .systemFont(ofSize: 12)
-        Self.configureForScrolling(structuresView)
-        let structuresScroll = NSScrollView()
-        structuresScroll.documentView = structuresView
-        structuresScroll.hasVerticalScroller = true
-        structuresScroll.borderType = .bezelBorder
-
-        errorTextView.isEditable = false
-        errorTextView.isRichText = false
-        errorTextView.font = .systemFont(ofSize: 11)
-        errorTextView.textColor = .systemRed
-        Self.configureForScrolling(errorTextView)
-        errorScroll.documentView = errorTextView
-        errorScroll.hasVerticalScroller = true
-        errorScroll.borderType = .bezelBorder
-        errorScroll.isHidden = true
-
-        let cancelButton = NSButton(title: "Cancel", target: self, action: #selector(cancelTapped))
-        cancelButton.keyEquivalent = "\u{1b}"
-        compileButton.target = self
-        compileButton.action = #selector(compileTapped)
-        compileButton.keyEquivalent = "\r"
-        compileButton.bezelStyle = .rounded
-
-        let views: [NSView] = [
-            title, fileLabel, filePathLabel, nameLabel, nameField,
-            attributesLabel, attributesField, structuresLabel, structuresScroll,
-            errorScroll, cancelButton, compileButton,
-        ]
-        for v in views {
-            v.translatesAutoresizingMaskIntoConstraints = false
-            formStack.addSubview(v)
+        let (count, bytes) = Self.describe(inputs)
+        let kind: String
+        switch CorpusImporter.kind(of: inputs) {
+        case .conllu: kind = "CoNLL-U"
+        case .vertical: kind = "vertical"
+        case .jsonl: kind = "JSONL"
         }
+        let size = ByteCountFormatter().string(fromByteCount: bytes)
+        summaryLabel.stringValue = "\(count.formatted()) \(kind) file\(count == 1 ? "" : "s") (\(size)) will be indexed into one "
+            + "corpus you can search. A large corpus takes a few minutes."
+        summaryLabel.font = .systemFont(ofSize: 11)
+        summaryLabel.textColor = .secondaryLabelColor
 
+        let nameLabel = NSTextField(labelWithString: "Name:")
+        nameField.stringValue = Self.suggestedName(for: inputs)
+        nameField.delegate = self
+
+        importButton.target = self
+        importButton.action = #selector(importTapped)
+        importButton.keyEquivalent = "\r"
+        importButton.bezelStyle = .rounded
+        cancelButton.target = self
+        cancelButton.action = #selector(cancelTapped)
+        cancelButton.keyEquivalent = "\u{1b}"
+
+        for v in [nameLabel, nameField, summaryLabel] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            formView.addSubview(v)
+        }
         NSLayoutConstraint.activate([
-            title.topAnchor.constraint(equalTo: formStack.topAnchor, constant: 16),
-            title.leadingAnchor.constraint(equalTo: formStack.leadingAnchor, constant: 16),
-
-            fileLabel.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 16),
-            fileLabel.leadingAnchor.constraint(equalTo: formStack.leadingAnchor, constant: 16),
-            filePathLabel.topAnchor.constraint(equalTo: fileLabel.bottomAnchor, constant: 4),
-            filePathLabel.leadingAnchor.constraint(equalTo: formStack.leadingAnchor, constant: 16),
-            filePathLabel.trailingAnchor.constraint(equalTo: formStack.trailingAnchor, constant: -16),
-
-            nameLabel.topAnchor.constraint(equalTo: filePathLabel.bottomAnchor, constant: 16),
-            nameLabel.leadingAnchor.constraint(equalTo: formStack.leadingAnchor, constant: 16),
-            nameField.topAnchor.constraint(equalTo: nameLabel.bottomAnchor, constant: 4),
-            nameField.leadingAnchor.constraint(equalTo: formStack.leadingAnchor, constant: 16),
-            nameField.trailingAnchor.constraint(equalTo: formStack.trailingAnchor, constant: -16),
-
-            attributesLabel.topAnchor.constraint(equalTo: nameField.bottomAnchor, constant: 16),
-            attributesLabel.leadingAnchor.constraint(equalTo: formStack.leadingAnchor, constant: 16),
-            attributesLabel.trailingAnchor.constraint(equalTo: formStack.trailingAnchor, constant: -16),
-            attributesField.topAnchor.constraint(equalTo: attributesLabel.bottomAnchor, constant: 4),
-            attributesField.leadingAnchor.constraint(equalTo: formStack.leadingAnchor, constant: 16),
-            attributesField.trailingAnchor.constraint(equalTo: formStack.trailingAnchor, constant: -16),
-
-            structuresLabel.topAnchor.constraint(equalTo: attributesField.bottomAnchor, constant: 16),
-            structuresLabel.leadingAnchor.constraint(equalTo: formStack.leadingAnchor, constant: 16),
-            structuresLabel.trailingAnchor.constraint(equalTo: formStack.trailingAnchor, constant: -16),
-            structuresScroll.topAnchor.constraint(equalTo: structuresLabel.bottomAnchor, constant: 4),
-            structuresScroll.leadingAnchor.constraint(equalTo: formStack.leadingAnchor, constant: 16),
-            structuresScroll.trailingAnchor.constraint(equalTo: formStack.trailingAnchor, constant: -16),
-            structuresScroll.heightAnchor.constraint(equalToConstant: 100),
-
-            errorScroll.topAnchor.constraint(equalTo: structuresScroll.bottomAnchor, constant: 12),
-            errorScroll.leadingAnchor.constraint(equalTo: formStack.leadingAnchor, constant: 16),
-            errorScroll.trailingAnchor.constraint(equalTo: formStack.trailingAnchor, constant: -16),
-            errorScroll.heightAnchor.constraint(equalToConstant: 80),
-
-            // Fixed offset, not content-dependent (unlike the old
-            // greaterThanOrEqualTo-to-a-label this replaced) - errorScroll's
-            // own height is now always 80pt regardless of message length, so
-            // this can safely be a hard equality without risking the same
-            // window-growth bug.
-            compileButton.topAnchor.constraint(equalTo: errorScroll.bottomAnchor, constant: 16),
-            compileButton.trailingAnchor.constraint(equalTo: formStack.trailingAnchor, constant: -16),
-            compileButton.bottomAnchor.constraint(equalTo: formStack.bottomAnchor, constant: -16),
-            cancelButton.centerYAnchor.constraint(equalTo: compileButton.centerYAnchor),
-            cancelButton.trailingAnchor.constraint(equalTo: compileButton.leadingAnchor, constant: -8),
+            nameLabel.topAnchor.constraint(equalTo: formView.topAnchor),
+            nameLabel.leadingAnchor.constraint(equalTo: formView.leadingAnchor),
+            nameField.centerYAnchor.constraint(equalTo: nameLabel.centerYAnchor),
+            nameField.leadingAnchor.constraint(equalTo: nameLabel.trailingAnchor, constant: 8),
+            nameField.trailingAnchor.constraint(equalTo: formView.trailingAnchor),
+            summaryLabel.topAnchor.constraint(equalTo: nameField.bottomAnchor, constant: 14),
+            summaryLabel.leadingAnchor.constraint(equalTo: formView.leadingAnchor),
+            summaryLabel.trailingAnchor.constraint(equalTo: formView.trailingAnchor),
+            summaryLabel.bottomAnchor.constraint(lessThanOrEqualTo: formView.bottomAnchor),
         ])
+
+        buildProgressView()
+        progressView.isHidden = true
+
+        for v in [title, formView, progressView, cancelButton, importButton] as [NSView] {
+            v.translatesAutoresizingMaskIntoConstraints = false
+            root.addSubview(v)
+        }
+        NSLayoutConstraint.activate([
+            title.topAnchor.constraint(equalTo: root.topAnchor, constant: 16),
+            title.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
+
+            formView.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 16),
+            formView.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
+            formView.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
+            progressView.topAnchor.constraint(equalTo: formView.topAnchor),
+            progressView.leadingAnchor.constraint(equalTo: formView.leadingAnchor),
+            progressView.trailingAnchor.constraint(equalTo: formView.trailingAnchor),
+
+            formView.bottomAnchor.constraint(lessThanOrEqualTo: importButton.topAnchor, constant: -12),
+            progressView.bottomAnchor.constraint(lessThanOrEqualTo: importButton.topAnchor, constant: -12),
+
+            importButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
+            importButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -16),
+            cancelButton.centerYAnchor.constraint(equalTo: importButton.centerYAnchor),
+            cancelButton.trailingAnchor.constraint(equalTo: importButton.leadingAnchor, constant: -8),
+        ])
+        view = root
+        preferredContentSize = NSSize(width: 480, height: 230)
+        updateImportEnabled()
     }
 
-    private func buildProgressStack() {
-        let title = NSTextField(labelWithString: "Compiling\u{2026}")
-        title.font = .boldSystemFont(ofSize: 13)
-
+    private func buildProgressView() {
         progressIndicator.style = .bar
         progressIndicator.isIndeterminate = true
-        progressIndicator.startAnimation(nil)
-
-        statusLabel.font = .systemFont(ofSize: 11)
-        statusLabel.textColor = .secondaryLabelColor
-
+        progressIndicator.minValue = 0
+        progressIndicator.maxValue = 1
+        statusLabel.lineBreakMode = .byTruncatingMiddle
+        tokensLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        tokensLabel.textColor = .secondaryLabelColor
         disclosureButton.bezelStyle = .inline
+        disclosureButton.controlSize = .small
         disclosureButton.target = self
-        disclosureButton.action = #selector(toggleLogVisibility)
-
-        progressLog.isEditable = false
-        progressLog.isRichText = false
-        progressLog.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
-        Self.configureForScrolling(progressLog)
-        logScroll.documentView = progressLog
+        disclosureButton.action = #selector(toggleLog)
+        logView.isEditable = false
+        logView.font = .monospacedSystemFont(ofSize: 10, weight: .regular)
+        logView.textContainerInset = NSSize(width: 4, height: 4)
+        logScroll.documentView = logView
         logScroll.hasVerticalScroller = true
         logScroll.borderType = .bezelBorder
-        logScroll.clipsToBounds = true
-
-        // Cmd-. is the standard macOS "stop this operation" key equivalent
-        // (distinct from Escape, which the form's own Cancel uses) - the
-        // import must be trivially killable, found the hard way when a
-        // stuck run couldn't be quit normally and had to be force-killed
-        // from Xcode.
-        let cancelButton = NSButton(title: "Cancel", target: self, action: #selector(cancelImportTapped))
-        cancelButton.keyEquivalent = "."
-        cancelButton.keyEquivalentModifierMask = [.command]
-
-        pauseButton.target = self
-        pauseButton.action = #selector(pauseResumeTapped)
-
-        let views: [NSView] = [
-            title, progressIndicator, statusLabel, disclosureButton, logScroll, pauseButton, cancelButton,
-        ]
-        for v in views {
+        logScroll.isHidden = true
+        for v in [progressIndicator, statusLabel, tokensLabel, disclosureButton, logScroll] as [NSView] {
             v.translatesAutoresizingMaskIntoConstraints = false
-            progressStack.addSubview(v)
+            progressView.addSubview(v)
         }
-        logHeightConstraint = logScroll.heightAnchor.constraint(equalToConstant: 0)
-
+        logHeight = logScroll.heightAnchor.constraint(equalToConstant: 0)
         NSLayoutConstraint.activate([
-            title.topAnchor.constraint(equalTo: progressStack.topAnchor, constant: 16),
-            title.leadingAnchor.constraint(equalTo: progressStack.leadingAnchor, constant: 16),
-
-            progressIndicator.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 16),
-            progressIndicator.leadingAnchor.constraint(equalTo: progressStack.leadingAnchor, constant: 16),
-            progressIndicator.trailingAnchor.constraint(equalTo: progressStack.trailingAnchor, constant: -16),
-
-            statusLabel.topAnchor.constraint(equalTo: progressIndicator.bottomAnchor, constant: 6),
-            statusLabel.leadingAnchor.constraint(equalTo: progressStack.leadingAnchor, constant: 16),
-            statusLabel.trailingAnchor.constraint(equalTo: progressStack.trailingAnchor, constant: -16),
-
-            disclosureButton.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 10),
-            disclosureButton.leadingAnchor.constraint(equalTo: progressStack.leadingAnchor, constant: 16),
-
+            progressIndicator.topAnchor.constraint(equalTo: progressView.topAnchor),
+            progressIndicator.leadingAnchor.constraint(equalTo: progressView.leadingAnchor),
+            progressIndicator.trailingAnchor.constraint(equalTo: progressView.trailingAnchor),
+            statusLabel.topAnchor.constraint(equalTo: progressIndicator.bottomAnchor, constant: 8),
+            statusLabel.leadingAnchor.constraint(equalTo: progressView.leadingAnchor),
+            statusLabel.trailingAnchor.constraint(equalTo: progressView.trailingAnchor),
+            tokensLabel.topAnchor.constraint(equalTo: statusLabel.bottomAnchor, constant: 2),
+            tokensLabel.leadingAnchor.constraint(equalTo: progressView.leadingAnchor),
+            disclosureButton.topAnchor.constraint(equalTo: tokensLabel.bottomAnchor, constant: 8),
+            disclosureButton.leadingAnchor.constraint(equalTo: progressView.leadingAnchor),
             logScroll.topAnchor.constraint(equalTo: disclosureButton.bottomAnchor, constant: 6),
-            logScroll.leadingAnchor.constraint(equalTo: progressStack.leadingAnchor, constant: 16),
-            logScroll.trailingAnchor.constraint(equalTo: progressStack.trailingAnchor, constant: -16),
-            logHeightConstraint,
-
-            // Pinned relative to logScroll's own bottom (not progressStack's
-            // fixed bottom edge) so the buttons sit right below the content
-            // in both the collapsed and expanded states - any leftover
-            // space in the sheet's fixed size falls below the buttons, not
-            // in a dead gap between them and the log.
-            pauseButton.topAnchor.constraint(equalTo: logScroll.bottomAnchor, constant: 16),
-            pauseButton.trailingAnchor.constraint(equalTo: cancelButton.leadingAnchor, constant: -8),
-
-            cancelButton.centerYAnchor.constraint(equalTo: pauseButton.centerYAnchor),
-            cancelButton.trailingAnchor.constraint(equalTo: progressStack.trailingAnchor, constant: -16),
+            logScroll.leadingAnchor.constraint(equalTo: progressView.leadingAnchor),
+            logScroll.trailingAnchor.constraint(equalTo: progressView.trailingAnchor),
+            logScroll.bottomAnchor.constraint(equalTo: progressView.bottomAnchor),
+            logHeight,
         ])
     }
 
-    @objc private func toggleLogVisibility() {
-        isLogExpanded.toggle()
-        disclosureButton.title = isLogExpanded ? "Hide Log" : "Show Log"
-        logHeightConstraint.constant = isLogExpanded ? Self.expandedLogHeight : 0
-        // Animates the log area growing/shrinking within the sheet's fixed
-        // size (see fixedContentSize's doc comment) - never the window
-        // itself, on purpose.
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.2
-            context.allowsImplicitAnimation = true
-            view.layoutSubtreeIfNeeded()
-        }
+    private var name: String { nameField.stringValue.trimmingCharacters(in: .whitespaces) }
+
+    private func updateImportEnabled() {
+        let taken = CorpusLibrary.names().contains(name)
+        importButton.isEnabled = !name.isEmpty && !name.hasPrefix(".") && !name.contains("/") && !taken
+        nameField.textColor = taken ? .systemRed : .labelColor
+        nameField.toolTip = taken ? "A corpus with this name is already in Korpora." : nil
     }
 
-    @objc private func pauseResumeTapped() {
-        guard let importHandle else { return }
-        isPaused.toggle()
-        // flushProgress() (on the same timer as everything else) folds
-        // isPaused into the status text itself on its next tick - not done
-        // here, so it can't be immediately clobbered by that same timer.
-        if isPaused {
-            importHandle.pause()
-            pauseButton.title = "Resume"
-        } else {
-            importHandle.resume()
-            pauseButton.title = "Pause"
-        }
-    }
+    // MARK: Importing
 
-    /// Standard Apple-documented setup for an `NSTextView` hosted in an
-    /// `NSScrollView` when created programmatically rather than via a
-    /// convenience initializer - without `widthTracksTextView`, long
-    /// unwrapped lines (e.g. real absolute file paths in `encodevert`'s
-    /// output) make the text view grow arbitrarily wide/tall instead of
-    /// wrapping, which doesn't stay properly clipped to its scroll view and
-    /// was found to drag the whole sheet's layout along with it on a real,
-    /// long-running import - this is the likely actual root cause of that,
-    /// not just defensive hardening.
-    private static func configureForScrolling(_ textView: NSTextView) {
-        textView.isVerticallyResizable = true
-        textView.isHorizontallyResizable = false
-        textView.autoresizingMask = [.width]
-        textView.textContainer?.widthTracksTextView = true
-        textView.textContainer?.containerSize = NSSize(width: 0, height: CGFloat.greatestFiniteMagnitude)
-    }
-
-    private func parseStructures() -> [(name: String, attributes: [String])] {
-        structuresView.string
-            .split(separator: "\n", omittingEmptySubsequences: true)
-            .compactMap { rawLine -> (String, [String])? in
-                let line = rawLine.trimmingCharacters(in: .whitespaces)
-                guard !line.isEmpty else { return nil }
-                guard let colon = line.firstIndex(of: ":") else { return (line, []) }
-                let name = String(line[line.startIndex..<colon]).trimmingCharacters(in: .whitespaces)
-                let attributes = line[line.index(after: colon)...]
-                    .split(separator: ",")
-                    .map { $0.trimmingCharacters(in: .whitespaces) }
-                    .filter { !$0.isEmpty }
-                return name.isEmpty ? nil : (name, attributes)
-            }
-    }
-
-    @objc private func compileTapped() {
-        let name = nameField.stringValue.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else {
-            showFormError("Give the corpus a name.")
-            return
-        }
-        // A corpus name is its registry file name, and Manatee opens the
-        // first file it finds - so a name already in the list would either
-        // shadow it or be shadowed. Replacing one Korpora built is a normal
-        // way to retry an import, but only after asking.
-        if let existing = AppSettings.shared.corpusLibraryEntries().first(where: { $0.name == name }) {
-            guard case .built = existing.origin else {
-                showFormError("A corpus named \u{201C}\(name)\u{201D} is already in the list "
-                    + "(\(CorporaSettingsViewController.sourceTitle(existing.origin))). Pick another name, "
-                    + "or remove that corpus first.")
-                return
-            }
-            guard let window = view.window else { return }
-            let alert = NSAlert()
-            alert.messageText = "Replace \u{201C}\(name)\u{201D}?"
-            alert.informativeText = "Korpora already built a corpus with this name. Compiling replaces its data."
-            alert.addButton(withTitle: "Cancel")
-            alert.addButton(withTitle: "Replace").hasDestructiveAction = true
-            alert.beginSheetModal(for: window) { [weak self] response in
-                if response == .alertSecondButtonReturn { self?.beginCompile(name: name) }
-            }
-            return
-        }
-        beginCompile(name: name)
-    }
-
-    private func beginCompile(name: String) {
-        let attributes = attributesField.stringValue
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        let structures = parseStructures()
-
-        showProgress()
-        ActiveImportTracker.shared.setImporting(true)
-        progressLog.string = ""
-        statusLabel.stringValue = "Counting lines\u{2026}"
-        progressIndicator.isIndeterminate = true
+    @objc private func importTapped() {
+        let name = self.name
+        formView.isHidden = true
+        progressView.isHidden = false
+        importButton.isHidden = true
+        cancelButton.title = "Cancel Import"
         progressIndicator.startAnimation(nil)
-        totalLines = nil
-        importHandle = nil
-        isPaused = false
-        pauseButton.title = "Pause"
-        pauseButton.isEnabled = false
-        logFlushTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-            self?.flushProgress()
-        }
-
-        // CorpusImporter.importCorpus blocks its calling thread for the
-        // whole compile (it calls Process.waitUntilExit() synchronously -
-        // see its own doc comment) - Task.detached, not a plain/@MainActor
-        // Task, keeps that off the UI thread.
-        importTask = Task.detached(priority: .utility) { [weak self] in
-            guard let self else { return }
+        let log = log
+        let inputs = inputs
+        importTask = Task { @MainActor [weak self] in
+            // The tool's output arrives off the main thread; a short timer applies it to the views.
+            let ticker = Task { @MainActor [weak self] in
+                while !Task.isCancelled {
+                    self?.apply(log.snapshot())
+                    try? await Task.sleep(nanoseconds: 150_000_000)
+                }
+            }
+            defer { ticker.cancel() }
             do {
-                let total = try await CorpusImporter.countLines(verticalFile: verticalFile)
-                await MainActor.run {
-                    self.totalLines = total
-                    self.progressIndicator.isIndeterminate = false
-                    self.progressIndicator.maxValue = Double(total)
-                    self.statusLabel.stringValue = "Starting\u{2026}"
-                }
-                try await CorpusImporter.importCorpus(
-                    name: name, verticalFile: verticalFile, attributes: attributes, structures: structures,
-                    // Only buffers - see LogBuffer/flushProgress. encodevert's
-                    // output rate is unbounded (found via a real ~162M-line
-                    // corpus import, where something going wrong partway
-                    // through made it spew output far faster than
-                    // once-per-chunk UI updates could keep up with, visibly
-                    // corrupting the text view's rendering rather than just
-                    // lagging) - hopping to the main actor per chunk here,
-                    // like this used to, doesn't degrade gracefully under
-                    // that kind of flood.
-                    onProgress: { [weak self] text in self?.logBuffer.append(text) },
-                    onStart: { [weak self] handle in
-                        Task { @MainActor in
-                            self?.importHandle = handle
-                            self?.pauseButton.isEnabled = true
-                        }
-                    })
-                await MainActor.run {
-                    self.finishImport()
-                    self.onImported?()
-                    self.dismiss(self)
-                }
+                try await CorpusImporter.importCorpus(name: name, inputs: inputs) { progress in log.update(progress) }
+                self?.apply(log.snapshot())
+                self?.onImported?()
+                self?.dismiss(nil)
             } catch is CancellationError {
-                await MainActor.run {
-                    self.finishImport()
-                    self.dismiss(self)
-                }
+                self?.dismiss(nil)
             } catch {
-                await MainActor.run {
-                    self.finishImport()
-                    self.showForm()
-                    self.showFormError("\(error)")
-                }
+                self?.showFailure(error)
             }
         }
     }
 
-    /// Stops the flush timer and drains anything still buffered - every
-    /// completion path (success, cancel, error) needs this so the log
-    /// doesn't silently drop whatever arrived in the last < 0.2s.
-    private func finishImport() {
-        ActiveImportTracker.shared.setImporting(false)
-        logFlushTimer?.invalidate()
-        logFlushTimer = nil
-        pauseButton.isEnabled = false
-        flushProgress()
-    }
-
-    private func flushProgress() {
-        let (pending, linesProcessed) = logBuffer.drain()
-        if !pending.isEmpty {
-            progressLog.string += pending
-            // Bounds what's actually rendered, independent of how much
-            // output arrived - CorpusImporter's own OutputCollector still
-            // captures the full text for the eventual error message; this
-            // is only about keeping the live view itself from becoming
-            // enormous and slow (or worse - see LogBuffer's doc comment) to
-            // lay out.
-            if progressLog.string.count > Self.maxDisplayedLogLength {
-                progressLog.string = String(progressLog.string.suffix(Self.maxDisplayedLogLength))
-            }
-            progressLog.scrollToEndOfDocument(nil)
+    private func apply(_ snapshot: ImportLog.Snapshot) {
+        guard let progress = snapshot.progress else { return }
+        switch progress.phase {
+        case .starting:
+            statusLabel.stringValue = "Starting\u{2026}"
+        case .reading:
+            progressIndicator.isIndeterminate = false
+            progressIndicator.doubleValue = progress.fraction ?? 0
+            statusLabel.stringValue = "Reading \(progress.currentFile ?? "")"
+        case .finishing:
+            progressIndicator.isIndeterminate = true
+            progressIndicator.startAnimation(nil)
+            statusLabel.stringValue = "Finishing the index\u{2026}"
         }
-        guard let linesProcessed, let totalLines, totalLines > 0 else { return }
-        progressIndicator.doubleValue = Double(min(linesProcessed, totalLines))
-        let percent = min(100, Int((Double(linesProcessed) / Double(totalLines)) * 100))
-        let format = NumberFormatter()
-        format.numberStyle = .decimal
-        let processedText = format.string(from: NSNumber(value: linesProcessed)) ?? "\(linesProcessed)"
-        let totalText = format.string(from: NSNumber(value: totalLines)) ?? "\(totalLines)"
-        statusLabel.stringValue = "\(processedText) / \(totalText) lines (\(percent)%)"
-            + (isPaused ? " \u{2014} paused" : "")
+        tokensLabel.stringValue = progress.tokens > 0 ? "\(progress.tokens.formatted()) tokens indexed so far" : ""
+        if !logScroll.isHidden, logView.string != snapshot.text {
+            logView.string = snapshot.text
+            logView.scrollToEndOfDocument(nil)
+        }
     }
 
-    @objc private func cancelImportTapped() {
-        importTask?.cancel()
+    private func showFailure(_ error: Error) {
+        importTask = nil
+        formView.isHidden = false
+        progressView.isHidden = true
+        importButton.isHidden = false
+        cancelButton.title = "Cancel"
+        guard let window = view.window else { return }
+        let alert = NSAlert()
+        alert.messageText = "The corpus couldn\u{2019}t be imported"
+        alert.informativeText = "\(error)"
+        alert.beginSheetModal(for: window)
+    }
+
+    @objc private func toggleLog() {
+        let show = logScroll.isHidden
+        logScroll.isHidden = !show
+        logHeight.constant = show ? 110 : 0
+        disclosureButton.title = show ? "Hide Log" : "Show Log"
+        preferredContentSize = NSSize(width: 480, height: show ? 340 : 230)
+        if show { logView.string = log.snapshot().text }
     }
 
     @objc private func cancelTapped() {
-        dismiss(self)
+        if let importTask {
+            importTask.cancel()   // the importer stops the tool and removes the partial corpus
+        } else {
+            dismiss(nil)
+        }
+    }
+}
+
+extension CorpusImportSheetController: NSTextFieldDelegate {
+    func controlTextDidChange(_ obj: Notification) { updateImportEnabled() }
+}
+
+/// Where the importer's progress (reported from another thread) is kept until the UI asks for it.
+private final class ImportLog: @unchecked Sendable {
+    struct Snapshot { var progress: CorpusImporter.Progress?; var text: String }
+
+    private let lock = NSLock()
+    private var latest: CorpusImporter.Progress?
+    private var lines: [String] = []
+
+    func update(_ progress: CorpusImporter.Progress) {
+        lock.lock()
+        latest = progress
+        if !progress.line.isEmpty { lines.append(progress.line) }
+        if lines.count > 200 { lines.removeFirst(lines.count - 200) }
+        lock.unlock()
+    }
+
+    func snapshot() -> Snapshot {
+        lock.lock()
+        defer { lock.unlock() }
+        return Snapshot(progress: latest, text: lines.joined(separator: "\n"))
     }
 }

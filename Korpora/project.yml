@@ -11,11 +11,9 @@ options:
   #
   # Consequence to be aware of: a deployment target can't exceed the SDK,
   # so this pins *building the app* to the newest Xcode. It doesn't
-  # restrict the engine - `ManateeKit` declares `.macOS(.v13)` and builds
-  # and tests standalone (`swift build`/`swift test`) on older systems,
-  # which is where cross-version portability actually matters (see
-  # `manatee-open`'s `macos-arm64-portability` branch). Anyone on an older
-  # Xcode who needs the app can override per build:
+  # restrict the engine - `KorporaEngine` declares `.macOS(.v13)` and builds
+  # and tests standalone (`swift build`/`swift test`) on older systems.
+  # Anyone on an older Xcode who needs the app can override per build:
   #
   #   xcodebuild ... MACOSX_DEPLOYMENT_TARGET=13.0
   #
@@ -25,8 +23,8 @@ options:
   createIntermediateGroups: true
 
 packages:
-  ManateeKit:
-    path: ../ManateeKit
+  KorporaEngine:
+    path: ../KorporaEngine
 
 targets:
   Korpora:
@@ -39,55 +37,49 @@ targets:
       - path: AppIcon/Korpora.icon
         buildPhase: resources
     dependencies:
-      - package: ManateeKit
-        product: ManateeKit
-      - package: ManateeKit
-        product: CorpusEngine
-      - package: ManateeKit
-        product: PandoKit
-    # Bundle encodevert/mkregexattr into Contents/Helpers/ for release
-    # builds (see docs/project-plan.md's "Goal - Ship a signed GitHub
-    # release", blocker 2: a shipped app can't find them via the #filePath
-    # dev-checkout fallback). Gated on MANATEE_TOOLS_DIR so dev builds -
-    # where the manatee-open checkout is right there and CorpusImporter
-    # falls back to it - are byte-identical to before. Run
-    # scripts/build-release-deps.sh and export the var it prints.
+      - package: KorporaEngine
+        product: KorporaEngine
+    # Bundle pando into the app for release builds: `libpando.dylib` into
+    # Contents/Frameworks (the engine loads it with dlopen) and `pando-index`
+    # into Contents/Helpers (corpus import). Gated on PANDO_BUILD_DIR so dev
+    # builds - which find the libpando built by scripts/pando-spike.sh at run
+    # time - are unchanged. scripts/build-release-deps.sh builds pando and
+    # prints the variable to export.
     postCompileScripts:
-      - name: Bundle manatee import tools
+      - name: Bundle pando
         script: |
-          if [ -z "${MANATEE_TOOLS_DIR:-}" ]; then
-            echo "MANATEE_TOOLS_DIR unset - not bundling manatee tools (dev build uses the checkout at runtime)"
+          if [ -z "${PANDO_BUILD_DIR:-}" ]; then
+            echo "PANDO_BUILD_DIR unset - not bundling pando (dev build finds it at runtime)"
             exit 0
           fi
-          helpers="${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Contents/Helpers"
-          mkdir -p "$helpers"
+          app="${TARGET_BUILD_DIR}/${WRAPPER_NAME}/Contents"
+          mkdir -p "${app}/Helpers" "${app}/Frameworks"
           # Nested code must be signed before the enclosing app (inside-out),
           # with the same identity and hardened runtime - Xcode's own CodeSign
-          # step only signs the app itself, not stray executables in Helpers/.
-          # Never `codesign --deep` to sign; it's for verification only.
+          # step only signs the app itself. Never `codesign --deep` to sign.
           sign_flags="--force --options runtime"
           if [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ] && [ "${EXPANDED_CODE_SIGN_IDENTITY}" != "-" ]; then
             sign_flags="$sign_flags --timestamp"
           fi
-          for tool in encodevert mkregexattr; do
-            cp "${MANATEE_TOOLS_DIR}/${tool}" "${helpers}/${tool}" || exit 1
-            chmod +x "${helpers}/${tool}"
+          cp "${PANDO_BUILD_DIR}/pando-index" "${app}/Helpers/pando-index" || exit 1
+          # The real file, named libpando.dylib (the build's symlinks point at a versioned name).
+          cp -L "${PANDO_BUILD_DIR}/libpando.dylib" "${app}/Frameworks/libpando.dylib" || exit 1
+          chmod +x "${app}/Helpers/pando-index"
+          for item in "${app}/Helpers/pando-index" "${app}/Frameworks/libpando.dylib"; do
             if [ "${CODE_SIGNING_ALLOWED:-YES}" = "YES" ] && [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then
-              # Retried: --timestamp depends on Apple's timestamp server, and
-              # one transient bad response ("timestamps differ by N seconds")
-              # shouldn't fail a release build.
+              # Retried: --timestamp depends on Apple's timestamp server.
               signed=no
               for attempt in 1 2 3; do
-                if codesign $sign_flags --sign "${EXPANDED_CODE_SIGN_IDENTITY}" "${helpers}/${tool}"; then
+                if codesign $sign_flags --sign "${EXPANDED_CODE_SIGN_IDENTITY}" "${item}"; then
                   signed=yes; break
                 fi
-                echo "codesign ${tool} failed (attempt ${attempt}/3)"
+                echo "codesign ${item} failed (attempt ${attempt}/3)"
                 sleep 5
               done
               [ "$signed" = yes ] || exit 1
             fi
           done
-          echo "Bundled manatee tools from ${MANATEE_TOOLS_DIR} into ${helpers}"
+          echo "Bundled pando from ${PANDO_BUILD_DIR}"
     settings:
       base:
         # Was cz.cuni.mff.ufal.mac-corpora.dev until the first release;
@@ -108,9 +100,8 @@ targets:
       # project-plan.md, "Goal - Ship a signed GitHub release", step 4).
       # Debug keeps Automatic signing and the 27.0 dev target above.
       #  - macOS 15 is the release floor (blocker-3 decision); the release
-      #    deps script builds manatee-open and pcre2 at the same floor.
-      #  - arm64 only: the static pcre2/manatee libs are arm64-only, and
-      #    Release would otherwise build universal and fail linking x86_64.
+      #    deps script builds pando at the same floor.
+      #  - arm64 only: the bundled pando is arm64-only.
       #  - Hardened runtime on; sandbox stays off (entitlements file).
       configs:
         Release:
@@ -156,11 +147,10 @@ schemes:
     run:
       config: Debug
       environmentVariables:
-        # A tiny dev-only corpus (scripts/build-dev-corpus.sh) so the "New
-        # Concordance" sheet's corpus picker has something real to show when
-        # running from Xcode. Not used by the shipped app in any real sense -
-        # just a stand-in registry for interactive development.
-        MANATEE_REGISTRY: "$(SRCROOT)/DevCorpus/registry"
+        # Where Xcode runs find pando: the build scripts/pando-spike.sh makes
+        # (a release app bundles its own).
+        KORPORA_PANDO_LIB: "$(HOME)/Developer/pando-work/pando/build/libpando.dylib"
+        KORPORA_PANDO_INDEX: "$(HOME)/Developer/pando-work/pando/build/pando-index"
     test:
       config: Debug
       targets:

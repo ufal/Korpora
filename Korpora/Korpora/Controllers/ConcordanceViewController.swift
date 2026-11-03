@@ -1,5 +1,5 @@
 import Cocoa
-import ManateeKit
+import KorporaEngine
 import UniformTypeIdentifiers
 
 final class ConcordanceViewController: NSViewController {
@@ -59,7 +59,6 @@ final class ConcordanceViewController: NSViewController {
     /// initial enabled state, both at toolbar-item-creation time, before
     /// any `refresh()`/`updateToolbarState` call happens - `document`
     /// itself stays `private` since nothing else needs broader access.
-    var viewMode: ConcordanceViewMode { document.viewMode }
 
     init(document: ConcordanceDocument) {
         self.document = document
@@ -163,6 +162,9 @@ final class ConcordanceViewController: NSViewController {
     @objc func sortTapped(_ sender: NSButton) {
         let popover = NSPopover()
         let controller = SortPopoverController()
+        controller.attributes = document.attributeNames
+        controller.textAttribute = document.textAttribute
+        controller.shownAttribute = document.kwicAttr
         controller.onApply = { [weak self, weak popover] criteria in
             self?.document.performSort(criteria)
             popover?.close()
@@ -170,15 +172,6 @@ final class ConcordanceViewController: NSViewController {
         popover.contentViewController = controller
         popover.behavior = .transient
         popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
-    }
-
-    @objc func filterTapped(_ sender: Any) {
-        let sheet = FilterSheetController()
-        sheet.corpusName = document.corpusName
-        sheet.onApply = { [weak self] spec in
-            self?.document.performFilter(spec)
-        }
-        presentAsSheet(sheet)
     }
 
     @objc func shuffleTapped(_ sender: Any) {
@@ -195,10 +188,6 @@ final class ConcordanceViewController: NSViewController {
         popover.contentViewController = controller
         popover.behavior = .transient
         popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
-    }
-
-    @objc func viewModeChanged(_ sender: NSSegmentedControl) {
-        document.setViewMode(sender.selectedSegment == 1 ? .sentence : .kwic)
     }
 
     @objc func attributesTapped(_ sender: NSButton) {
@@ -244,7 +233,9 @@ final class ConcordanceViewController: NSViewController {
             guard let self else { return }
             queryField.text = entry.query
             document.corpusName = entry.corpusName
-            document.subcorpusPath = entry.subcorpusPath
+            document.subcorpus = entry.subcorpusName.flatMap { name in
+                SubcorpusLibrary.subcorpora(of: entry.corpusName).first { $0.name == name }
+            }
             document.runQuery(entry.query)
             popover?.close()
         }
@@ -566,14 +557,15 @@ final class ConcordanceViewController: NSViewController {
         case .right: anchor = .right
         case .disclosure, .group, .doc: return
         }
-        let level = SortLevel(attribute: "word", anchor: anchor, span: 1)
+        // The words around a hit can only be sorted by their spelling; the hit itself by what is shown.
+        let level = SortLevel(attribute: anchor == .kwic ? document.kwicAttr : document.textAttribute, anchor: anchor, span: 1)
         document.performSort(SortCriteria(level), descending: !descriptor.ascending)
     }
 
     /// Mirrors the document's actual current sort (however it was set - a
     /// header click, the toolbar's Sort popover, or after undo/redo) onto
     /// the column headers' indicator triangles. A sort that isn't a
-    /// single-level "word" sort on one of these columns clears every
+    /// single-level sort on the shown text of one of these columns clears every
     /// indicator, since it doesn't correspond to any header.
     private func syncSortIndicators() {
         isSyncingSortIndicators = true
@@ -582,7 +574,7 @@ final class ConcordanceViewController: NSViewController {
         var matchedColumn: Column?
         var matchedAscending = true
         if let (level, descending) = document.operations.last(where: { $0.singleLevelSort != nil })?.singleLevelSort,
-           level.attribute == "word" {
+           level.attribute == document.kwicAttr || level.attribute == document.textAttribute {
             switch level.anchor {
             case .left: matchedColumn = .left
             case .kwic: matchedColumn = .kwic
@@ -892,7 +884,7 @@ final class ConcordanceViewController: NSViewController {
         // nothing changed and leave the (now stale) cell alone.
         snapshot.reloadItems(ids)
         dataSource.apply(snapshot, animatingDifferences: animated)
-        windowController?.updateToolbarState(hasLineGroups: document.hasLineGroups, viewMode: document.viewMode)
+        windowController?.updateToolbarState(hasLineGroups: document.hasLineGroups)
         syncSortIndicators()
         // If the Operations popover is open, its line-group rows are sourced
         // from `document.rows` (see `updateOperationsPopover`), which only
@@ -926,14 +918,6 @@ final class ConcordanceViewController: NSViewController {
         // used to fire one overlapping `replay()` per row and crash the
         // engine on a multi-row selection.
         document.performSetLineGroups(Array(targetedRows()), group: sender.tag)
-    }
-
-    @objc private func filterToSelection(_ sender: Any) {
-        let row = tableView.clickedRow
-        guard document.rows.indices.contains(row) else { return }
-        let word = document.rows[row].line.kwic.components(separatedBy: .whitespaces).first { !$0.isEmpty } ?? ""
-        guard !word.isEmpty else { return }
-        document.performFilter(PNFilterSpec(positive: true, leftOffset: 0, rightOffset: 1, query: #"[word="\#(word)"]"#))
     }
 
     @objc private func copySelection(_ sender: Any) {
@@ -1077,9 +1061,6 @@ extension ConcordanceViewController: NSMenuDelegate {
         menu.addItem(groupItem)
 
         menu.addItem(.separator())
-        let filterItem = NSMenuItem(title: "Filter to Selection", action: #selector(filterToSelection(_:)), keyEquivalent: "")
-        filterItem.target = self
-        menu.addItem(filterItem)
         let copyItem = NSMenuItem(title: "Copy", action: #selector(copySelection(_:)), keyEquivalent: "")
         copyItem.target = self
         menu.addItem(copyItem)

@@ -1,13 +1,12 @@
 import Cocoa
-import ManateeKit
+import KorporaEngine
 
-/// The sheet a brand-new `ConcordanceDocument` presents immediately on
-/// creation, since it has nothing to show until a corpus + CQL query are known.
+/// The sheet a brand-new `ConcordanceDocument` presents immediately on creation, since it has
+/// nothing to show until a corpus and a query are known.
 ///
-/// The corpus picker only ever lists corpora that already exist in the
-/// Manatee registry - opening one, never creating one. "New Concordance"
-/// means a new query/result document, not a new corpus. A subcorpus,
-/// though, genuinely can be created here (see `NewSubcorpusPopoverController`).
+/// The corpus picker lists the corpora in the library - opening one, never creating one ("New
+/// Concordance" means a new query/result document); with none yet it says so and offers to import
+/// one. A subcorpus, though, genuinely can be created here (see `NewSubcorpusPopoverController`).
 final class NewConcordanceSheetController: NSViewController {
     private enum SubcorpusItem {
         static let whole = "Whole Corpus"
@@ -16,14 +15,16 @@ final class NewConcordanceSheetController: NSViewController {
 
     var corpusName: String = ""
     var query: String = ""
-    /// (corpus name, subcorpus path or nil for the whole corpus, CQL query)
-    var onCommit: ((String, String?, String) -> Void)?
+    /// (corpus name, subcorpus or nil for the whole corpus, query)
+    var onCommit: ((String, Subcorpus?, String) -> Void)?
     var onCancel: (() -> Void)?
 
     private let corpusPopUp = NSPopUpButton()
     private let infoLabel = NSTextField(wrappingLabelWithString: "")
     private let subcorpusPopUp = NSPopUpButton()
     private let queryField = CQLQueryField()
+    private let exampleLabel = NSTextField(wrappingLabelWithString: "")
+    private let importButton = NSButton(title: "Import a Corpus\u{2026}", target: nil, action: nil)
     private var searchButton: NSButton!
     private var currentCorpusInfo: CorpusInfo?
 
@@ -34,9 +35,9 @@ final class NewConcordanceSheetController: NSViewController {
         title.font = .boldSystemFont(ofSize: 13)
 
         let corpusLabel = NSTextField(labelWithString: "Corpus:")
-        let availableCorpora = CorpusRegistry.availableCorpusNames()
+        let availableCorpora = CorpusLibrary.names()
         if availableCorpora.isEmpty {
-            corpusPopUp.addItem(withTitle: "No corpora found")
+            corpusPopUp.addItem(withTitle: "No corpora yet")
             corpusPopUp.isEnabled = false
         } else {
             corpusPopUp.addItems(withTitles: availableCorpora)
@@ -54,7 +55,14 @@ final class NewConcordanceSheetController: NSViewController {
         subcorpusPopUp.target = self
         subcorpusPopUp.action = #selector(subcorpusSelectionChanged)
 
-        let queryLabel = NSTextField(labelWithString: "Query (CQL):")
+        let queryLabel = NSTextField(labelWithString: "Query:")
+        exampleLabel.stringValue = "For example  [lemma=\"house\"]   or   [upos=\"ADJ\"] [lemma=\"house\"]"
+        exampleLabel.font = .systemFont(ofSize: 11)
+        exampleLabel.textColor = .secondaryLabelColor
+        importButton.target = self
+        importButton.action = #selector(importTapped)
+        importButton.controlSize = .small
+        importButton.isHidden = !availableCorpora.isEmpty
         queryField.text = query
         queryField.onSubmit = { [weak self] in self?.searchTapped() }
 
@@ -68,7 +76,7 @@ final class NewConcordanceSheetController: NSViewController {
 
         let views: [NSView] = [
             title, corpusLabel, corpusPopUp, infoLabel, subcorpusLabel, subcorpusPopUp,
-            queryLabel, queryField, cancelButton, searchButton,
+            queryLabel, queryField, exampleLabel, importButton, cancelButton, searchButton,
         ]
         for view in views {
             view.translatesAutoresizingMaskIntoConstraints = false
@@ -100,7 +108,14 @@ final class NewConcordanceSheetController: NSViewController {
             queryField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
             queryField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
 
-            searchButton.topAnchor.constraint(greaterThanOrEqualTo: queryField.bottomAnchor, constant: 16),
+            exampleLabel.topAnchor.constraint(equalTo: queryField.bottomAnchor, constant: 6),
+            exampleLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
+            exampleLabel.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
+
+            importButton.centerYAnchor.constraint(equalTo: corpusPopUp.centerYAnchor),
+            importButton.leadingAnchor.constraint(equalTo: corpusPopUp.trailingAnchor, constant: 12),
+
+            searchButton.topAnchor.constraint(greaterThanOrEqualTo: exampleLabel.bottomAnchor, constant: 16),
             searchButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
             searchButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -16),
 
@@ -154,15 +169,16 @@ final class NewConcordanceSheetController: NSViewController {
                 // fetched rather than making the provider repeat that call
                 // (6.8).
                 queryField.completionProvider = CQLCompletionProvider(corpusInfo: info)
-                var parts: [String] = []
+                var parts: [String] = ["\(info.sizeTokens.formatted()) tokens"]
                 if !info.attributes.isEmpty {
-                    parts.append("Attributes: " + info.attributes.joined(separator: ", "))
+                    parts.append("Token attributes: " + info.attributes.joined(separator: ", "))
                 }
-                if !info.structures.isEmpty {
-                    let structs = info.structures.map { s in
-                        s.attributes.isEmpty ? s.name : "\(s.name) (\(s.attributes.joined(separator: ", ")))"
+                let described = info.structures.filter { !$0.attributes.isEmpty }
+                if !described.isEmpty {
+                    let structs = described.map { s in
+                        "\(s.name) (\(s.attributes.prefix(8).joined(separator: ", "))\(s.attributes.count > 8 ? ", \u{2026}" : ""))"
                     }
-                    parts.append("Structures: " + structs.joined(separator: ", "))
+                    parts.append("Text properties: " + structs.joined(separator: ", "))
                 }
                 infoLabel.stringValue = parts.joined(separator: "\n")
             } catch {
@@ -176,7 +192,7 @@ final class NewConcordanceSheetController: NSViewController {
     private func reloadSubcorpusList(for corpusName: String) {
         subcorpusPopUp.removeAllItems()
         subcorpusPopUp.addItem(withTitle: SubcorpusItem.whole)
-        let existing = SubcorpusStore.availableSubcorpora(for: corpusName)
+        let existing = SubcorpusLibrary.subcorpora(of: corpusName).map(\.name)
         if !existing.isEmpty {
             subcorpusPopUp.menu?.addItem(.separator())
             subcorpusPopUp.addItems(withTitles: existing)
@@ -201,22 +217,19 @@ final class NewConcordanceSheetController: NSViewController {
         let controller = NewSubcorpusPopoverController()
         controller.corpusInfo = currentCorpusInfo
         controller.corpusName = corpusName
-        controller.onCreate = { [weak self, weak popover] name, structure, query in
+        controller.onCreate = { [weak self, weak popover] subcorpus in
             guard let self else { return }
-            Task { @MainActor in
-                do {
-                    let corpus = try await Engines.default.openCorpus(name: corpusName)
-                    _ = try await corpus.createSubcorpus(named: name, structure: structure, query: query)
-                    self.reloadSubcorpusList(for: corpusName)
-                    self.subcorpusPopUp.selectItem(withTitle: name)
-                } catch {
-                    let alert = NSAlert()
-                    alert.messageText = "Couldn’t Create Subcorpus"
-                    alert.informativeText = "\(error)"
-                    alert.runModal()
-                }
-                popover?.close()
+            do {
+                try SubcorpusLibrary.save(subcorpus, in: corpusName)
+                reloadSubcorpusList(for: corpusName)
+                subcorpusPopUp.selectItem(withTitle: subcorpus.name)
+            } catch {
+                let alert = NSAlert()
+                alert.messageText = "Couldn\u{2019}t Save the Subcorpus"
+                alert.informativeText = "\(error)"
+                alert.runModal()
             }
+            popover?.close()
         }
         popover.contentViewController = controller
         popover.behavior = .transient
@@ -225,13 +238,19 @@ final class NewConcordanceSheetController: NSViewController {
 
     @objc private func searchTapped() {
         guard let corpus = corpusPopUp.titleOfSelectedItem, corpusPopUp.isEnabled else { return }
-        var subcorpusPath: String?
+        var subcorpus: Subcorpus?
         if let selected = subcorpusPopUp.titleOfSelectedItem,
            selected != SubcorpusItem.whole, selected != SubcorpusItem.newOne {
-            subcorpusPath = SubcorpusStore.path(for: corpus, subcorpusName: selected)
+            subcorpus = SubcorpusLibrary.subcorpora(of: corpus).first { $0.name == selected }
         }
-        onCommit?(corpus, subcorpusPath, queryField.text)
+        onCommit?(corpus, subcorpus, queryField.text)
         dismiss(self)
+    }
+
+    @objc private func importTapped() {
+        dismiss(self)
+        onCancel?()
+        SettingsWindowController.shared.showPane(.corpora)
     }
 
     @objc private func cancelTapped() {

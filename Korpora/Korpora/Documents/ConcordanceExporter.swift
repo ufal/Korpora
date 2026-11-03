@@ -1,5 +1,5 @@
 import Foundation
-import ManateeKit
+import KorporaEngine
 
 enum ConcordanceExportFormat {
     case commaSeparated

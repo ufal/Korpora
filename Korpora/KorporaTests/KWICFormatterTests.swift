@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-import ManateeKit
+import KorporaEngine
 @testable import Korpora
 
 @Suite struct KWICFormatterTests {

@@ -1,5 +1,5 @@
 import Cocoa
-import ManateeKit
+import KorporaEngine
 
 /// What the caret is sitting in, and therefore what `CQLQueryField` should
 /// offer to complete (Phase 6.8).
@@ -163,12 +163,17 @@ enum CQLCompletionContext: Equatable {
 /// still needs them from a synchronous AppKit callback.
 @MainActor
 final class CQLCompletionProvider {
-    /// CQL's word-like language constructs. Matches the set
-    /// `CQLQueryField.recolor` already highlights as keywords, so what's
-    /// completed and what's colored can't drift apart.
+    /// pando-CQL's word-like language constructs: region scoping (`within s`, `containing`,
+    /// `having`) and the dependency restrictions inside a token (`child [...]`, `not child [...]`).
+    /// `CQLQueryField` colours the same set, so what's completed and what's coloured can't drift apart.
     nonisolated static let keywords = [
-        "within", "containing", "meet", "union", "contains",
+        "within", "containing", "having", "subtree", "not", "child", "parent", "sibling", "ancestor", "descendant",
     ]
+
+    /// The regular expression `CQLQueryField` uses to colour `keywords`.
+    nonisolated static var keywordPattern: String {
+        #"\b("# + keywords.joined(separator: "|") + #")\b"#
+    }
 
     /// Comparison operators, matching the set `CQLQueryField.recolor`
     /// highlights. Offered right after an attribute name, where they're the
@@ -192,17 +197,16 @@ final class CQLCompletionProvider {
         attributeNames = Self.attributeNames(from: corpusInfo)
     }
 
-    /// Both kinds of attribute name, which is what makes this useful for
-    /// real queries: positional attributes verbatim (`word`, `lemma`,
-    /// `tag`) plus structural ones in the dotted `structure.attribute`
-    /// form (`doc.author`, `s.id`) that CQL accepts inside `[…]` - the same
-    /// spelling `Corpus.structuralAttributeValue(at:attribute:)` takes.
+    /// Both kinds of attribute name, which is what makes this useful for real queries: the
+    /// token attributes verbatim (`form`, `lemma`, `upos`) plus the text properties in pando's
+    /// `structure_attribute` form (`doc_author`, `s_sent_id`), which pando-CQL accepts inside
+    /// `[…]`. A structure with a great many attributes (UD's sentence translations, `s_text_xx`)
+    /// contributes only its first few, so they don't bury the useful names.
     ///
-    /// Sorted, since the two groups arrive in unrelated registry order and
-    /// a completion popup is read by eye.
+    /// Sorted, since a completion popup is read by eye.
     nonisolated static func attributeNames(from info: CorpusInfo) -> [String] {
         let structural = info.structures.flatMap { structure in
-            structure.attributes.map { "\(structure.name).\($0)" }
+            structure.attributes.prefix(40).map { "\(structure.name)_\($0)" }
         }
         return (info.attributes + structural).sorted()
     }

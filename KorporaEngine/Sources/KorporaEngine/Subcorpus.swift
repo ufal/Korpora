@@ -40,6 +40,13 @@ public struct SubcorpusRestriction: Codable, Equatable, Sendable {
 
     public var isEmpty: Bool { filter.isEmpty }
 
+    /// The picks in words: `genre: fiction, essay \u{00B7} year: 2007`.
+    public var summary: String {
+        selections.filter { !$0.values.isEmpty }
+            .map { "\($0.attribute): " + $0.values.map { $0.isEmpty ? "(empty)" : $0 }.joined(separator: ", ") }
+            .joined(separator: " \u{00B7} ")
+    }
+
     /// `query` limited to this part of the corpus. An existing `::` filter gets
     /// ` & ...` added, otherwise ` :: ...`.
     public func apply(to query: String) -> String {

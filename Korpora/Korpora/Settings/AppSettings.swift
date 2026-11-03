@@ -1,5 +1,5 @@
 import Cocoa
-import ManateeKit
+import KorporaEngine
 
 /// Backs the Settings window; persisted via `UserDefaults`.
 final class AppSettings {
@@ -9,16 +9,13 @@ final class AppSettings {
     private enum Key {
         /// Retired: Settings once had a separate list of registry
         /// directories. Read once by `migrateCorpusList()`, then removed.
-        static let corpusRegistryDirectories = "corpusRegistryDirectories"
         static let keepResidentCorpora = "keepResidentCorpora"
-        static let migratedCorpusList = "migratedCorpusList"
         static let resultsFontName = "resultsFontName"
         static let resultsFontSize = "resultsFontSize"
-        static let compiledCorporaDirectory = "compiledCorporaDirectory"
+        static let maxConcordanceLines = "maxConcordanceLines"
         static let minimumFreeMemoryAfterResidency = "minimumFreeMemoryAfterResidency"
         static let defaultLeftContext = "defaultLeftContext"
         static let defaultRightContext = "defaultRightContext"
-        static let defaultViewMode = "defaultViewMode"
         static let defaultExtendedContextTokens = "defaultExtendedContextTokens"
         static let scriptFontOverrides = "scriptFontOverrides"
         static let positionalAttributeColor = "positionalAttributeColor"
@@ -34,20 +31,9 @@ final class AppSettings {
         self.defaults = defaults
     }
 
-    /// The `MANATEE_REGISTRY` this process started with: Xcode's scheme
-    /// (DevCorpus), a shell launch. Captured on first use, before
-    /// `applyEnvironment()` first overwrites the variable, so later calls
-    /// don't mistake our own directories for inherited ones.
-    private static let launchRegistry: [String] = {
-        (ProcessInfo.processInfo.environment["MANATEE_REGISTRY"] ?? "")
-            .split(separator: ":").map(String.init)
-    }()
-
-    /// Every corpus the app can open - built by Korpora, added from
-    /// elsewhere, or inherited from the environment (`ManateeKit.
-    /// CorpusLibrary`).
+    /// Every corpus in the library (built and linked).
     func corpusLibraryEntries() -> [CorpusLibrary.Entry] {
-        CorpusLibrary.entries(inherited: Self.launchRegistry)
+        CorpusLibrary.entries()
     }
 
     /// Names of corpora to keep warm in memory - any corpus, whoever built
@@ -68,35 +54,6 @@ final class AppSettings {
         var names = keepResidentCorpora
         if keep { names.insert(name) } else { names.remove(name) }
         keepResidentCorpora = names
-    }
-
-    /// One-time carry-over into the unified corpus list (docs/project-plan.md,
-    /// "Corpus Settings UX"), run at launch after `applyEnvironment()`:
-    /// - the old "Corpus registry directories" become added corpora, one per
-    ///   registry file, and the setting is dropped;
-    /// - "Keep in Memory" flags, once stored per built corpus in
-    ///   `corpus-meta.json`, move into `keepResidentCorpora`.
-    /// The old files are left in place; the marker makes this run once.
-    func migrateCorpusList() {
-        guard !defaults.bool(forKey: Key.migratedCorpusList) else { return }
-        let entries = corpusLibraryEntries()
-        let taken = Set(entries.map(\.name))
-        let directories = defaults.stringArray(forKey: Key.corpusRegistryDirectories) ?? []
-        let result = CorpusLibrary.adoptRegistryDirectories(directories, taken: taken)
-        for directory in result.missing {
-            NSLog("Korpora: old corpus registry directory \"%@\" doesn't exist; not carried over.", directory)
-        }
-        defaults.removeObject(forKey: Key.corpusRegistryDirectories)
-
-        var resident = keepResidentCorpora
-        for entry in entries where CompiledCorpusStore.metadata(for: entry.name).keepResident {
-            if case .built = entry.origin { resident.insert(entry.name) }
-        }
-        defaults.set(resident.sorted(), forKey: Key.keepResidentCorpora)
-        defaults.set(true, forKey: Key.migratedCorpusList)
-        if !result.added.isEmpty {
-            applyEnvironment()
-        }
     }
 
     var resultsFontName: String {
@@ -121,21 +78,6 @@ final class AppSettings {
     var resultsFont: NSFont {
         NSFont(name: resultsFontName, size: CGFloat(resultsFontSize))
             ?? .monospacedSystemFont(ofSize: CGFloat(resultsFontSize), weight: .regular)
-    }
-
-    /// Where corpora imported via `CorpusImporter` are compiled to - passed
-    /// to `ManateeKit.CompiledCorpusStore` via an environment variable
-    /// (mirrors `corpusRegistryDirectories`'s own env-var-mediated design,
-    /// keeping ManateeKit free of a UserDefaults dependency). `nil`/empty
-    /// means "use `CompiledCorpusStore.baseDirectory`'s own built-in
-    /// default" - still a real, working location, just not user-customized.
-    var compiledCorporaDirectory: String? {
-        get { defaults.string(forKey: Key.compiledCorporaDirectory) }
-        set {
-            defaults.set(newValue, forKey: Key.compiledCorporaDirectory)
-            applyEnvironment()
-            NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
-        }
     }
 
     /// Minimum free memory (bytes) a corpus's "Keep in Memory" toggle must
@@ -179,18 +121,19 @@ final class AppSettings {
 
     /// Seeds `ConcordanceDocument.viewMode` for a brand-new document -
     /// see `ConcordanceViewMode`.
-    var defaultViewMode: ConcordanceViewMode {
-        get { defaults.string(forKey: Key.defaultViewMode).flatMap(ConcordanceViewMode.init(rawValue:)) ?? .kwic }
+    /// How many hits a search loads at most. A search with more hits shows the first ones and says
+    /// how many there are in all; sorting and sampling work on the loaded ones.
+    var maxConcordanceLines: Int {
+        get {
+            let value = defaults.integer(forKey: Key.maxConcordanceLines)
+            return value > 0 ? value : ConcordanceLimit.defaultLimit
+        }
         set {
-            defaults.set(newValue.rawValue, forKey: Key.defaultViewMode)
+            defaults.set(newValue, forKey: Key.maxConcordanceLines)
             NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
         }
     }
 
-    /// How many tokens of context each side to fetch for the "Extended
-    /// Context…" row action (Phase 6.6) by default. Defaults to 50 -
-    /// generous enough to see well past a truncated Left/Right cell
-    /// without being a heavy fetch.
     var defaultExtendedContextTokens: Int {
         get {
             let value = defaults.integer(forKey: Key.defaultExtendedContextTokens)
@@ -297,21 +240,5 @@ final class AppSettings {
         guard let data = try? NSKeyedArchiver.archivedData(withRootObject: color, requiringSecureCoding: true) else { return }
         defaults.set(data, forKey: key)
         NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
-    }
-
-    /// Applies the corpus locations to the process environment - the only
-    /// thing Manatee's own registry lookup actually reads, fresh on every
-    /// call (see `CorpusRegistry`'s doc comment). The search path is
-    /// `CorpusLibrary.searchPath`: corpora Korpora built, corpora added
-    /// from elsewhere, then whatever `MANATEE_REGISTRY` the app was
-    /// launched with, merged on top of rather than replaced - so the Xcode
-    /// scheme's dev override (`Korpora/project.yml`, DevCorpus) keeps
-    /// working alongside the real ones.
-    func applyEnvironment() {
-        let compiledDirectory = compiledCorporaDirectory?.trimmingCharacters(in: .whitespaces).isEmpty == false
-            ? compiledCorporaDirectory! : CompiledCorpusStore.baseDirectory.path
-        setenv("KORPORA_COMPILED_CORPORA_DIRECTORY", compiledDirectory, 1)
-        setenv("MANATEE_REGISTRY",
-               CorpusLibrary.searchPath(inherited: Self.launchRegistry).joined(separator: ":"), 1)
     }
 }

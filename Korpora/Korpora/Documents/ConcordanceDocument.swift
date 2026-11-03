@@ -1,8 +1,11 @@
 import Cocoa
-import ManateeKit
+import KorporaEngine
 
 struct ConcordanceRow {
     let id: Int
+    /// Where this line is in the engine's view (an `id` is a display position, which a descending
+    /// sort reverses; engine lookups - region attributes, wide context - go by this).
+    let viewIndex: Int
     let line: KWICLine
     let group: Int
     /// The value of `ConcordanceDocument.structuralAttributeToShow` for
@@ -10,23 +13,13 @@ struct ConcordanceRow {
     /// nil, or if this line's structure has no value for it.
     let structuralAttributeValue: String?
 
-    init(id: Int, line: KWICLine, group: Int, structuralAttributeValue: String? = nil) {
+    init(id: Int, line: KWICLine, group: Int, structuralAttributeValue: String? = nil, viewIndex: Int? = nil) {
         self.id = id
+        self.viewIndex = viewIndex ?? id
         self.line = line
         self.group = group
         self.structuralAttributeValue = structuralAttributeValue
     }
-}
-
-/// KWIC (a fixed number of tokens each side, `leftContext`/`rightContext`)
-/// vs. Sentence (context expands to the enclosing `<s>` boundary,
-/// regardless of `leftContext`/`rightContext`'s numeric value - see
-/// `ConcordanceDocument.effectiveLeftContext`/`.effectiveRightContext`).
-/// KonText keeps this as a switch independent of the numeric context
-/// width control, rather than folding it into that same control.
-enum ConcordanceViewMode: String, Codable {
-    case kwic
-    case sentence
 }
 
 /// How "Extended Context…" (Phase 6.6) presents a hit's wider context - a
@@ -63,9 +56,8 @@ final class ConcordanceDocument: NSDocument {
     var engine: any CorpusEngine = Engines.default
 
     var corpusName: String = ""
-    /// Path to a subcorpus (see `SubcorpusStore`) to query instead of the
-    /// whole corpus, or nil to query `corpusName` directly.
-    var subcorpusPath: String?
+    /// A part of the corpus (a saved restriction) to search instead of all of it, or nil.
+    var subcorpus: Subcorpus?
     var initialQuery: String = ""
     // Defaults come from AppSettings (Phase 6.4's Concordance settings
     // tab) at instance-creation time - correct for both a brand-new
@@ -73,15 +65,14 @@ final class ConcordanceDocument: NSDocument {
     // one (`read(from:)` immediately overwrites them anyway).
     var leftContext = "-\(AppSettings.shared.defaultLeftContext)"
     var rightContext = "\(AppSettings.shared.defaultRightContext)"
-    /// See `ConcordanceViewMode`. `leftContext`/`rightContext` themselves
-    /// are left untouched by this - `effectiveLeftContext`/
-    /// `.effectiveRightContext` (what's actually sent to the engine)
-    /// override them to a structure-aligned spec in `.sentence` mode, so
-    /// switching back to `.kwic` trivially restores whatever numeric
-    /// width was last set via `setContext`, with no separate "remembered
-    /// width" state needed.
-    private(set) var viewMode: ConcordanceViewMode = AppSettings.shared.defaultViewMode
-    var kwicAttr = "word"
+    /// The attribute shown as each token (`form` for pando corpora; set from the corpus when a search runs
+    /// if the saved one isn't there).
+    var kwicAttr = "form"
+    /// The corpus's own token-text attribute (`form`); what words around a hit are sorted by. Read
+    /// from the corpus when a search runs.
+    private(set) var textAttribute = "form"
+    /// The corpus's token attributes, for menus (sorting, display). Read when a search runs.
+    private(set) var attributeNames: [String] = []
     /// Additional positional attributes (e.g. "lemma", "tag") shown
     /// alongside `kwicAttr` per token - see `KWICFormatter`. Independent,
     /// not an either/or mode: an attribute can be in both lists at once
@@ -113,9 +104,8 @@ final class ConcordanceDocument: NSDocument {
 
     /// The corpus (and subcorpus) the results are from, for headings.
     var corpusLabel: String {
-        guard let subcorpusPath else { return corpusName }
-        let name = (subcorpusPath as NSString).lastPathComponent.replacingOccurrences(of: ".subc", with: "")
-        return "\(corpusName), subcorpus \u{201C}\(name)\u{201D}"
+        guard let subcorpus else { return corpusName }
+        return "\(corpusName), subcorpus \u{201C}\(subcorpus.name)\u{201D}"
     }
 
     /// What every printout says about where it came from: what it is, the
@@ -203,10 +193,10 @@ final class ConcordanceDocument: NSDocument {
         let sheet = NewConcordanceSheetController()
         sheet.corpusName = corpusName
         sheet.query = initialQuery
-        sheet.onCommit = { [weak self] corpus, subcorpusPath, cql in
+        sheet.onCommit = { [weak self] corpus, subcorpus, cql in
             guard let self else { return }
             corpusName = corpus
-            self.subcorpusPath = subcorpusPath
+            self.subcorpus = subcorpus
             runQuery(cql)
         }
         sheet.onCancel = { [weak self] in
@@ -223,11 +213,11 @@ final class ConcordanceDocument: NSDocument {
         operations = []
         // Recorded unconditionally (see QueryHistoryStore's doc comment) -
         // this covers both the initial "New Concordance" sheet's Search
-        // button (which sets corpusName/subcorpusPath then calls this) and
+        // button (which sets corpusName/subcorpus then calls this) and
         // the persistent query bar's re-run, with no separate call site
         // needed at either.
         QueryHistoryStore.record(
-            corpusName: corpusName, subcorpusPath: subcorpusPath, query: cql, defaults: historyDefaults)
+            corpusName: corpusName, subcorpusName: subcorpus?.name, query: cql, defaults: historyDefaults)
         replay()
     }
 
@@ -235,10 +225,6 @@ final class ConcordanceDocument: NSDocument {
 
     func performSort(_ criteria: SortCriteria, unique: Bool = false, descending: Bool = false) {
         appendOperation(.sort(criteria, unique: unique, descending: descending))
-    }
-
-    func performFilter(_ spec: PNFilterSpec) {
-        appendOperation(.filter(spec))
     }
 
     func performShuffle() {
@@ -360,27 +346,6 @@ final class ConcordanceDocument: NSDocument {
     /// enclosing `<s>` boundary" (confirmed in `concord/concctx.cc`),
     /// already supported end-to-end since `leftContext`/`rightContext`
     /// were free-form strings, not parsed integers, from the start.
-    private var effectiveLeftContext: String { viewMode == .sentence ? "-1:s" : leftContext }
-    private var effectiveRightContext: String { viewMode == .sentence ? "1:s" : rightContext }
-
-    /// KWIC vs. Sentence - same "pure display setting" status as
-    /// `setContext`. Toggling this back to `.kwic` needs no bookkeeping
-    /// of its own to restore the previous numeric width: `leftContext`/
-    /// `rightContext` were never touched while in `.sentence` mode (see
-    /// `effectiveLeftContext`/`.effectiveRightContext`).
-    func setViewMode(_ mode: ConcordanceViewMode) {
-        guard mode != viewMode else { return }
-        viewMode = mode
-        refetchDisplay()
-    }
-
-    /// Which secondary positional attributes (e.g. "lemma"/"tag") to show
-    /// inline vs. in a hover tooltip - independent per attribute (an
-    /// attribute can be in both, one, or neither list; see
-    /// `inlineAttributes`/`tooltipAttributes`'s own doc comment). Same
-    /// "pure display setting" status as `setContext`, for the same reason:
-    /// it can't change which hits exist, their order, or their line
-    /// groups, only how each already-fetched hit is annotated.
     func setAttributeDisplay(inlineAttributes: [String], tooltipAttributes: [String]) {
         self.inlineAttributes = inlineAttributes
         self.tooltipAttributes = tooltipAttributes
@@ -395,19 +360,13 @@ final class ConcordanceDocument: NSDocument {
         refetchDisplay()
     }
 
-    /// Re-fetches KWIC lines from the existing `liveConcordance` handle
-    /// using the document's *current* leftContext/rightContext/kwicAttr/
-    /// attributesToFetch - cheaper than `replay()`, which would reopen the
-    /// corpus and re-run the whole query/operation chain from scratch just
-    /// to change how already-fetched hits are displayed. No-op if no query
-    /// has run yet (`liveConcordance` is nil) - the next `replay()` will
-    /// pick up whatever's currently stored regardless. `status`'s
-    /// hit-count/corpus-size text is left as-is, since neither changes from
-    /// a display-only refetch.
+    /// Re-reads the lines of the existing result with the current context width, attribute
+    /// display and region column - no new search. Nothing happens before the first search
+    /// has produced a result (the next `replay()` will pick these settings up).
     private func refetchDisplay() {
         guard liveConcordance != nil else { return }
-        let leftContext = effectiveLeftContext
-        let rightContext = effectiveRightContext
+        let leftContext = leftContext
+        let rightContext = rightContext
         let kwicAttr = kwicAttr
         let secondaryAttributes = attributesToFetch
         let structuralAttributeToShow = structuralAttributeToShow
@@ -415,14 +374,14 @@ final class ConcordanceDocument: NSDocument {
         let previousReplay = currentReplayTask
         currentReplayTask = Task { @MainActor in
             await previousReplay?.value
-            guard let live = liveConcordance, let queryCorpus else { return }
+            guard let live = liveConcordance else { return }
             do {
                 let lines = try await live.kwicLines(
                     leftContext: leftContext, rightContext: rightContext, kwicAttr: kwicAttr,
                     secondaryAttributes: secondaryAttributes)
                 rows = await Self.buildRows(
                     from: lines, live: live, descendingSort: descendingSort,
-                    queryCorpus: queryCorpus, structuralAttributeToShow: structuralAttributeToShow)
+                    structuralAttributeToShow: structuralAttributeToShow)
             } catch {
                 status = "\(error)"
             }
@@ -439,15 +398,15 @@ final class ConcordanceDocument: NSDocument {
         status = "Searching…"
         onResultsChanged?(true)
         let corpusName = corpusName
-        let subcorpusPath = subcorpusPath
-        let query = initialQuery
-        let leftContext = effectiveLeftContext
-        let rightContext = effectiveRightContext
-        let kwicAttr = kwicAttr
+        let subcorpus = subcorpus
+        let query = subcorpus?.restriction.apply(to: initialQuery) ?? initialQuery
+        let leftContext = leftContext
+        let rightContext = rightContext
         let secondaryAttributes = attributesToFetch
         let structuralAttributeToShow = structuralAttributeToShow
         let operations = operations
         let descendingSort = Self.descendingSort(in: operations)
+        let loadLimit = AppSettings.shared.maxConcordanceLines
         let previousReplay = currentReplayTask
         // A newer search replaces one still running (still one at a time: this
         // one waits for the cancelled one to let go of the engine).
@@ -459,45 +418,38 @@ final class ConcordanceDocument: NSDocument {
             await beforeSearchHook?()
             do {
                 let corpus = try await engine.openCorpus(name: corpusName)
-                let queryCorpus: any CorpusHandle
-                if let subcorpusPath {
-                    queryCorpus = try await corpus.openSubcorpusHandle(atPath: subcorpusPath)
-                } else {
-                    queryCorpus = corpus
-                }
-                let live = try await engine.openConcordance(query: query, in: queryCorpus)
+                let info = try await corpus.info()
+                // A saved document (or an older one) may name an attribute this corpus doesn't have.
+                textAttribute = info.defaultAttribute
+                attributeNames = info.attributes
+                if !info.attributes.contains(kwicAttr) { kwicAttr = info.defaultAttribute }
+                inlineAttributes = inlineAttributes.filter(info.attributes.contains)
+                tooltipAttributes = tooltipAttributes.filter(info.attributes.contains)
+                let kwicAttr = kwicAttr
+                let live = try await engine.openConcordance(query: query, in: corpus, limit: loadLimit)
                 for op in operations {
                     try await op.apply(to: live)
                     try Task.checkCancellation()
                 }
-                // search size, not the parent corpus's - openSubcorpus already
-                // makes this correctly reflect the restricted token count.
-                let corpusSize = try await queryCorpus.size
                 let lines = try await live.kwicLines(
                     leftContext: leftContext, rightContext: rightContext, kwicAttr: kwicAttr,
                     secondaryAttributes: secondaryAttributes)
                 let newRows = await Self.buildRows(
                     from: lines, live: live, descendingSort: descendingSort,
-                    queryCorpus: queryCorpus, structuralAttributeToShow: structuralAttributeToShow)
+                    structuralAttributeToShow: structuralAttributeToShow)
                 try Task.checkCancellation()
                 guard generation == replayGeneration else { return }
                 rows = newRows
                 liveConcordance = live
-                self.queryCorpus = queryCorpus
-                let corpusDescription: String
-                if let subcorpusPath {
-                    let subcorpusName = (subcorpusPath as NSString).lastPathComponent
-                        .replacingOccurrences(of: ".subc", with: "")
-                    corpusDescription = "\(corpusSize)-token subcorpus “\(subcorpusName)”"
-                } else {
-                    corpusDescription = "\(corpusSize)-token corpus"
-                }
-                status = "\(lines.count) hit\(lines.count == 1 ? "" : "s") in a \(corpusDescription)"
+                totalHits = await live.totalHits
+                status = Self.statusLine(
+                    shown: lines.count, total: totalHits, corpusTokens: info.sizeTokens, corpusName: corpusName,
+                    subcorpus: subcorpus)
             } catch {
                 guard generation == replayGeneration else { return }
                 rows = []
                 liveConcordance = nil
-                queryCorpus = nil
+                totalHits = 0
                 status = error is CancellationError ? "Search cancelled." : "\(error)"
             }
             isSearching = false
@@ -505,9 +457,25 @@ final class ConcordanceDocument: NSDocument {
         }
     }
 
-    /// The most recent `.sort` operation's `descending` flag - later
-    /// operations (e.g. a filter after a descending sort) don't reset it,
-    /// matching how only a fresh `.sort` operation itself changes it.
+    /// Hits in the whole corpus, loaded or not.
+    private(set) var totalHits = 0
+
+    /// "12 hits in the 38,181,322-token corpus UD", or for a big result "10,000 of 3,978,146 hits (the
+    /// first ones; see Settings > Concordance) in ...".
+    static func statusLine(shown: Int, total: Int, corpusTokens: Int, corpusName: String, subcorpus: Subcorpus?) -> String {
+        let hits: String
+        if total > shown {
+            hits = "\(shown.formatted()) of \(total.formatted()) hits (the first ones)"
+        } else {
+            hits = "\(shown.formatted()) hit\(shown == 1 ? "" : "s")"
+        }
+        let corpus = "the \(corpusTokens.formatted())-token corpus \u{201C}\(corpusName)\u{201D}"
+        if let subcorpus {
+            return "\(hits) in subcorpus \u{201C}\(subcorpus.name)\u{201D} of \(corpus)"
+        }
+        return "\(hits) in \(corpus)"
+    }
+
     private static func descendingSort(in operations: [ConcordanceOperation]) -> Bool {
         operations.reversed().lazy.compactMap { op -> Bool? in
             if case .sort(_, _, let descending) = op { return descending }
@@ -515,51 +483,31 @@ final class ConcordanceDocument: NSDocument {
         }.first ?? false
     }
 
-    /// Looks up each line's group (keyed to Manatee's own view order, via
-    /// `live.linegroup(at:)`) before applying `descendingSort`'s
-    /// display-only reversal - Manatee's own sort is always ascending (see
-    /// `ConcordanceOperation.sort`'s doc comment), so descending is purely a
-    /// display-order flip; `id` (== the row's index, per
-    /// `ConcordanceViewController.makeCell`) is reassigned to match the
-    /// flipped positions. Fans every row's `linegroup(at:)` lookup (and,
-    /// if `structuralAttributeToShow` isn't nil, its structural attribute
-    /// lookup - see `ConcordanceRow.structuralAttributeValue`) out
-    /// concurrently via a `TaskGroup`, rather than one `await` per row in
-    /// sequence - both are per-row engine round trips, so this matters
-    /// more the more rows there are.
     private static func buildRows(
         from lines: [KWICLine], live: any ConcordanceHandle, descendingSort: Bool,
-        queryCorpus: any CorpusHandle, structuralAttributeToShow: String?
+        structuralAttributeToShow: String?
     ) async -> [ConcordanceRow] {
-        var newRows = [ConcordanceRow?](repeating: nil, count: lines.count)
-        await withTaskGroup(of: (Int, ConcordanceRow).self) { group in
-            for (offset, line) in lines.enumerated() {
-                // One child task per row: with millions of rows, stop
-                // creating them as soon as the search is cancelled.
-                if Task.isCancelled { break }
-                group.addTask {
-                    let lineGroup = await live.linegroup(at: offset)
-                    var structuralValue: String?
-                    if let attribute = structuralAttributeToShow,
-                       let value = try? await queryCorpus.structuralAttributeValue(at: line.position, attribute: attribute),
-                       !value.isEmpty {
-                        structuralValue = value
-                    }
-                    return (offset, ConcordanceRow(
-                        id: offset, line: line, group: lineGroup, structuralAttributeValue: structuralValue))
-                }
-            }
-            for await (offset, row) in group {
-                newRows[offset] = row
-            }
+        // One batched lookup for the region column, one group lookup per row.
+        var regionValues: [String] = []
+        if let attribute = structuralAttributeToShow {
+            regionValues = (try? await live.structureValues(attribute: attribute)) ?? []
         }
-        var result = newRows.compactMap { $0 }
+        var rows: [ConcordanceRow] = []
+        rows.reserveCapacity(lines.count)
+        for (offset, line) in lines.enumerated() {
+            if Task.isCancelled { break }
+            let value = regionValues.indices.contains(offset) ? regionValues[offset] : ""
+            rows.append(ConcordanceRow(
+                id: offset, line: line, group: await live.linegroup(at: offset),
+                structuralAttributeValue: value.isEmpty || value == "_" ? nil : value, viewIndex: offset))
+        }
         if descendingSort {
-            result = result.reversed().enumerated().map { i, row in
-                ConcordanceRow(id: i, line: row.line, group: row.group, structuralAttributeValue: row.structuralAttributeValue)
+            rows = rows.reversed().enumerated().map { i, row in
+                ConcordanceRow(id: i, line: row.line, group: row.group,
+                               structuralAttributeValue: row.structuralAttributeValue, viewIndex: row.viewIndex)
             }
         }
-        return result
+        return rows
     }
 
     // MARK: - Analysis (collocations, frequency distributions)
@@ -590,6 +538,7 @@ final class ConcordanceDocument: NSDocument {
     func hitDistribution(bins: Int = 100) async throws -> HitDistribution {
         guard let liveConcordance else { throw AnalysisError.noResultsYet }
         let corpusSize = try await engine.openCorpus(name: corpusName).size
+        // (With a subcorpus the plot still runs over the whole corpus's positions.)
         let counts = try await liveConcordance.hitHistogram(bins: bins, corpusSize: corpusSize)
         return HitDistribution(counts: counts, corpusSize: corpusSize)
     }
@@ -602,70 +551,21 @@ final class ConcordanceDocument: NSDocument {
         return try await liveConcordance.frequencyDistribution(criteria, minFrequency: minFrequency)
     }
 
-    /// One structural attribute value (e.g. "doc.author" → "Twain") enclosing
-    /// `rowID`'s hit - every attribute of every structure the corpus
-    /// declares, skipping any that come back empty (not enclosed by that
-    /// structure at this position, or genuinely blank). Unlike
-    /// `collocations`/`frequencyDistribution`, this only needs `queryCorpus`
-    /// (a plain position lookup - see `KWICLine.position`), not
-    /// `liveConcordance`, so it keeps working even if a later sort/filter
-    /// replaced the live handle, as long as the row itself is still there.
     func structuralInfo(at rowID: Int) async throws -> [(structure: String, attribute: String, value: String)] {
-        guard let queryCorpus else { throw AnalysisError.noResultsYet }
+        guard let liveConcordance else { throw AnalysisError.noResultsYet }
         guard rows.indices.contains(rowID) else { return [] }
-        let position = rows[rowID].line.position
-        let info = try await queryCorpus.info()
-        var results: [(structure: String, attribute: String, value: String)] = []
-        for structure in info.structures {
-            for attribute in structure.attributes {
-                let value = try await queryCorpus.structuralAttributeValue(
-                    at: position, attribute: "\(structure.name).\(attribute)")
-                guard !value.isEmpty else { continue }
-                results.append((structure.name, attribute, value))
-            }
-        }
-        return results
+        return try await liveConcordance.structureInfo(forViewRow: rows[rowID].viewIndex)
     }
 
-    /// One hit's match plus much wider surrounding context than its table
-    /// row shows - KonText's "concordance detail" (Phase 6.6). Fetches
-    /// directly via `Corpus.positionalAttributeRange` (Phase 5.4/6.6's
-    /// position-indexed lookup pattern), independent of
-    /// `leftContext`/`rightContext`/`viewMode` entirely - a much wider
-    /// window than either would reasonably show inline, and unaffected by
-    /// whichever one is currently active. `AppSettings.shared
-    /// .defaultExtendedContextTokens` (Phase 6.4) sets how many tokens
-    /// each side to ask for; a hit near the very start/end of the corpus
-    /// gets fewer on that side (the bridge clamps the fetch, this clamps
-    /// the "how many words precede the match" math identically, so the
-    /// split into before/match/after stays correct either way).
+    /// One hit's match plus much wider surrounding context than its table row shows
+    /// (`AppSettings.defaultExtendedContextTokens` each side).
     func extendedContext(at rowID: Int) async throws -> (before: String, match: String, after: String) {
-        guard let queryCorpus else { throw AnalysisError.noResultsYet }
+        guard let liveConcordance else { throw AnalysisError.noResultsYet }
         guard rows.indices.contains(rowID) else { throw AnalysisError.noResultsYet }
-        let line = rows[rowID].line
-        let matchLength = max(line.kwicTokens.count, 1)
-        let tokensAround = AppSettings.shared.defaultExtendedContextTokens
-        let position = line.position
-        let actualTokensBefore = min(tokensAround, position)
-        let text = try await queryCorpus.positionalAttributeRange(
-            from: position - tokensAround, to: position + matchLength + tokensAround, attribute: kwicAttr)
-        let words = text.split(separator: " ").map(String.init)
-        let before = words.prefix(actualTokensBefore).joined(separator: " ")
-        let match = words.dropFirst(actualTokensBefore).prefix(matchLength).joined(separator: " ")
-        let after = words.dropFirst(actualTokensBefore + matchLength).joined(separator: " ")
-        return (before, match, after)
+        return try await liveConcordance.extendedContext(
+            forViewRow: rows[rowID].viewIndex, tokens: AppSettings.shared.defaultExtendedContextTokens)
     }
 
-    /// Identifies which hit an `ExtendedContextWindowController` belongs
-    /// to - the corpus name is always known; document/sentence labels are
-    /// whichever structural attribute values `structuralInfo(at:)` (every
-    /// non-empty structure/attribute enclosing this position) happens to
-    /// have, reusing that lookup rather than querying the engine again:
-    /// document is whichever entry matches `structuralAttributeToShow`
-    /// (the same attribute already shown as its own KWIC column, if any);
-    /// sentence is the first attribute of a structure literally named
-    /// "s" (the common corpus convention for the enclosing sentence),
-    /// falling back to nil if the corpus declares no such structure.
     struct ExtendedContextInfo {
         let corpusName: String
         let documentLabel: String?
@@ -685,70 +585,68 @@ final class ConcordanceDocument: NSDocument {
             info.first { "\($0.structure).\($0.attribute)" == attribute }
                 .map { "\($0.attribute): \($0.value)" }
         }
-        let sentenceLabel = info.first { $0.structure == "s" }.map { "\($0.attribute): \($0.value)" }
+        // The sentence's own id, when the corpus has one (`s.sent_id`, or the first `s` attribute).
+        let sentence = info.first { $0.structure == "s" && $0.attribute == "sent_id" } ?? info.first { $0.structure == "s" }
+        let sentenceLabel = sentence.map { "\($0.attribute): \($0.value)" }
         return ExtendedContextInfo(corpusName: corpusName, documentLabel: documentLabel, sentenceLabel: sentenceLabel)
     }
 
     // MARK: - Persistence (query + operation chain only, never the materialized rows)
 
-    /// Version of the saved-document format. 1: the original (no version or
-    /// engine keys, always Manatee); 2: adds `formatVersion` and `engine`.
-    /// Older documents still read; a newer one is refused with a clear error
-    /// rather than half-read.
-    static let currentFormatVersion = 2
+    /// Version of the saved-document format. 1-2: the Manatee era (no longer readable: their queries and
+    /// corpora don't exist any more); 3: pando, with `engine`, and the subcorpus as a saved restriction.
+    /// A newer one is refused with a clear error rather than half-read.
+    static let currentFormatVersion = 3
+
+    /// Just enough to decide whether the rest can be read.
+    private struct DocumentHeader: Decodable {
+        var formatVersion: Int?
+        var engine: String?
+    }
 
     private struct DocumentState: Codable {
-        /// Missing in version 1 documents.
         var formatVersion: Int?
-        /// The `CorpusEngine.id` the query and corpus name are for; missing means Manatee.
         var engine: String?
         var corpusName: String
-        var subcorpusPath: String?
+        var subcorpus: Subcorpus?
         var initialQuery: String
         var leftContext: String
         var rightContext: String
         var kwicAttr: String
-        // Optional (not defaulted-non-optional) so a document autosaved
-        // before these existed still decodes - a missing key becomes nil
-        // for an Optional property under Codable's synthesized decoding,
-        // with no custom init needed.
+        // Optional so a document saved before these existed still decodes: a missing key becomes nil
+        // for an Optional property under Codable's synthesized decoding, with no custom init needed.
         var inlineAttributes: [String]?
         var tooltipAttributes: [String]?
-        // Already optional at the live-property level too (nil == "None"
-        // is a real, meaningful value here, not just "unset") - Codable's
-        // synthesized decoding already treats a missing key as nil for an
-        // Optional property, so no `?? []`-style fallback is needed.
         var structuralAttributeToShow: String?
-        // Missing key (a document saved before this existed) decodes to
-        // nil, not `.kwic` directly - `read(from:)` supplies that default
-        // explicitly, same reasoning as `inlineAttributes ?? []` below.
-        var viewMode: ConcordanceViewMode?
         var operations: [ConcordanceOperation]
     }
 
     override func data(ofType typeName: String) throws -> Data {
         let state = DocumentState(
             formatVersion: Self.currentFormatVersion, engine: engine.id,
-            corpusName: corpusName, subcorpusPath: subcorpusPath, initialQuery: initialQuery,
+            corpusName: corpusName, subcorpus: subcorpus, initialQuery: initialQuery,
             leftContext: leftContext, rightContext: rightContext, kwicAttr: kwicAttr,
             inlineAttributes: inlineAttributes, tooltipAttributes: tooltipAttributes,
-            structuralAttributeToShow: structuralAttributeToShow, viewMode: viewMode,
-            operations: operations)
+            structuralAttributeToShow: structuralAttributeToShow, operations: operations)
         return try JSONEncoder().encode(state)
     }
 
     override func read(from data: Data, ofType typeName: String) throws {
-        let state = try JSONDecoder().decode(DocumentState.self, from: data)
-        if let version = state.formatVersion, version > Self.currentFormatVersion {
+        let header = try JSONDecoder().decode(DocumentHeader.self, from: data)
+        if let version = header.formatVersion, version > Self.currentFormatVersion {
             throw DocumentFormatError.newerFormat(version)
         }
-        let engineID = state.engine ?? "manatee"
+        // No engine key (version 1) or "manatee": made with the engine this app no longer has.
+        guard let engineID = header.engine, engineID != "manatee", (header.formatVersion ?? 1) >= 3 else {
+            throw DocumentFormatError.formerEngine
+        }
         guard let engine = Engines.engine(withID: engineID) else {
             throw DocumentFormatError.unknownEngine(engineID)
         }
+        let state = try JSONDecoder().decode(DocumentState.self, from: data)
         self.engine = engine
         corpusName = state.corpusName
-        subcorpusPath = state.subcorpusPath
+        subcorpus = state.subcorpus
         initialQuery = state.initialQuery
         leftContext = state.leftContext
         rightContext = state.rightContext
@@ -756,12 +654,10 @@ final class ConcordanceDocument: NSDocument {
         inlineAttributes = state.inlineAttributes ?? []
         tooltipAttributes = state.tooltipAttributes ?? []
         structuralAttributeToShow = state.structuralAttributeToShow
-        viewMode = state.viewMode ?? .kwic
         operations = state.operations
     }
 }
 
-/// How many hits start in each equal stretch of the corpus.
 struct HitDistribution: Equatable {
     let counts: [Int]
     let corpusSize: Int

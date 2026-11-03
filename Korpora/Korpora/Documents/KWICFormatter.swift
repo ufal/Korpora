@@ -1,5 +1,5 @@
 import Foundation
-import ManateeKit
+import KorporaEngine
 
 /// One piece of a KWIC cell's inline display - either a token's main word
 /// text/inter-token space, or one of its secondary-attribute values, so a

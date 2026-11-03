@@ -1,20 +1,19 @@
-import ManateeKit
+import KorporaEngine
 
 /// The replayable recipe for a concordance: the initial query plus every
-/// sort/filter/shuffle/sample/line-group operation applied since, in order.
+/// sort/shuffle/sample/line-group operation applied since, in order.
 /// This - not the materialized rows - is what gets persisted and what
-/// `NSUndoManager` tracks; Manatee's `Concordance` can't remove an operation
-/// from the middle of a chain, only replay from the start, so undo rebuilds
-/// through the first N-1 operations against a fresh `LiveConcordance`
-/// rather than inverting the Nth one (see `ConcordanceDocument.setOperations`).
+/// `NSUndoManager` tracks; an operation can't be removed from the middle of
+/// a chain, only replayed from the start, so undo rebuilds through the first
+/// N-1 operations against a fresh result rather than inverting the Nth one
+/// (see `ConcordanceDocument.setOperations`).
 enum ConcordanceOperation: Codable {
-    // `descending` isn't passed to Manatee - it has no native descending
-    // sort (`LiveConcordance.sort` is always ascending), so this only flips
+    // `descending` isn't passed to the engine - sorting is always ascending,
+    // so this only flips
     // the final display order (see `ConcordanceDocument.replay()`). Column-
     // header clicks use this; the toolbar's Sort popover always sorts
     // ascending (`descending: false`), since it has no direction control.
     case sort(SortCriteria, unique: Bool, descending: Bool)
-    case filter(PNFilterSpec)
     case shuffle
     case sample(lines: Int)
     case setLineGroup(rangeStart: Int, rangeLen: Int, group: Int)
@@ -57,8 +56,6 @@ enum ConcordanceOperation: Codable {
             var suffix = descending ? "descending" : "ascending"
             if unique { suffix += ", unique" }
             return "Sort: \(levels), \(suffix)"
-        case .filter(let spec):
-            return "Filter: \(spec.positive ? "keep" : "remove") lines matching \(spec.query)"
         case .shuffle:
             return "Shuffle"
         case .sample(let lines):
@@ -72,8 +69,6 @@ enum ConcordanceOperation: Codable {
         switch self {
         case .sort(let criteria, let unique, _):
             try await live.sort(criteria, unique: unique)
-        case .filter(let spec):
-            try await live.filter(spec)
         case .shuffle:
             try await live.shuffle()
         case .sample(let lines):

@@ -1,5 +1,5 @@
 import Cocoa
-import ManateeKit
+import KorporaEngine
 
 /// A disposable, re-runnable results window for `ConcordanceDocument.
 /// collocations(_:)` - not an `NSDocument`, since this is a snapshot report

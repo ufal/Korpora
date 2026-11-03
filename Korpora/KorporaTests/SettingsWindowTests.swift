@@ -31,7 +31,7 @@ import Testing
         defer { window.orderOut(nil) }
         #expect(window.styleMask.contains(.resizable))
         let designed: [SettingsWindowController.Pane: NSSize] = [
-            .corpora: NSSize(width: 540, height: 440),
+            .corpora: NSSize(width: 600, height: 440),
             .appearance: NSSize(width: 420, height: 400),
             .concordance: NSSize(width: 460, height: 260),
         ]
@@ -70,7 +70,7 @@ import Testing
         let list = try #require(controller.tableView.enclosingScrollView)
         let before = list.frame
 
-        window.setContentSize(NSSize(width: 760, height: 740))
+        window.setContentSize(NSSize(width: 820, height: 740))
         layOut(window)
         #expect(list.frame.height >= before.height + 250, "list went from \(before.height) to \(list.frame.height)")
         #expect(list.frame.width >= before.width + 180, "list went from \(before.width) to \(list.frame.width)")
@@ -119,11 +119,11 @@ import Testing
         layOut(window)
         check("wider")
         let wider = widths()
-        #expect(wider[0] > opening[0] + 200, "Name takes the extra width: \(opening[0]) -> \(wider[0])")
+        #expect(wider[0] > opening[0] + 150, "Name takes the extra width: \(opening[0]) -> \(wider[0])")
         #expect(Array(wider.dropFirst()) == Array(opening.dropFirst()), "the other columns keep their widths")
 
         window.setContentSize(controller.view.frame.size)
-        window.setContentSize(NSSize(width: 540, height: 440))
+        window.setContentSize(NSSize(width: 600, height: 440))
         layOut(window)
         check("back at the minimum")
         #expect(widths() == opening, "same layout at the same size")

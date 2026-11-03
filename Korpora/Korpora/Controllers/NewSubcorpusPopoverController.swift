@@ -1,28 +1,21 @@
 import Cocoa
-import ManateeKit
+import KorporaEngine
 
-/// Content of the "New Concordance" sheet's "New Subcorpus…" popover -
-/// restricts a corpus to the instances of one structure (e.g. `<doc>`)
-/// whose attributes match (docs/project-plan.md, 6.9).
+/// Content of the "New Concordance" sheet's "New Subcorpus…" popover: restricts a corpus to the
+/// documents whose properties match (docs/project-plan.md, 6.9; docs/pando-gui-plan.md).
 ///
-/// Like KonText's Text Types, the usual way is to tick values: choose an
-/// attribute, tick the values wanted (several values of one attribute are
-/// alternatives, values of different attributes all have to hold). Those
-/// picks become the CQL restriction `Corpus.createSubcorpus` takes, shown
-/// as they're made. "CQL expression" mode is the older way, typing the
-/// restriction (e.g. `author="Twain"`, no brackets - see
-/// `Corpus.createSubcorpus`'s doc comment for why), for anything the lists
-/// can't say: ranges, regular expressions, negation.
+/// Like KonText's Text Types: choose an attribute, tick the values wanted (several values of one
+/// attribute are alternatives, values of different attributes all have to hold). The picks are shown
+/// in words as they're made and saved with the name given, as a restriction that is added to every
+/// search made in the subcorpus.
 final class NewSubcorpusPopoverController: NSViewController {
     var corpusInfo: CorpusInfo?
     /// The corpus to read values from. Without it the values list reports
     /// that it can't, and CQL mode still works.
     var corpusName: String?
-    var onCreate: ((_ name: String, _ structure: String, _ query: String) -> Void)?
+    var onCreate: ((Subcorpus) -> Void)?
     /// Replaces the engine as the source of values (tests).
     var loaders: SubcorpusValuePickerModel.Loaders?
-
-    private enum Mode: Int { case values, cql }
 
     private(set) var model: SubcorpusValuePickerModel!
 
@@ -39,13 +32,6 @@ final class NewSubcorpusPopoverController: NSViewController {
     private let clearButton = NSButton(title: "Clear", target: nil, action: nil)
     private let previewLabel = NSTextField(wrappingLabelWithString: "")
 
-    let cqlContainer = NSView()
-    let queryField = CQLQueryField()
-    let modeControl = NSSegmentedControl(
-        labels: ["Choose values", "CQL expression"], trackingMode: .selectOne, target: nil, action: nil)
-
-    private var mode: Mode = .values
-
     // MARK: View
 
     override func loadView() {
@@ -55,7 +41,7 @@ final class NewSubcorpusPopoverController: NSViewController {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 440))
 
         let nameLabel = NSTextField(labelWithString: "Name:")
-        let structLabel = NSTextField(labelWithString: "Structure:")
+        let structLabel = NSTextField(labelWithString: "Part of the text:")
 
         if model.structures.isEmpty {
             structurePopUp.addItem(withTitle: "No structures")
@@ -66,25 +52,19 @@ final class NewSubcorpusPopoverController: NSViewController {
         structurePopUp.target = self
         structurePopUp.action = #selector(structureChanged)
 
-        modeControl.target = self
-        modeControl.action = #selector(modeChanged)
-        modeControl.selectedSegment = Mode.values.rawValue
-
         createButton.target = self
         createButton.action = #selector(createTapped)
         createButton.keyEquivalent = "\r"
         createButton.bezelStyle = .rounded
-        queryField.onSubmit = { [weak self] in self?.createTapped() }
         nameField.target = self
         nameField.action = #selector(nameEdited)
         nameField.delegate = self
 
         buildValuesContainer()
-        buildCQLContainer()
 
         let views: [NSView] = [
-            nameLabel, nameField, structLabel, structurePopUp, modeControl,
-            valuesContainer, cqlContainer, createButton,
+            nameLabel, nameField, structLabel, structurePopUp,
+            valuesContainer, createButton,
         ]
         for view in views {
             view.translatesAutoresizingMaskIntoConstraints = false
@@ -103,18 +83,10 @@ final class NewSubcorpusPopoverController: NSViewController {
             structurePopUp.centerYAnchor.constraint(equalTo: structLabel.centerYAnchor),
             structurePopUp.leadingAnchor.constraint(equalTo: structLabel.trailingAnchor, constant: 8),
 
-            modeControl.topAnchor.constraint(equalTo: structLabel.bottomAnchor, constant: 14),
-            modeControl.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-
-            valuesContainer.topAnchor.constraint(equalTo: modeControl.bottomAnchor, constant: 12),
+            valuesContainer.topAnchor.constraint(equalTo: structLabel.bottomAnchor, constant: 14),
             valuesContainer.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
             valuesContainer.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
             valuesContainer.bottomAnchor.constraint(equalTo: createButton.topAnchor, constant: -14),
-
-            cqlContainer.topAnchor.constraint(equalTo: valuesContainer.topAnchor),
-            cqlContainer.leadingAnchor.constraint(equalTo: valuesContainer.leadingAnchor),
-            cqlContainer.trailingAnchor.constraint(equalTo: valuesContainer.trailingAnchor),
-            cqlContainer.bottomAnchor.constraint(equalTo: valuesContainer.bottomAnchor),
 
             createButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
             createButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -16),
@@ -155,7 +127,7 @@ final class NewSubcorpusPopoverController: NSViewController {
         clearButton.controlSize = .small
         clearButton.bezelStyle = .rounded
 
-        previewLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        previewLabel.font = .systemFont(ofSize: 11)
         previewLabel.textColor = .secondaryLabelColor
         previewLabel.maximumNumberOfLines = 2
         previewLabel.lineBreakMode = .byTruncatingTail
@@ -190,36 +162,8 @@ final class NewSubcorpusPopoverController: NSViewController {
         ])
     }
 
-    private func buildCQLContainer() {
-        let label = NSTextField(wrappingLabelWithString:
-            "Restrict to (e.g. author=\"Twain\"). Use | and & to combine, and the "
-            + "structure's own attribute names:")
-        label.font = .systemFont(ofSize: 11)
-        cqlContainer.addSubview(label)
-        cqlContainer.addSubview(queryField)
-        for view in [label, queryField] {
-            view.translatesAutoresizingMaskIntoConstraints = false
-        }
-        NSLayoutConstraint.activate([
-            label.topAnchor.constraint(equalTo: cqlContainer.topAnchor),
-            label.leadingAnchor.constraint(equalTo: cqlContainer.leadingAnchor),
-            label.trailingAnchor.constraint(equalTo: cqlContainer.trailingAnchor),
-            queryField.topAnchor.constraint(equalTo: label.bottomAnchor, constant: 6),
-            queryField.leadingAnchor.constraint(equalTo: cqlContainer.leadingAnchor),
-            queryField.trailingAnchor.constraint(equalTo: cqlContainer.trailingAnchor),
-        ])
-        cqlContainer.isHidden = true
-    }
-
     override func viewDidLoad() {
         super.viewDidLoad()
-        if model.attribute == nil {
-            // Nothing to pick from (no structure, or one without attributes):
-            // start where the user can still type a restriction.
-            mode = .cql
-            modeControl.selectedSegment = Mode.cql.rawValue
-            applyMode()
-        }
         refresh()
         loadValues()
     }
@@ -287,7 +231,7 @@ final class NewSubcorpusPopoverController: NSViewController {
         if let error = model.loadError {
             statusLabel.stringValue = error
         } else if model.attribute == nil {
-            statusLabel.stringValue = "This structure has no attributes to pick values from; use a CQL expression."
+            statusLabel.stringValue = "This part of the text has no properties to pick values from."
         } else if model.isLoading {
             statusLabel.stringValue = "Loading values\u{2026}"
         } else {
@@ -303,27 +247,15 @@ final class NewSubcorpusPopoverController: NSViewController {
             statusLabel.stringValue = parts.joined(separator: " \u{00B7} ")
         }
         clearButton.isEnabled = model.selectedCount > 0
-        let query = model.restriction.query
-        previewLabel.stringValue = query.isEmpty ? "Tick values to build the restriction." : query
-        previewLabel.toolTip = query.isEmpty ? nil : query
+        let summary = model.restriction.summary
+        previewLabel.stringValue = summary.isEmpty ? "Tick values to say which texts to search." : summary
+        previewLabel.toolTip = summary.isEmpty ? nil : summary
         updateCreateEnabled()
-    }
-
-    private func currentQuery() -> String {
-        switch mode {
-        case .values: return model.restriction.query
-        case .cql: return queryField.text.trimmingCharacters(in: .whitespaces)
-        }
     }
 
     private func updateCreateEnabled() {
         let hasName = !nameField.stringValue.trimmingCharacters(in: .whitespaces).isEmpty
-        createButton.isEnabled = !model.structures.isEmpty && hasName && !currentQuery().isEmpty
-    }
-
-    private func applyMode() {
-        valuesContainer.isHidden = mode != .values
-        cqlContainer.isHidden = mode != .cql
+        createButton.isEnabled = !model.structures.isEmpty && hasName && !model.restriction.isEmpty
     }
 
     // MARK: Actions
@@ -333,11 +265,6 @@ final class NewSubcorpusPopoverController: NSViewController {
         searchField.stringValue = ""
         model.selectStructure(name)
         fillAttributePopUp()
-        if model.attribute == nil, mode == .values {
-            mode = .cql
-            modeControl.selectedSegment = Mode.cql.rawValue
-            applyMode()
-        }
         refresh()
         loadValues()
     }
@@ -376,27 +303,16 @@ final class NewSubcorpusPopoverController: NSViewController {
         refresh()
     }
 
-    @objc private func modeChanged() {
-        mode = Mode(rawValue: modeControl.selectedSegment) ?? .values
-        // Choosing values and then wanting to tweak them: start the CQL field
-        // from what was picked, unless something is already typed there.
-        if mode == .cql, queryField.text.trimmingCharacters(in: .whitespaces).isEmpty {
-            queryField.text = model.restriction.query
-        }
-        applyMode()
-        updateCreateEnabled()
-    }
-
     @objc private func nameEdited() {
         updateCreateEnabled()
     }
 
     @objc private func createTapped() {
-        guard let structure = structurePopUp.titleOfSelectedItem, structurePopUp.isEnabled else { return }
+        guard structurePopUp.isEnabled else { return }
         let name = nameField.stringValue.trimmingCharacters(in: .whitespaces)
-        let query = currentQuery()
-        guard !name.isEmpty, !query.isEmpty else { return }
-        onCreate?(name, structure, query)
+        let restriction = model.restriction
+        guard !name.isEmpty, !restriction.isEmpty else { return }
+        onCreate?(Subcorpus(name: name, restriction: restriction))
     }
 }
 
@@ -427,7 +343,7 @@ extension NewSubcorpusPopoverController: NSTableViewDataSource, NSTableViewDeleg
         count.alignment = .right
         count.setContentHuggingPriority(.required, for: .horizontal)
         count.setContentCompressionResistancePriority(.required, for: .horizontal)
-        count.toolTip = "\(entry.count) \(model.structure) with this value"
+        count.toolTip = "\(entry.count) with this value"
 
         let cell = NSView()
         for view in [checkbox, count] {

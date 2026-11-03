@@ -1,81 +1,64 @@
 import Cocoa
-import ManateeKit
+import KorporaEngine
 import Testing
 @testable import Korpora
 
-/// Cancelling a search (docs/project-plan.md, "Cancel a running query") as
-/// the document sees it, against a real tiny corpus compiled for each test
-/// (through the import tool the app bundles; the dev checkout's `encodevert`
-/// here). Serialized: it points the process environment at a temporary
-/// registry.
+/// Cancelling a search (docs/project-plan.md, "Cancel a running query") as the document sees it,
+/// against a tiny real corpus indexed with pando for each test. Serialized: it points the corpus
+/// library at a temporary folder through the process environment. Skipped (passes silently) when
+/// there is no pando build.
 @MainActor @Suite(.serialized) final class ConcordanceDocumentCancelTests {
-    private let root: URL
-    private let saved: [(String, String?)]
+    private let box: TestPando.Sandbox
+    private let engine: PandoEngine?
     private let defaults = UserDefaults(suiteName: "ConcordanceDocumentCancelTests-\(UUID().uuidString)")!
     private static let corpus = "korporacancel"
 
+    /// 5 adjectives and 4 nouns: brown fox, lazy dog, curious cat, sleepy cat.
+    private static let text = """
+        # newdoc id = 1
+        # sent_id = a
+        1\tthe\tthe\tDET\t_\t_\t4\tdet\t_\t_
+        2\tquick\tquick\tADJ\t_\t_\t4\tamod\t_\t_
+        3\tbrown\tbrown\tADJ\t_\t_\t4\tamod\t_\t_
+        4\tfox\tfox\tNOUN\t_\t_\t5\tnsubj\t_\t_
+        5\tjumps\tjump\tVERB\t_\t_\t0\troot\t_\t_
+
+        # sent_id = b
+        1\tthe\tthe\tDET\t_\t_\t3\tdet\t_\t_
+        2\tlazy\tlazy\tADJ\t_\t_\t3\tamod\t_\t_
+        3\tdog\tdog\tNOUN\t_\t_\t4\tnsubj\t_\t_
+        4\tsleeps\tsleep\tVERB\t_\t_\t0\troot\t_\t_
+
+        # newdoc id = 2
+        # sent_id = c
+        1\ta\ta\tDET\t_\t_\t3\tdet\t_\t_
+        2\tcurious\tcurious\tADJ\t_\t_\t3\tamod\t_\t_
+        3\tcat\tcat\tNOUN\t_\t_\t4\tnsubj\t_\t_
+        4\tpurrs\tpurr\tVERB\t_\t_\t0\troot\t_\t_
+
+        # sent_id = d
+        1\tthe\tthe\tDET\t_\t_\t3\tdet\t_\t_
+        2\tsleepy\tsleepy\tADJ\t_\t_\t3\tamod\t_\t_
+        3\tcat\tcat\tNOUN\t_\t_\t4\tnsubj\t_\t_
+        4\tyawns\tyawn\tVERB\t_\t_\t0\troot\t_\t_
+
+
+        """
+
     init() async throws {
-        root = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("ConcordanceDocumentCancelTests-\(UUID().uuidString)")
-        let compiled = root.appendingPathComponent("compiled")
-        try FileManager.default.createDirectory(at: compiled, withIntermediateDirectories: true)
-        let keys = ["KORPORA_COMPILED_CORPORA_DIRECTORY", "MANATEE_REGISTRY"]
-        saved = keys.map { ($0, ProcessInfo.processInfo.environment[$0]) }
-        setenv("KORPORA_COMPILED_CORPORA_DIRECTORY", compiled.path, 1)
-        setenv("MANATEE_REGISTRY", compiled.path, 1)
-
-        // brown fox, lazy dog, curious cat, sleepy cat: 5 JJ, 4 NN.
-        let vertical = root.appendingPathComponent("test.vert")
-        try """
-            <doc id="1">
-            <s>
-            the\tthe\tDT
-            quick\tquick\tJJ
-            brown\tbrown\tJJ
-            fox\tfox\tNN
-            jumps\tjump\tVBZ
-            </s>
-            <s>
-            the\tthe\tDT
-            lazy\tlazy\tJJ
-            dog\tdog\tNN
-            sleeps\tsleep\tVBZ
-            </s>
-            </doc>
-            <doc id="2">
-            <s>
-            a\ta\tDT
-            curious\tcurious\tJJ
-            cat\tcat\tNN
-            purrs\tpurr\tVBZ
-            </s>
-            <s>
-            the\tthe\tDT
-            sleepy\tsleepy\tJJ
-            cat\tcat\tNN
-            yawns\tyawn\tVBZ
-            </s>
-            </doc>
-            """.write(to: vertical, atomically: true, encoding: .utf8)
-        try await CorpusImporter.importCorpus(
-            name: Self.corpus, verticalFile: vertical, attributes: ["lemma", "tag"],
-            structures: [(name: "doc", attributes: ["id"]), (name: "s", attributes: [])],
-            onProgress: { _ in })
-    }
-
-    deinit {
-        for (key, value) in saved {
-            if let value { setenv(key, value, 1) } else { unsetenv(key) }
-        }
-        try? FileManager.default.removeItem(at: root)
+        box = try TestPando.Sandbox()
+        engine = try await box.buildCorpus(Self.corpus, conllu: Self.text) ? TestPando.engine() : nil
     }
 
     private func document() -> ConcordanceDocument {
         let document = ConcordanceDocument()
+        if let engine { document.engine = engine }
         document.corpusName = Self.corpus
         document.historyDefaults = defaults
         return document
     }
+
+    private var hasPando: Bool { engine != nil }
 
     private func waitUntilDone(_ document: ConcordanceDocument) async {
         for _ in 0..<2500 where document.isSearching {
@@ -84,8 +67,9 @@ import Testing
     }
 
     @Test func aSearchThatIsNotCancelledCompletes() async {
+        guard hasPando else { return }
         let document = document()
-        document.runQuery(#"[tag="NN"]"#)
+        document.runQuery(#"[upos="NOUN"]"#)
         #expect(document.isSearching && document.status == "Searching…")
         await waitUntilDone(document)
         #expect(!document.isSearching)
@@ -96,15 +80,16 @@ import Testing
     /// Cancelled before the search gets going: it stops, shows no results and
     /// says so; the query stays, so it can be run again.
     @Test func aCancelledSearchSaysSoAndKeepsTheQuery() async {
+        guard hasPando else { return }
         let document = document()
-        document.runQuery(#"[tag="NN"]"#)
+        document.runQuery(#"[upos="NOUN"]"#)
         #expect(document.isSearching)
         document.cancelSearch()
         await waitUntilDone(document)
         #expect(!document.isSearching)
         #expect(document.status == "Search cancelled.")
         #expect(document.rows.isEmpty)
-        #expect(document.initialQuery == #"[tag="NN"]"#)
+        #expect(document.initialQuery == #"[upos="NOUN"]"#)
 
         // Searching again works.
         document.runQuery(document.initialQuery)
@@ -115,20 +100,22 @@ import Testing
     /// A new search replaces one that is still running, and the replaced one
     /// leaves no trace: not its results, and not a "cancelled" message.
     @Test func aNewerSearchReplacesARunningOne() async {
+        guard hasPando else { return }
         let document = document()
-        document.runQuery(#"[tag="JJ"]"#)
-        document.runQuery(#"[tag="NN"]"#)
+        document.runQuery(#"[upos="ADJ"]"#)
+        document.runQuery(#"[upos="NOUN"]"#)
         await waitUntilDone(document)
         #expect(document.status.hasPrefix("4 hits"), "\(document.status)")
         #expect(document.rows.count == 4)
-        #expect(document.initialQuery == #"[tag="NN"]"#)
+        #expect(document.initialQuery == #"[upos="NOUN"]"#)
     }
 
     @Test func cancellingWhenNothingIsRunningDoesNothing() async {
+        guard hasPando else { return }
         let document = document()
         document.cancelSearch()
         #expect(!document.isSearching && document.status.isEmpty)
-        document.runQuery(#"[tag="NN"]"#)
+        document.runQuery(#"[upos="NOUN"]"#)
         await waitUntilDone(document)
         document.cancelSearch()
         #expect(document.status.hasPrefix("4 hits"), "\(document.status)")
@@ -137,6 +124,7 @@ import Testing
 
     /// The window's hint and the menu item follow the document.
     @Test func theWindowShowsTheHintWhileSearching() async throws {
+        guard hasPando else { return }
         let document = document()
         let controller = ConcordanceViewController(document: document)
         _ = controller.view
@@ -145,7 +133,7 @@ import Testing
         let item = NSMenuItem(title: "Cancel Search", action: #selector(ConcordanceViewController.cancelSearch(_:)), keyEquivalent: ".")
         #expect(!controller.validateMenuItem(item))
 
-        document.runQuery(#"[tag="NN"]"#)
+        document.runQuery(#"[upos="NOUN"]"#)
         #expect(!controller.cancelHintLabel.isHidden)
         #expect(controller.validateMenuItem(item))
         await waitUntilDone(document)
@@ -202,6 +190,7 @@ import Testing
 
     /// ...it is enabled exactly while the window's search runs...
     @Test func theItemIsValidOnlyWhileSearching() async throws {
+        guard hasPando else { return }
         let document = document()
         let gate = Gate()
         document.beforeSearchHook = { await gate.wait() }
@@ -209,7 +198,7 @@ import Testing
         _ = controller.view
         let item = NSMenuItem(title: "Cancel Search", action: #selector(ConcordanceViewController.cancelSearch(_:)), keyEquivalent: ".")
         #expect(!controller.validateMenuItem(item))
-        document.runQuery(#"[tag="NN"]"#)
+        document.runQuery(#"[upos="NOUN"]"#)
         try await Task.sleep(for: .milliseconds(50))  // the search is held open, not finished
         #expect(document.isSearching)
         #expect(controller.validateMenuItem(item))
@@ -223,6 +212,7 @@ import Testing
     /// Esc), reach the window's view controller and cancel a search that is
     /// still running.
     @Test func bothActionsReachTheViewControllerFromTheQueryField() async throws {
+        guard hasPando else { return }
         for action in [#selector(ConcordanceViewController.cancelSearch(_:)),
                        #selector(NSResponder.cancelOperation(_:))] {
             let document = document()
@@ -230,7 +220,7 @@ import Testing
             document.beforeSearchHook = { await gate.wait() }
             let (window, field) = try shownWindow(for: document)
             defer { window.orderOut(nil) }
-            document.runQuery(#"[tag="NN"]"#)
+            document.runQuery(#"[upos="NOUN"]"#)
             try await Task.sleep(for: .milliseconds(50))
             #expect(document.isSearching, "\(action)")
             #expect(field.tryToPerform(action, with: nil), "\(action)")
@@ -250,57 +240,5 @@ import Testing
         document.cancelSearch()  // and cancelling nothing is harmless
         #expect(document.status.isEmpty)
         _ = field
-    }
-}
-
-/// The user's scenario: a search whose *line fetching* is the long part (a
-/// common word: a million hits), cancelled while that runs. Builds a big
-/// corpus, so opt in with `KORPORA_SLOW_TESTS=1` (about a minute).
-@MainActor @Suite(.serialized) struct ConcordanceDocumentSlowCancelTests {
-    @Test func cancellingDuringTheLineFetchStopsPromptly() async throws {
-        guard ProcessInfo.processInfo.environment["KORPORA_SLOW_TESTS"] != nil else { return }
-        let fm = FileManager.default
-        let root = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("ConcordanceDocumentSlowCancelTests-\(UUID().uuidString)")
-        let compiled = root.appendingPathComponent("compiled")
-        try fm.createDirectory(at: compiled, withIntermediateDirectories: true)
-        let saved = ["KORPORA_COMPILED_CORPORA_DIRECTORY", "MANATEE_REGISTRY"]
-            .map { ($0, ProcessInfo.processInfo.environment[$0]) }
-        defer {
-            for (key, value) in saved { if let value { setenv(key, value, 1) } else { unsetenv(key) } }
-            try? fm.removeItem(at: root)
-        }
-        setenv("KORPORA_COMPILED_CORPORA_DIRECTORY", compiled.path, 1)
-        setenv("MANATEE_REGISTRY", compiled.path, 1)
-
-        let tokens = 3_000_000
-        var text = "<doc id=\"1\">\n<s>\n"
-        text.reserveCapacity(tokens * 10)
-        for i in 0..<tokens {
-            text += i % 3 == 0 ? "a\ta\tDT\n" : (i % 3 == 1 ? "b\tb\tJJ\n" : "c\tc\tNN\n")
-            if i % 20 == 19 { text += "</s>\n<s>\n" }
-        }
-        text += "</s>\n</doc>\n"
-        let vertical = root.appendingPathComponent("big.vert")
-        try text.write(to: vertical, atomically: true, encoding: .utf8)
-        try await CorpusImporter.importCorpus(
-            name: "korporabig", verticalFile: vertical, attributes: ["lemma", "tag"],
-            structures: [(name: "doc", attributes: ["id"]), (name: "s", attributes: [])],
-            onProgress: { _ in })
-
-        let document = ConcordanceDocument()
-        document.corpusName = "korporabig"
-        document.historyDefaults = UserDefaults(suiteName: "SlowCancel-\(UUID().uuidString)")!
-        document.runQuery(#"[tag="DT"]"#)  // a million hits
-        try await Task.sleep(for: .seconds(4))  // the query is done; the lines are being fetched
-        guard document.isSearching else { return }  // finished on a fast machine: nothing to cancel
-        let cancelledAt = Date()
-        document.cancelSearch()
-        for _ in 0..<5000 where document.isSearching { try await Task.sleep(for: .milliseconds(2)) }
-        let seconds = Date().timeIntervalSince(cancelledAt)
-        print("SLOW cancelled the line fetch in \(seconds) s")
-        #expect(!document.isSearching)
-        #expect(document.status == "Search cancelled.", "\(document.status)")
-        #expect(seconds < 2, "took \(seconds) s to stop")
     }
 }

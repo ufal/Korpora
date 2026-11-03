@@ -1,6 +1,6 @@
 import AppKit
 import Foundation
-import ManateeKit
+import KorporaEngine
 import Testing
 
 @testable import Korpora
@@ -148,7 +148,7 @@ struct CQLCompletionCandidateTests {
     @Test func bothPositionalAndStructuralNamesAreOffered() {
         #expect(
             CQLCompletionProvider.attributeNames(from: info)
-                == ["doc.author", "doc.id", "lemma", "tag", "word"])
+                == ["doc_author", "doc_id", "lemma", "tag", "word"])
     }
 
     /// A structure with no attributes of its own contributes nothing -
@@ -212,12 +212,12 @@ struct CQLQueryFieldCompletionTests {
 
     /// The regression the click-test caught: typing `[` offered nothing.
     @Test func typingAnOpenBracketOffersEveryAttributeName() {
-        #expect(candidates("[") == ["doc.author", "doc.id", "lemma", "tag", "word"])
+        #expect(candidates("[") == ["doc_author", "doc_id", "lemma", "tag", "word"])
     }
 
     @Test func aPartialAttributeNameNarrowsTheList() {
         #expect(candidates("[l") == ["lemma"])
-        #expect(candidates("[doc.") == ["doc.author", "doc.id"])
+        #expect(candidates("[doc_") == ["doc_author", "doc_id"])
     }
 
     @Test func afterAnAttributeNameAndSpaceOffersOperators() {

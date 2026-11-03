@@ -27,7 +27,7 @@ final class OperationsPopoverController: NSViewController {
     private static func group(fromTag tag: Int) -> Int { -(tag + 1) }
 
     private let stack = NSStackView()
-    private let emptyLabel = NSTextField(labelWithString: "No active sort, filter, shuffle, sample, or line groups.")
+    private let emptyLabel = NSTextField(labelWithString: "No active sort, shuffle, sample, or line groups.")
     private static let width: CGFloat = 320
 
     override func loadView() {

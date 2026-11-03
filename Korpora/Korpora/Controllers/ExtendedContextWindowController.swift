@@ -1,5 +1,5 @@
 import Cocoa
-import ManateeKit
+import KorporaEngine
 
 /// KonText's own "concordance detail" view (Phase 6.6): much wider context
 /// than the table row shows, for one specific hit, with the match itself

@@ -1,5 +1,5 @@
 import Cocoa
-import ManateeKit
+import KorporaEngine
 
 /// Content of the toolbar's Attributes popover - which secondary positional
 /// attributes (e.g. "lemma", "tag") to show alongside the primary word text
@@ -17,7 +17,7 @@ final class AttributeDisplayPopoverController: NSViewController {
     /// The primary attribute already shown as each token's main text -
     /// excluded from the row list, since offering it again as a
     /// "secondary" attribute would just duplicate what's already visible.
-    var primaryAttribute: String = "word"
+    var primaryAttribute: String = "form"
     var selectedInlineAttributes: [String] = []
     var selectedTooltipAttributes: [String] = []
     /// Fully-qualified name (e.g. "doc.title") or nil for "None" - see

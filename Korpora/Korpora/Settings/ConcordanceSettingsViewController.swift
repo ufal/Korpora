@@ -1,14 +1,14 @@
 import Cocoa
+import KorporaEngine
 
 /// Global defaults for **brand-new** concordance documents - not
 /// per-document overrides, which stay on the concordance window's own
-/// toolbar popovers (Context, the KWIC/Sentence switch). Changing a value
+/// toolbar popovers (Context). Changing a value
 /// here never affects an already-open window, only the next one created.
 final class ConcordanceSettingsViewController: NSViewController {
     private let leftContextField = NSTextField(string: "")
     private let rightContextField = NSTextField(string: "")
-    private let viewModeControl = NSSegmentedControl(
-        labels: ["KWIC", "Sentence"], trackingMode: .selectOne, target: nil, action: nil)
+    private let maxLinesField = NSTextField(string: "")
     private let extendedContextField = NSTextField(string: "")
     // "Window", not "Sheet": the `.sheet` case keeps its name/rawValue for
     // UserDefaults backward compatibility, but it has presented a plain
@@ -26,7 +26,7 @@ final class ConcordanceSettingsViewController: NSViewController {
         let contextLabel = NSTextField(labelWithString: "Default context width:")
         let leftLabel = NSTextField(labelWithString: "Left:")
         let rightLabel = NSTextField(labelWithString: "Right:")
-        let viewModeLabel = NSTextField(labelWithString: "Default view:")
+        let viewModeLabel = NSTextField(labelWithString: "Load at most (hits):")
         let extendedLabel = NSTextField(labelWithString: "Extended context tokens:")
         extendedLabel.font = .systemFont(ofSize: 11)
         extendedLabel.textColor = .secondaryLabelColor
@@ -35,9 +35,7 @@ final class ConcordanceSettingsViewController: NSViewController {
         leftContextField.delegate = self
         rightContextField.delegate = self
         extendedContextField.delegate = self
-        viewModeControl.segmentStyle = .texturedRounded
-        viewModeControl.target = self
-        viewModeControl.action = #selector(viewModeChanged)
+        maxLinesField.delegate = self
         extendedContextDisplayControl.segmentStyle = .texturedRounded
         extendedContextDisplayControl.target = self
         extendedContextDisplayControl.action = #selector(extendedContextDisplayModeChanged)
@@ -48,13 +46,13 @@ final class ConcordanceSettingsViewController: NSViewController {
         leftContextField.stringValue = String(settings.defaultLeftContext)
         rightContextField.stringValue = String(settings.defaultRightContext)
         extendedContextField.stringValue = String(settings.defaultExtendedContextTokens)
-        viewModeControl.selectedSegment = settings.defaultViewMode == .sentence ? 1 : 0
+        maxLinesField.stringValue = String(settings.maxConcordanceLines)
         extendedContextDisplayControl.selectedSegment = settings.extendedContextDisplayMode == .inline ? 1 : 0
         allowMultipleExtendedContextsButton.state = settings.allowMultipleExtendedContexts ? .on : .off
 
         let views: [NSView] = [
             contextLabel, leftLabel, leftContextField, rightLabel, rightContextField,
-            viewModeLabel, viewModeControl, extendedLabel, extendedContextField,
+            viewModeLabel, maxLinesField, extendedLabel, extendedContextField,
             extendedDisplayLabel, extendedContextDisplayControl,
             allowMultipleExtendedContextsButton,
         ]
@@ -65,6 +63,7 @@ final class ConcordanceSettingsViewController: NSViewController {
         leftContextField.widthAnchor.constraint(equalToConstant: 50).isActive = true
         rightContextField.widthAnchor.constraint(equalToConstant: 50).isActive = true
         extendedContextField.widthAnchor.constraint(equalToConstant: 50).isActive = true
+        maxLinesField.widthAnchor.constraint(equalToConstant: 80).isActive = true
 
         NSLayoutConstraint.activate([
             contextLabel.topAnchor.constraint(equalTo: root.topAnchor, constant: 24),
@@ -81,8 +80,8 @@ final class ConcordanceSettingsViewController: NSViewController {
 
             viewModeLabel.topAnchor.constraint(equalTo: leftLabel.bottomAnchor, constant: 20),
             viewModeLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20),
-            viewModeControl.centerYAnchor.constraint(equalTo: viewModeLabel.centerYAnchor),
-            viewModeControl.leadingAnchor.constraint(equalTo: viewModeLabel.trailingAnchor, constant: 8),
+            maxLinesField.centerYAnchor.constraint(equalTo: viewModeLabel.centerYAnchor),
+            maxLinesField.leadingAnchor.constraint(equalTo: viewModeLabel.trailingAnchor, constant: 8),
 
             extendedLabel.topAnchor.constraint(equalTo: viewModeLabel.bottomAnchor, constant: 20),
             extendedLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20),
@@ -110,10 +109,6 @@ final class ConcordanceSettingsViewController: NSViewController {
         preferredContentSize = NSSize(width: 460, height: 260)
     }
 
-    @objc private func viewModeChanged() {
-        AppSettings.shared.defaultViewMode = viewModeControl.selectedSegment == 1 ? .sentence : .kwic
-    }
-
     @objc private func extendedContextDisplayModeChanged() {
         AppSettings.shared.extendedContextDisplayMode = extendedContextDisplayControl.selectedSegment == 1 ? .inline : .sheet
     }
@@ -132,6 +127,9 @@ extension ConcordanceSettingsViewController: NSTextFieldDelegate {
             settings.defaultLeftContext = max(Int(field.stringValue) ?? settings.defaultLeftContext, 0)
         case rightContextField:
             settings.defaultRightContext = max(Int(field.stringValue) ?? settings.defaultRightContext, 0)
+        case maxLinesField:
+            settings.maxConcordanceLines = max(Int(field.stringValue.filter(\.isNumber)) ?? settings.maxConcordanceLines, 100)
+            field.stringValue = String(settings.maxConcordanceLines)
         case extendedContextField:
             settings.defaultExtendedContextTokens = max(Int(field.stringValue) ?? settings.defaultExtendedContextTokens, 1)
         default:

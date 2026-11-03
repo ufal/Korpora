@@ -125,9 +125,9 @@ final class CQLQueryField: NSView {
         storage.beginEditing()
         storage.removeAttribute(.foregroundColor, range: full)
         storage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: full)
-        Self.color(pattern: #"\"(?:[^\"\\]|\\.)*\""#, in: text, storage: storage, color: .systemRed)
-        Self.color(pattern: #"\b(within|containing|meet|union|contains)\b"#, in: text, storage: storage, color: .systemPurple)
-        Self.color(pattern: #"(!=|=|<|>|!)"#, in: text, storage: storage, color: .systemOrange)
+        Self.color(pattern: #"\"(?:[^\"\\]|\\.)*\"|(?<=[=!]\s?)/(?:[^/\\]|\\.)+/"#, in: text, storage: storage, color: .systemRed)
+        Self.color(pattern: CQLCompletionProvider.keywordPattern, in: text, storage: storage, color: .systemPurple)
+        Self.color(pattern: #"(!=|>=|<=|::|=:|=|<|>|!)"#, in: text, storage: storage, color: .systemOrange)
         Self.color(pattern: #"</?[a-zA-Z][\w]*[^>]*>"#, in: text, storage: storage, color: .systemTeal)
         storage.endEditing()
     }
@@ -140,9 +140,9 @@ final class CQLQueryField: NSView {
         let text = query as NSString
         let storage = NSTextStorage(
             string: query, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
-        Self.color(pattern: #"\"(?:[^\"\\]|\\.)*\""#, in: text, storage: storage, color: .systemRed)
-        Self.color(pattern: #"\b(within|containing|meet|union|contains)\b"#, in: text, storage: storage, color: .systemPurple)
-        Self.color(pattern: #"(!=|=|<|>|!)"#, in: text, storage: storage, color: .systemOrange)
+        Self.color(pattern: #"\"(?:[^\"\\]|\\.)*\"|(?<=[=!]\s?)/(?:[^/\\]|\\.)+/"#, in: text, storage: storage, color: .systemRed)
+        Self.color(pattern: CQLCompletionProvider.keywordPattern, in: text, storage: storage, color: .systemPurple)
+        Self.color(pattern: #"(!=|>=|<=|::|=:|=|<|>|!)"#, in: text, storage: storage, color: .systemOrange)
         Self.color(pattern: #"</?[a-zA-Z][\w]*[^>]*>"#, in: text, storage: storage, color: .systemTeal)
         return storage
     }

@@ -85,7 +85,7 @@ final class HistoryPopoverController: NSViewController {
     }
 
     private func makeRow(tag: Int, entry: QueryHistoryEntry) -> NSButton {
-        let corpusLabel = entry.subcorpusPath != nil ? "\(entry.corpusName) (subcorpus)" : entry.corpusName
+        let corpusLabel = entry.subcorpusName.map { "\(entry.corpusName) / \($0)" } ?? entry.corpusName
         let relative = Self.relativeFormatter.localizedString(for: entry.date, relativeTo: Date())
         // Manually truncated (rather than relying on button-cell wrapping/
         // truncation behavior) to match this codebase's existing preference
