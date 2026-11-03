@@ -98,6 +98,27 @@ import Testing
         for popoverWindow in NSApp.windows where popoverWindow !== window && popoverWindow.className.contains("Popover") { popoverWindow.close() }
     }
 
+    /// The view a popover hangs from is left over the segment afterwards; it must not catch the
+    /// next click on that segment.
+    @Test func theLeftoverPopoverAnchorDoesNotCatchClicks() throws {
+        let controller = shownController()
+        let window = try #require(controller.window)
+        defer { window.orderOut(nil) }
+        let toolbar = try #require(window.toolbar)
+        let display = try #require(toolbar.items.first { $0.itemIdentifier == ConcordanceWindowController.ItemID.displayGroup } as? NSToolbarItemGroup)
+        display.selectedIndex = 1
+        _ = display.target?.perform(display.action, with: display)
+        func segmented(_ view: NSView) -> [NSSegmentedControl] { ((view as? NSSegmentedControl).map { [$0] } ?? []) + view.subviews.flatMap(segmented) }
+        let root = try #require(window.contentView?.superview)
+        let control = try #require(segmented(root).first { $0.segmentCount == 2 })
+        let anchors = control.subviews.filter { $0 is NSButton }
+        #expect(!anchors.isEmpty)
+        for anchor in anchors {
+            #expect(control.hitTest(control.convert(NSPoint(x: anchor.frame.midX, y: anchor.frame.midY), to: control.superview)) !== anchor)
+        }
+        for popoverWindow in NSApp.windows where popoverWindow !== window && popoverWindow.className.contains("Popover") { popoverWindow.close() }
+    }
+
     @Test func theRealToolbarHoldsTheGroupsAndSpaces() throws {
         let controller = shownController()
         let window = try #require(controller.window)

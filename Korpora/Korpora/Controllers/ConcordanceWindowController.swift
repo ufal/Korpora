@@ -212,7 +212,7 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
               let leaf = makeLeafItem(group.items[sender.selectedIndex]),
               let button = leaf.view as? NSButton, let action = button.action else { return }
         anchorButton?.removeFromSuperview()
-        let anchor = NSButton(frame: .zero)
+        let anchor = PopoverAnchorButton(frame: .zero)
         anchor.isBordered = false
         anchor.title = ""
         if let control = sender.view ?? segmentedControl(for: Self.groups.firstIndex(where: { $0.id == group.id }) ?? 0) {
@@ -231,6 +231,12 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
     }
 
     private var anchorButton: NSButton?
+
+    /// Only there for a popover to hang from: it must never take a click meant for the segment
+    /// it sits over (it stays there after the popover closes).
+    private final class PopoverAnchorButton: NSButton {
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    }
 
     /// The group's segmented control, found in the window's toolbar (a group item has no view of
     /// its own to ask for): among the controls with the right number of segments, left to right,
