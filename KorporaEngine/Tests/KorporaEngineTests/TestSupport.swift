@@ -35,6 +35,57 @@ enum TestPando {
 
         """
 
+    /// Five hits of "cat" with different neighbours, in two documents with metadata.
+    static let catsConllu = """
+        # newdoc id = d1
+        # meta::genre = fiction
+        # meta::title = Alpha book
+        # sent_id = s1
+        1\tthe\tthe\tDET\t_\t_\t3\tdet\t_\t_
+        2\tbig\tbig\tADJ\t_\t_\t3\tamod\t_\t_
+        3\tcat\tcat\tNOUN\t_\t_\t4\tnsubj\t_\t_
+        4\tsleeps\tsleep\tVERB\t_\t_\t0\troot\t_\t_
+
+        # sent_id = s2
+        1\ta\ta\tDET\t_\t_\t3\tdet\t_\t_
+        2\tsmall\tsmall\tADJ\t_\t_\t3\tamod\t_\t_
+        3\tcat\tcat\tNOUN\t_\t_\t4\tnsubj\t_\t_
+        4\teats\teat\tVERB\t_\t_\t0\troot\t_\t_
+
+        # sent_id = s3
+        1\tone\tone\tNUM\t_\t_\t2\tnummod\t_\t_
+        2\tcat\tcat\tNOUN\t_\t_\t3\tnsubj\t_\t_
+        3\truns\trun\tVERB\t_\t_\t0\troot\t_\t_
+
+        # newdoc id = d2
+        # meta::genre = news report
+        # meta::title = Beta
+        # sent_id = s4
+        1\tmy\tmy\tPRON\t_\t_\t2\tnmod\t_\t_
+        2\tcat\tcat\tNOUN\t_\t_\t3\tnsubj\t_\t_
+        3\tSleeps\tsleep\tVERB\t_\t_\t0\troot\t_\t_
+
+        # sent_id = s5
+        1\tcat\tcat\tNOUN\t_\t_\t0\troot\t_\t_
+
+
+        """
+
+    static func indexTool() throws -> URL {
+        _ = try library()
+        return URL(fileURLWithPath: try XCTUnwrap(libraryPath)).deletingLastPathComponent().appendingPathComponent("pando-index")
+    }
+
+    /// Indexes `conllu` as a corpus called `name` in the sandbox's library.
+    @discardableResult
+    static func buildCorpus(_ name: String, conllu: String, in box: Sandbox) async throws -> PandoEngine {
+        let input = box.root.appendingPathComponent("in-\(name)")
+        try FileManager.default.createDirectory(at: input, withIntermediateDirectories: true)
+        try conllu.write(to: input.appendingPathComponent("t.conllu"), atomically: true, encoding: .utf8)
+        _ = try await CorpusImporter.importCorpus(name: name, inputs: [input], tool: try indexTool())
+        return PandoEngine(library: try library())
+    }
+
     /// Points the library at fresh temporary folders for the duration of a test.
     final class Sandbox {
         let root: URL

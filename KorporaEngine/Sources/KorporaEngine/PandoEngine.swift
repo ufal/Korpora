@@ -1,12 +1,10 @@
-
 import Foundation
 
-/// pando as a `CorpusEngine` (docs/pando-analysis.md, Phase C spike).
+/// pando as a `CorpusEngine` (docs/pando-gui-plan.md).
 ///
-/// A corpus is an index directory: `name` is a folder under `corporaRoot`, or
-/// an absolute path. What pando has no equivalent for (sort, filter, line
-/// groups, subcorpora, ...) isn't in `capabilities` and throws
-/// `PandoError.unsupported` if called anyway.
+/// A corpus is an index folder found by name in the `CorpusLibrary` (or given
+/// as an absolute path). A query loads up to a limit of hits; sorting,
+/// sampling, shuffling and line groups work on those (`PandoConcordance`).
 public struct PandoEngine: CorpusEngine {
     public let library: PandoLibrary
     private let resolve: @Sendable (String) -> String?
@@ -25,7 +23,7 @@ public struct PandoEngine: CorpusEngine {
 
     public var id: String { "pando" }
 
-    public var capabilities: EngineCapabilities { [] }
+    public var capabilities: EngineCapabilities { .all }
 
     func directory(for name: String) throws -> String {
         guard let path = resolve(name) else {
@@ -38,14 +36,21 @@ public struct PandoEngine: CorpusEngine {
         try PandoCorpus(library: library, name: name, directory: directory(for: name))
     }
 
-    public func openConcordance(query: String, in corpus: any CorpusHandle) async throws -> any ConcordanceHandle {
+    public func openConcordance(query: String, in corpus: any CorpusHandle, limit: Int) async throws -> any ConcordanceHandle {
         guard let corpus = corpus as? PandoCorpus else { throw CorpusEngineError.foreignHandle(expected: id) }
-        return try await PandoConcordance(corpus: corpus, query: query)
+        return try await PandoConcordance(corpus: corpus, query: query, limit: limit)
     }
 }
 
-/// An opened pando index. Everything but `info`-like reads opens its own
-/// engine handle, because one handle isn't for use from two threads at once.
+enum PandoNames {
+    /// pando names a region attribute `structure_attribute`; the app writes `structure.attribute`.
+    static func attribute(_ name: String) -> String {
+        name.replacingOccurrences(of: ".", with: "_")
+    }
+}
+
+/// An opened pando index. Reads that must not share a thread with another
+/// handle use their own engine handle (an open handle holds no file descriptors).
 public actor PandoCorpus: CorpusHandle {
     public nonisolated let name: String
     nonisolated let library: PandoLibrary
@@ -84,16 +89,13 @@ public actor PandoCorpus: CorpusHandle {
 
     private func values(_ attribute: String, limit: Int) throws -> (unique: Int, rows: [(value: String, frequency: Int)]) {
         let object = try library.result(library.run(
-            handle, "show values \(Self.pandoAttribute(attribute))", PandoLibrary.json(["limit": limit])))
+            handle, "show values \(PandoNames.attribute(attribute))", PandoLibrary.json(["limit": limit])))
         let rows = (object["values"] as? [[String: Any]] ?? []).compactMap { row -> (String, Int)? in
             guard let value = row["value"] as? String, let count = row["count"] as? Int else { return nil }
             return (value, count)
         }
         return (object["unique"] as? Int ?? rows.count, rows)
     }
-
-    /// Manatee corpora say `word`; pando's token text attribute is `form`.
-    static func pandoAttribute(_ attribute: String) -> String { attribute == "word" ? "form" : attribute }
 
     public func attributeValueCount(attribute: String) throws -> Int {
         try values(attribute, limit: 1).unique
@@ -103,10 +105,15 @@ public actor PandoCorpus: CorpusHandle {
         try values(attribute, limit: Int.max / 2).rows.map(\.value).sorted()
     }
 
+    private static func matcher(_ pattern: String, ignoreCase: Bool) throws -> NSRegularExpression {
+        try NSRegularExpression(pattern: "^(?:\(pattern))$", options: ignoreCase ? [.caseInsensitive] : [])
+    }
+
     public func attributeValues(attribute: String, matching pattern: String, ignoreCase: Bool, limit: Int) throws -> [String] {
-        let all = try attributeValues(attribute: attribute)
-        let regex = try NSRegularExpression(pattern: "^(?:\(pattern))$", options: ignoreCase ? [.caseInsensitive] : [])
-        let hits = all.filter { regex.firstMatch(in: $0, range: NSRange($0.startIndex..., in: $0)) != nil }
+        let regex = try Self.matcher(pattern, ignoreCase: ignoreCase)
+        let hits = try attributeValues(attribute: attribute).filter {
+            regex.firstMatch(in: $0, range: NSRange($0.startIndex..., in: $0)) != nil
+        }
         return limit > 0 ? Array(hits.prefix(limit)) : hits
     }
 
@@ -116,28 +123,10 @@ public actor PandoCorpus: CorpusHandle {
 
     public func topAttributeValues(attribute: String, matching pattern: String, ignoreCase: Bool, limit: Int)
         throws -> [(value: String, frequency: Int)] {
-        let regex = try NSRegularExpression(pattern: "^(?:\(pattern))$", options: ignoreCase ? [.caseInsensitive] : [])
+        let regex = try Self.matcher(pattern, ignoreCase: ignoreCase)
         let hits = try values(attribute, limit: Int.max / 2).rows.filter {
             regex.firstMatch(in: $0.value, range: NSRange($0.value.startIndex..., in: $0.value)) != nil
         }
         return Array(hits.prefix(limit))
-    }
-
-    // MARK: Not available
-
-    public func createSubcorpus(named subcorpusName: String, structure: String, query: String) throws -> String {
-        throw PandoError.unsupported("Subcorpora")
-    }
-
-    public func structuralAttributeValue(at position: Int, attribute: String) throws -> String {
-        throw PandoError.unsupported("Looking up a structure attribute at a position")
-    }
-
-    public func positionalAttributeRange(from fromPosition: Int, to toPosition: Int, attribute: String) throws -> String {
-        throw PandoError.unsupported("Extended context")
-    }
-
-    public func openSubcorpusHandle(atPath path: String) throws -> any CorpusHandle {
-        throw PandoError.unsupported("Subcorpora")
     }
 }
