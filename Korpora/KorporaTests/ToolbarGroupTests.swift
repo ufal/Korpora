@@ -86,9 +86,14 @@ import Testing
         defer { window.orderOut(nil) }
         let toolbar = try #require(window.toolbar)
         let result = try #require(toolbar.items.first { $0.itemIdentifier == ConcordanceWindowController.ItemID.resultGroup } as? NSToolbarItemGroup)
-        for index in [0, 1] {  // Sort, Shuffle
+        for index in [0, 1, 2] {  // Sort, Shuffle, Sample
             result.selectedIndex = index
             _ = result.target?.perform(result.action, with: result)
+        }
+        let display = try #require(toolbar.items.first { $0.itemIdentifier == ConcordanceWindowController.ItemID.displayGroup } as? NSToolbarItemGroup)
+        for index in [0, 1] {  // Context, Attributes
+            display.selectedIndex = index
+            _ = display.target?.perform(display.action, with: display)
         }
         for popoverWindow in NSApp.windows where popoverWindow !== window && popoverWindow.className.contains("Popover") { popoverWindow.close() }
     }
