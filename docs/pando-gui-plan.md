@@ -92,3 +92,14 @@ Attributes on context tokens; sentence-bounded context through the C API; a hit-
 ### Next
 Click-through of the whole UI; the workshop (plain text and documents to corpus through Flexiconv and Flexipipe in a
 downloaded Python environment); pagination beyond the load limit (6.11); UD-aware word profiles.
+
+## Scope for 1.0 (decided 2026-11-03)
+
+In: the pando-only concordancer as it is, with menu commands for every toolbar action and a
+customizable toolbar (done); still to do: exercise the release path (notarized build, clean-VM smoke
+test), settle pando's licence for redistribution, and paging beyond the 10,000-hit load cap (6.11).
+
+Out, for 2.0: importing more formats and plain text (the corpus workshop, via Flexiconv/Flexipipe), the
+CWB-vertical/Manatee converter, a remote FQS backend. The pando limits (attributes on context tokens,
+sentence context through the C API, hit-position histogram) are not tied to a release: support is
+added when a feature needs it.
