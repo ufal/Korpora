@@ -363,6 +363,62 @@ would be a read-mostly experience until pando or the app fills them. Next steps 
 toolbar and menus, corpus discovery/"Add pando corpus" in Settings, a pando-aware query field (CQL colouring and dependency
 operators), `fragment` for secondary attributes in context, and the dispersion plot via a pando position query.
 
+## GUI integration: pando corpora treated like Manatee corpora (analysis 2026-11-03)
+
+Question: if a pando corpus is simply another corpus in the app, what is different, apart from new query-language options
+(and without trees)? Method: every GUI feature checked against the code (what it asks of the engine) and against what pando
+offers (tested on its sample index, plus its wiki). Verdicts: **OK** works as is; **ADAPT** works after app work, no pando
+change; **UPSTREAM** needs something from pando; **GAP** not available at first.
+
+### Corpora and Settings
+| Feature | Verdict | Notes |
+|---|---|---|
+| Corpus list in the New Concordance sheet | ADAPT | Built from Manatee's registry (`CorpusRegistry`); needs one list with an engine tag per corpus. A pando corpus is an index directory (`corpus.info`), not a registry file; the same name may exist in both engines, so identity is (engine, name). |
+| Settings > Corpora (Source column, add, remove, Keep in Memory) | ADAPT | "Add existing" = pick an index folder (linked, like added registry files); remove keeps/deletes the folder; Keep in Memory = pando's `preload` at open (the residency manager reads Manatee data files, engine-specific). |
+| Import a corpus | ADAPT / GAP | Manatee: vertical file via `encodevert`. pando indexes CoNLL-U/JSONL (`pando-index`), not verticals. A "Import UD/CoNLL-U" sheet is natural; a generic vertical would need our own vertical-to-JSONL converter. |
+| Corpus info, attribute lists | ADAPT | From `info()`, works, but **attribute names differ** (`word/lemma/tag` vs `form/lemma/upos/xpos/deprel/feats`) and `"word"` is hard-coded in 6 places (default KWIC attribute, attribute popover, sort popover, column-header sort). Needs a per-corpus default attribute in `CorpusInfo`. |
+| Subcorpora (create from the value picker, choose per search, `.subc` files) | ADAPT | pando has no subcorpus object, but its global filters (`:: match.text_genre = "Book"`) express the same thing: a subcorpus becomes a saved restriction (our `SubcorpusRestriction` is already that model) appended to every query. Value counts for the picker come from `show values`; subcorpus size for the status line / per-million needs a computation. Verify that region-value counts mean documents, not tokens. |
+
+### Searching
+| Feature | Verdict | Notes |
+|---|---|---|
+| Run a query, KWIC table, status line, hit totals, cancel with Cmd-. | OK | Tested through `ConcordanceDocument` (`pando_cancel`; only a pre-cancelled task is tested, not a long running one). Counts follow pando's semantics (default `within`, sequences across sentences) and can differ from Manatee on the same data. |
+| Left/right context in tokens; sentence view (`-1:s`) | ADAPT | Tokens work. The sentence view needs pando's `sentence` option (the wrapper currently falls back to 10 tokens). |
+| Inline attributes and tooltips on **context** tokens | UPSTREAM | pando returns context as plain strings; only the match tokens carry attributes. Its `fragment` option (XML with every attribute) has them but is server-side and wasn't returned by the plain C API in my test. |
+| Structure column per hit ("doc.title"), Extended Context header | ADAPT / UPSTREAM | The app looks up "structure attribute at corpus position". pando has no such call; region attributes of *hits* are available through `tabulate M a.text_genre` (works). Needs a per-hit lookup API in the protocol, or a small upstream `region at position`. |
+| Extended Context window (wide context for one hit) | ADAPT | Fetch that hit again with a large `context` (`offset=row, limit=1`), or pando's `/context?pos=` through the embedding API. |
+| Sort (attribute, left/right/kwic, span, case, retrograde, up to 4 levels) and header-click sort | ADAPT, uncertain | pando has `sort M by att [%c|%d] [on from..to]` (levels and ranges, but mapping of left-context ranges, retrograde and whether a sort affects later paging through `pando_query` is untested). Fallback: sort the fetched lines in the app (we already hold all lines). |
+| Shuffle, Sample | ADAPT | pando has `--sample` (CLI); neither is in its API options. Since the app already loads every hit, both can be done client-side for any engine. |
+| Positive/negative filter ("keep lines where this query matches within -5..+5") | GAP | Manatee-specific (`set_collocation`); no pando equivalent. Grey out first. |
+| Line groups (assign, filter by group, Operations popover) | ADAPT | Today stored inside Manatee's concordance. They are just labels on lines, so they can live in the document for any engine. |
+| Operations chain, undo/redo, history | ADAPT | The chain replays operations on a fresh result; it must hold engine-neutral operations (client-side ones) and be told which the engine supports (`EngineCapabilities`, exists, not wired yet). |
+
+### Analyses and display
+| Feature | Verdict | Notes |
+|---|---|---|
+| Collocations (+ table/chart) | OK | Tested; the measures map. Scores are the same family but not guaranteed identical to Manatee's (not compared). |
+| Frequencies by attribute, by structure attribute with normalised value | OK / ADAPT | Attribute counts work. Structure attributes (relative to subcorpus size) come back in a different shape (`rf_pct`, `subcorpus_size`); mapping needed. Frequency of a token at an offset is not mapped. |
+| Dispersion plot | ADAPT | Needs hit positions: fetch positions (`raw`) and bin them in the app; fine up to a few million hits; an upstream histogram would be better. |
+| Print, export CSV/TSV, charts, headers | OK | Engine-independent (export loses context attributes, as above). |
+
+### Language and documents
+| Feature | Verdict | Notes |
+|---|---|---|
+| Query field: colouring, completion, auto-pairing | ADAPT | Strings, brackets and attribute names carry over; keywords and operators differ (`within s`, `>`/`<`, `child[..]`, `::`). Needs a per-engine language profile. pando's `--cql manatee` dialect lets existing Manatee-style queries run (`within <s/>`, `!(..)`), but it is partial (`containing`, labels), so the choice should be visible to the user. |
+| Query history | ADAPT | Keyed by corpus name only; needs the engine in the key. |
+| Saved `.corpconc` documents | OK / ADAPT | Carry the engine id already; they must resolve (engine, name) in the unified corpus list, and a subcorpus path becomes a restriction. |
+
+### Not engine-specific but affected
+- **Everything is fetched at once**: the app loads KWIC lines for all hits. That already limits Manatee; pando's JSON for millions of hits is worse. Pagination (plan item 6.11) is a prerequisite for large pando corpora and fits pando's native paging.
+- **Packaging**: libpando in the app bundle (signed and notarized), a build step for it (and for RE2 plus abseil if we want fast regex), and its licence.
+- **Threading**: pando handles are one per concordance (fine); Manatee's two concurrency bugs were found via this seam, so any new engine should get the same stress test.
+
+### Summary
+- Works with no app change beyond what exists: querying, KWIC, cancel, collocations, frequencies, charts, print and export.
+- Works after app work and no pando change: the unified corpus list and Settings, default attribute names, sentence view, Extended Context, structure column (via tabulate), sort/shuffle/sample (client-side or pando `sort`), line groups (client-side), subcorpora (as restrictions), dispersion, per-engine query-language profile, history and document keys.
+- Needs something from pando, or is lost at first: context-token attributes, positive/negative filter, position-to-region lookup (workaround exists), vertical import.
+- Most of the "ADAPT" rows share one idea: a **client-side operations layer** over a plain "query + page" engine (sort, shuffle, sample, line groups, filter on loaded lines). It is also exactly what a remote FQS backend would need, so it is the one piece worth building for both.
+
 ## Recommendation
 
 Do **not** replace Manatee. Run Phase A now (a few days of work, no risk), decide from its numbers.
