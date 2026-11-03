@@ -130,4 +130,50 @@ import Testing
         #expect(!ids.contains(ItemID.sort), "a grouped action is not also a loose item")
         #expect(ids.filter { $0 == .space }.count == 3)
     }
+
+    // MARK: Menu commands and customization
+
+    /// HIG: every toolbar action is also a command in the menu bar.
+    @Test func everyToolbarActionIsAlsoAQueryMenuCommand() throws {
+        let menu = try #require(NSApp.mainMenu)
+        let queryMenu = try #require(menu.items.first { $0.submenu?.title == "Query" }?.submenu)
+        typealias VC = ConcordanceViewController
+        let expected: [(String, Selector)] = [
+            ("History…", #selector(VC.historyTapped(_:))), ("Sort…", #selector(VC.sortTapped(_:))),
+            ("Shuffle", #selector(VC.shuffleTapped(_:))), ("Sample…", #selector(VC.sampleTapped(_:))),
+            ("Context…", #selector(VC.contextTapped(_:))), ("Attributes…", #selector(VC.attributesTapped(_:))),
+            ("Collocations…", #selector(VC.collocationsTapped(_:))), ("Frequencies…", #selector(VC.frequenciesTapped(_:))),
+            ("Dispersion", #selector(VC.dispersionTapped(_:))), ("Operations…", #selector(VC.operationsTapped(_:)))]
+        for (title, action) in expected {
+            let item = try #require(queryMenu.items.first { $0.title == title }, Comment(rawValue: title))
+            #expect(item.action == action && item.target == nil, Comment(rawValue: title))
+        }
+        // The toolbar has exactly these actions (ten), no more.
+        let toolbarCount = ConcordanceWindowController.groups.flatMap(\.items).count + 2
+        #expect(toolbarCount == expected.count)
+        let viewMenu = try #require(menu.items.first { $0.submenu?.title == "View" }?.submenu)
+        #expect(viewMenu.items.contains { $0.action == #selector(NSWindow.runToolbarCustomizationPalette(_:)) })
+        #expect(viewMenu.items.contains { $0.action == #selector(NSWindow.toggleToolbarShown(_:)) })
+    }
+
+    /// From the menu the sender is a menu item, not a button: the popovers must still find a view.
+    @Test func popoverCommandsWorkFromTheMenu() throws {
+        let controller = shownController()
+        let window = try #require(controller.window)
+        defer { window.orderOut(nil) }
+        let viewController = try #require(window.contentViewController as? ConcordanceViewController)
+        typealias VC = ConcordanceViewController
+        for action in [#selector(VC.sortTapped(_:)), #selector(VC.sampleTapped(_:)), #selector(VC.contextTapped(_:)),
+                       #selector(VC.attributesTapped(_:)), #selector(VC.historyTapped(_:)), #selector(VC.operationsTapped(_:)),
+                       #selector(VC.shuffleTapped(_:))] {
+            #expect(NSApp.sendAction(action, to: viewController, from: NSMenuItem()), "\(action)")
+        }
+        for popoverWindow in NSApp.windows where popoverWindow !== window && popoverWindow.className.contains("Popover") { popoverWindow.close() }
+    }
+
+    @Test func theToolbarIsCustomizableAndRemembered() throws {
+        let controller = shownController()
+        let toolbar = try #require(controller.window?.toolbar)
+        #expect(toolbar.allowsUserCustomization && toolbar.autosavesConfiguration)
+    }
 }

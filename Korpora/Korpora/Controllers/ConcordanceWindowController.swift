@@ -59,6 +59,10 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
         let toolbar = NSToolbar(identifier: "ConcordanceToolbar")
         toolbar.delegate = self
         toolbar.displayMode = .iconOnly
+        // The standard "Customize Toolbar…" (View menu or the toolbar's context menu), with the
+        // default set to reset to; the user's layout and display mode are remembered.
+        toolbar.allowsUserCustomization = true
+        toolbar.autosavesConfiguration = true
         window.toolbar = toolbar
         window.toolbarStyle = .unified
     }
@@ -86,6 +90,7 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
             for (sub, leaf) in zip(item.subitems, leaves) {
                 sub.toolTip = (leaf.view as? NSButton)?.toolTip
                 sub.paletteLabel = leaf.label
+                guard flag else { continue }  // palette copies are not the toolbar's items
                 switch leaf.itemIdentifier {
                 case ItemID.sort: sortItem = sub
                 case ItemID.shuffle: shuffleItem = sub
@@ -210,24 +215,32 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
               group.items.indices.contains(sender.selectedIndex),
               let viewController = window?.contentViewController as? ConcordanceViewController,
               let leaf = makeLeafItem(group.items[sender.selectedIndex]),
-              let button = leaf.view as? NSButton, let action = button.action else { return }
+              let action = (leaf.view as? NSButton)?.action else { return }
+        NSApp.sendAction(action, to: viewController, from: anchorView(for: group.items[sender.selectedIndex]))
+    }
+
+    /// A view in the window for a popover to hang from, at the toolbar item's place: the item's
+    /// own button when it stands alone, or a clear button laid over its segment in a group.
+    /// Falls back to the window's content when the toolbar is hidden.
+    func anchorView(for item: NSToolbarItem.Identifier) -> NSView? {
+        if let standalone = window?.toolbar?.items.first(where: { $0.itemIdentifier == item })?.view, standalone.window != nil {
+            return standalone
+        }
+        guard let groupIndex = Self.groups.firstIndex(where: { $0.items.contains(item) }),
+              let index = Self.groups[groupIndex].items.firstIndex(of: item),
+              let control = segmentedControl(for: groupIndex) else { return window?.contentView }
         anchorButton?.removeFromSuperview()
         let anchor = PopoverAnchorButton(frame: .zero)
         anchor.isBordered = false
         anchor.title = ""
-        if let control = sender.view ?? segmentedControl(for: Self.groups.firstIndex(where: { $0.id == group.id }) ?? 0) {
-            var x: CGFloat = 0
-            let segments = (control as? NSSegmentedControl)
-            let count = max(group.items.count, 1)
-            let equal = control.bounds.width / CGFloat(count)
-            func width(_ i: Int) -> CGFloat { (segments?.width(forSegment: i)).flatMap { $0 > 0 ? $0 : nil } ?? equal }
-            for i in 0..<sender.selectedIndex { x += width(i) }
-            let width = width(sender.selectedIndex)
-            anchor.frame = NSRect(x: x, y: 0, width: width, height: control.bounds.height)
-            control.addSubview(anchor)
-            anchorButton = anchor
-        }
-        NSApp.sendAction(action, to: viewController, from: anchor)
+        let segments = control
+        let equal = control.bounds.width / CGFloat(max(Self.groups[groupIndex].items.count, 1))
+        func width(_ i: Int) -> CGFloat { segments.width(forSegment: i) > 0 ? segments.width(forSegment: i) : equal }
+        let x = (0..<index).reduce(CGFloat(0)) { $0 + width($1) }
+        anchor.frame = NSRect(x: x, y: 0, width: width(index), height: control.bounds.height)
+        control.addSubview(anchor)
+        anchorButton = anchor
+        return anchor
     }
 
     private var anchorButton: NSButton?

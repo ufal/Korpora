@@ -119,7 +119,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         main.addItem(queryMenuItem)
         let queryMenu = NSMenu(title: "Query")
         queryMenuItem.submenu = queryMenu
+        // Every toolbar action is also a command here (HIG: toolbar items must be reachable from the menu bar).
+        typealias VC = ConcordanceViewController
+        queryMenu.addItem(withTitle: "History…", action: #selector(VC.historyTapped(_:)), keyEquivalent: "")
+        queryMenu.addItem(.separator())
+        queryMenu.addItem(withTitle: "Sort…", action: #selector(VC.sortTapped(_:)), keyEquivalent: "")
+        queryMenu.addItem(withTitle: "Shuffle", action: #selector(VC.shuffleTapped(_:)), keyEquivalent: "")
+        queryMenu.addItem(withTitle: "Sample…", action: #selector(VC.sampleTapped(_:)), keyEquivalent: "")
+        queryMenu.addItem(.separator())
+        queryMenu.addItem(withTitle: "Context…", action: #selector(VC.contextTapped(_:)), keyEquivalent: "")
+        queryMenu.addItem(withTitle: "Attributes…", action: #selector(VC.attributesTapped(_:)), keyEquivalent: "")
+        queryMenu.addItem(.separator())
+        queryMenu.addItem(withTitle: "Collocations…", action: #selector(VC.collocationsTapped(_:)), keyEquivalent: "")
+        queryMenu.addItem(withTitle: "Frequencies…", action: #selector(VC.frequenciesTapped(_:)), keyEquivalent: "")
+        queryMenu.addItem(withTitle: "Dispersion", action: #selector(VC.dispersionTapped(_:)), keyEquivalent: "")
+        queryMenu.addItem(.separator())
+        queryMenu.addItem(withTitle: "Operations…", action: #selector(VC.operationsTapped(_:)), keyEquivalent: "")
+        queryMenu.addItem(.separator())
         queryMenu.addItem(withTitle: "Cancel Search", action: #selector(ConcordanceViewController.cancelSearch(_:)), keyEquivalent: ".")
+
+        let viewMenuItem = NSMenuItem()
+        main.addItem(viewMenuItem)
+        let viewMenu = NSMenu(title: "View")
+        viewMenuItem.submenu = viewMenu
+        viewMenu.addItem(withTitle: "Hide Toolbar", action: #selector(NSWindow.toggleToolbarShown(_:)), keyEquivalent: "t").keyEquivalentModifierMask = [.command, .option]
+        viewMenu.addItem(withTitle: "Customize Toolbar…", action: #selector(NSWindow.runToolbarCustomizationPalette(_:)), keyEquivalent: "")
 
         let windowMenuItem = NSMenuItem()
         main.addItem(windowMenuItem)

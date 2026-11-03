@@ -159,7 +159,13 @@ final class ConcordanceViewController: NSViewController {
 
     // MARK: - Toolbar actions
 
-    @objc func sortTapped(_ sender: NSButton) {
+    /// What a popover hangs from: the button that was clicked, or, when the action came from a menu
+    /// command, the toolbar item's place in the window.
+    private func popoverAnchor(_ sender: Any?, for item: NSToolbarItem.Identifier) -> NSView {
+        (sender as? NSView) ?? windowController?.anchorView(for: item) ?? view
+    }
+
+    @objc func sortTapped(_ sender: Any?) {
         let popover = NSPopover()
         let controller = SortPopoverController()
         controller.attributes = document.attributeNames
@@ -171,14 +177,15 @@ final class ConcordanceViewController: NSViewController {
         }
         popover.contentViewController = controller
         popover.behavior = .transient
-        popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+        let anchor = popoverAnchor(sender, for: ConcordanceWindowController.ItemID.sort)
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
     }
 
     @objc func shuffleTapped(_ sender: Any) {
         document.performShuffle()
     }
 
-    @objc func sampleTapped(_ sender: NSButton) {
+    @objc func sampleTapped(_ sender: Any?) {
         let popover = NSPopover()
         let controller = SamplePopoverController()
         controller.onApply = { [weak self, weak popover] lines in
@@ -187,10 +194,11 @@ final class ConcordanceViewController: NSViewController {
         }
         popover.contentViewController = controller
         popover.behavior = .transient
-        popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+        let anchor = popoverAnchor(sender, for: ConcordanceWindowController.ItemID.sample)
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
     }
 
-    @objc func attributesTapped(_ sender: NSButton) {
+    @objc func attributesTapped(_ sender: Any?) {
         let popover = NSPopover()
         let controller = AttributeDisplayPopoverController()
         controller.corpusName = document.corpusName
@@ -207,7 +215,8 @@ final class ConcordanceViewController: NSViewController {
         }
         popover.contentViewController = controller
         popover.behavior = .transient
-        popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+        let anchor = popoverAnchor(sender, for: ConcordanceWindowController.ItemID.attributes)
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
     }
 
     /// The structural-attribute column is hidden entirely (rather than
@@ -225,7 +234,7 @@ final class ConcordanceViewController: NSViewController {
         column.title = document.structuralAttributeToShow ?? "Doc"
     }
 
-    @objc func historyTapped(_ sender: NSButton) {
+    @objc func historyTapped(_ sender: Any?) {
         let popover = NSPopover()
         let controller = HistoryPopoverController()
         controller.entries = QueryHistoryStore.recentEntries()
@@ -245,10 +254,11 @@ final class ConcordanceViewController: NSViewController {
         }
         popover.contentViewController = controller
         popover.behavior = .transient
-        popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+        let anchor = popoverAnchor(sender, for: ConcordanceWindowController.ItemID.history)
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
     }
 
-    @objc func contextTapped(_ sender: NSButton) {
+    @objc func contextTapped(_ sender: Any?) {
         let popover = NSPopover()
         let currentLeft = Int(document.leftContext.replacingOccurrences(of: "-", with: "")) ?? 10
         let currentRight = Int(document.rightContext) ?? 10
@@ -259,10 +269,11 @@ final class ConcordanceViewController: NSViewController {
         }
         popover.contentViewController = controller
         popover.behavior = .transient
-        popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+        let anchor = popoverAnchor(sender, for: ConcordanceWindowController.ItemID.context)
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
     }
 
-    @objc func operationsTapped(_ sender: NSButton) {
+    @objc func operationsTapped(_ sender: Any?) {
         let popover = NSPopover()
         let controller = OperationsPopoverController()
         updateOperationsPopover(controller)
@@ -279,7 +290,8 @@ final class ConcordanceViewController: NSViewController {
         }
         popover.contentViewController = controller
         popover.behavior = .transient
-        popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+        let anchor = popoverAnchor(sender, for: ConcordanceWindowController.ItemID.operations)
+        popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
     }
 
     private func updateOperationsPopover(_ controller: OperationsPopoverController) {
@@ -1126,9 +1138,14 @@ extension ConcordanceViewController: NSMenuItemValidation {
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
-        if menuItem.action == #selector(cancelSearch(_:)) {
+        switch menuItem.action {
+        case #selector(cancelSearch(_:)):
             return document.isSearching
+        // Operations on the result: not while line groups are in play (as in the toolbar).
+        case #selector(sortTapped(_:)), #selector(shuffleTapped(_:)), #selector(sampleTapped(_:)):
+            return !document.hasLineGroups
+        default:
+            return true
         }
-        return true
     }
 }
