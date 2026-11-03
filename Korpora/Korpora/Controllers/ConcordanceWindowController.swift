@@ -87,9 +87,13 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
                 action: #selector(groupTapped(_:)))
             item.controlRepresentation = .expanded
             item.paletteLabel = group.title
+            // Their enabled state is set by `updateToolbarState`; the toolbar's own validation
+            // (which runs on every event) would switch the segments back on.
+            item.autovalidates = false
             for (sub, leaf) in zip(item.subitems, leaves) {
                 sub.toolTip = (leaf.view as? NSButton)?.toolTip
                 sub.paletteLabel = leaf.label
+                sub.autovalidates = false
                 guard flag else { continue }  // palette copies are not the toolbar's items
                 switch leaf.itemIdentifier {
                 case ItemID.sort: sortItem = sub

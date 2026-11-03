@@ -176,4 +176,25 @@ import Testing
         let toolbar = try #require(controller.window?.toolbar)
         #expect(toolbar.allowsUserCustomization && toolbar.autosavesConfiguration)
     }
+
+    /// The toolbar validates its items on every event, which once switched the disabled segments
+    /// back on: checked on the real segmented control, after a validation pass.
+    @Test func disabledSegmentsStayDisabledAfterTheToolbarValidates() throws {
+        let controller = shownController()
+        let window = try #require(controller.window)
+        defer { window.orderOut(nil) }
+        func segmented(_ view: NSView) -> [NSSegmentedControl] { ((view as? NSSegmentedControl).map { [$0] } ?? []) + view.subviews.flatMap(segmented) }
+        let root = try #require(window.contentView?.superview)
+        let controls = segmented(root).sorted { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }
+        let result = try #require(controls.first), display = try #require(controls.dropFirst().first)
+        #expect(result.segmentCount == 3 && display.segmentCount == 2)
+        controller.updateToolbarState(hasLineGroups: true)
+        window.toolbar?.validateVisibleItems()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        #expect((0..<3).allSatisfy { !result.isEnabled(forSegment: $0) }, "Sort, Shuffle, Sample are off")
+        #expect((0..<2).allSatisfy { display.isEnabled(forSegment: $0) }, "Context and Attributes stay on")
+        controller.updateToolbarState(hasLineGroups: false)
+        window.toolbar?.validateVisibleItems()
+        #expect((0..<3).allSatisfy { result.isEnabled(forSegment: $0) })
+    }
 }
