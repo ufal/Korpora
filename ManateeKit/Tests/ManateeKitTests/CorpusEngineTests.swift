@@ -80,6 +80,22 @@ final class CorpusEngineTests: XCTestCase {
         XCTAssertEqual(size, 9)  // document 1 only
     }
 
+    /// Opens from many tasks at once must not overlap inside Manatee (see `OpenGate`).
+    func testManyConcurrentOpensAndQueriesAreSafe() async throws {
+        let engine = self.engine
+        let name = Self.fixture.corpusName
+        try await withThrowingTaskGroup(of: Int.self) { group in
+            for _ in 0..<24 {
+                group.addTask {
+                    let corpus = try await engine.openCorpus(name: name)
+                    let live = try await engine.openConcordance(query: #"[tag="NN"]"#, in: corpus)
+                    return await live.size
+                }
+            }
+            for try await size in group { XCTAssertEqual(size, 4) }
+        }
+    }
+
     func testAForeignCorpusHandleIsRejected() async throws {
         actor Foreign: CorpusHandle {
             nonisolated let name = "foreign"
