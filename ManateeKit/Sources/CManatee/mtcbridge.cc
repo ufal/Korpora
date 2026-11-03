@@ -10,6 +10,7 @@
 #include <numeric>
 #include <sstream>
 #include <string>
+#include <mutex>
 #include <thread>
 #include <vector>
 
@@ -251,8 +252,17 @@ MTCConcordance *mtc_query_cancellable(MTCCorpus *corp, const char *cql, MTCCance
     }
     try {
         std::string query = std::string(cql) + ";";
-        RangeStream *rs = corp->corp->filter_query(
-            eval_cqpquery(query.c_str(), corp->corp));
+        RangeStream *rs;
+        {
+            // The CQL parser (flex/bison) keeps its state in globals: two
+            // threads parsing at once see each other's input ("unexpected end
+            // of file" on a valid query). Only parsing and building the
+            // stream is serialized; evaluation runs in the concordance's own
+            // worker thread, so searches still overlap.
+            static std::mutex parse_mutex;
+            std::lock_guard<std::mutex> lock(parse_mutex);
+            rs = corp->corp->filter_query(eval_cqpquery(query.c_str(), corp->corp));
+        }
         MTCConcordance *mc = new MTCConcordance;
         mc->conc = new Concordance(corp->corp, rs);
         if (!token || !rs) {
