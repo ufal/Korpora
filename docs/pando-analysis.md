@@ -297,6 +297,34 @@ with `-DPANDO_USE_RE2=OFF` rather than install it) and rerunning my reproduction
 the license, subcorpora, the RE2/abseil bundling work, and CQL churn. A reasonable next step is a thin `PandoKit` prototype that
 runs KWIC, `count` and `dcoll` through `libpando` behind the `CorpusEngine` protocols, as a spike branch, not shipped.
 
+## Lessons from FQS (`ufal/fqs`, studied 2026-11-03) and the remote backend
+
+FQS is a Rust server (Linux, systemd) over several engines: one HTTP API, a SQLite corpus catalogue, a query queue, a
+CLARIN-FCS endpoint, an admin UI, KonText and TEITOK front ends. Pando runs in-process through `libflexicorp_pando`
+(a versioned C ABI: `api_version` 2-5, symbols optional by version, found by search path, `/health` says which mode is
+in use); Manatee runs through its own C++ shim `libfqs_manatee`. We do **not** route the app through it, but its Manatee
+handling holds lessons that apply to us regardless of engine:
+- **Crash isolation.** Manatee can SIGBUS/SEGV on a wrongly read corpus. FQS runs it in worker processes, restarts a dead
+  worker, kills a query that runs too long, and *quarantines a corpus that crashed twice within 10 minutes* with a message
+  saying why. Korpora runs Manatee in-process, so a bad corpus takes the app down. Worth doing for both engines
+  (a helper process per engine, XPC or a pipe).
+- **Corpus check before the first query** (`fqsm_check`): for every positional attribute, read a few lexicon words back
+  through the index and compare, and read the last position. A registry that names the wrong layout then fails with a
+  clear message instead of wrong text or a crash. Our import/"Add corpus" paths would benefit.
+- **Totals vs pages**: count once, remember the total (10 min), and walk later pages only to the end of the page; whole
+  results are not kept (33M hits is ~0.5 GB of positions). Relevant to 6.11 pagination.
+- Defensive plumbing: every C++ exception is caught in the shim; answer lines carry a marker because the library may print
+  to stdout; one lock per corpus handle; optional library with a clear "unavailable" status instead of a hard failure.
+- Licensing note: `libfqs_manatee` links manatee-open, so it is GPL-2; keep this in mind for how Korpora links engines.
+
+**Future feature: a remote Korpora backend.** A third engine behind the same `CorpusEngine` protocols that talks to an FQS
+server (its HTTP API, or FCS) instead of a local index: browse the server's corpus catalogue, run queries, page KWIC, get
+counts/frequencies, with the corpora and compute on UFAL's side. This opens the billion-token corpora to a laptop, and the
+same protocol seam (Phase B) is what makes it possible. Open points for when it is taken up: FQS's HTTP API surface and
+authentication tiers, what operations map (sort/filter/line groups probably not), whether FQS keeps open concordance
+handles (it exposes query-and-page, not a live handle), latency and offline behaviour, and how saved documents name the
+server and corpus. Not started.
+
 ## Recommendation
 
 Do **not** replace Manatee. Run Phase A now (a few days of work, no risk), decide from its numbers.
