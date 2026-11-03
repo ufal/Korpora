@@ -62,8 +62,10 @@ final class PandoRealCorpusTests: XCTestCase {
 
         let start = Date()
         let verbs = try await engine.openConcordance(query: #"[upos="VERB"]"#, in: corpus)
-        let verbCount = await verbs.size
+        let verbCount = await verbs.totalHits
         XCTAssertGreaterThan(verbCount, 1_000_000)
+        let loaded = await verbs.size
+        XCTAssertEqual(loaded, ConcordanceLimit.defaultLimit, "millions of hits load only the first ones")
         let page = try await engine.openConcordance(query: #"[lemma="house" & upos="NOUN"]"#, in: corpus)
         let lines = try await page.kwicLines()
         XCTAssertFalse(lines.isEmpty)
