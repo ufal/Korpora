@@ -325,6 +325,44 @@ authentication tiers, what operations map (sort/filter/line groups probably not)
 handles (it exposes query-and-page, not a live handle), latency and offline behaviour, and how saved documents name the
 server and corpus. Not started.
 
+## Phase C spike: PandoKit (branch `spike/pando-engine`, 2026-11-03)
+
+`PandoKit` is a `CorpusEngine` over `libpando`, in the ManateeKit package (a product of its own, pure Swift).
+- **Loading:** `dlopen` at run time (`PandoLibrary`), no build-time dependency: `$KORPORA_PANDO_LIB`, then the app's
+  Frameworks folder, then `/usr/local/lib`; a missing or too-old library gives a clear error, like FQS's "unavailable" mode.
+  Uses `pando_open/last_error/cancel/query/run/info/close`.
+- **Implemented:** open a corpus (index directory under a root, or an absolute path), schema (`CorpusInfo` from `pando_info`),
+  query + KWIC (match tokens with attributes, context from pando's context strings; `word` maps to `form`), total, collocations
+  (`coll`, all six measures mapped), frequency distributions (`count by`), attribute values (`show values`, regex "matching"
+  filtered client-side), cancellation (`pando_cancel` from the task's cancel handler; checked again afterwards because pando
+  drops a cancel that arrives before the call starts), engine-handle per concordance (cheap now that handles hold no fds).
+- **Not available** (throw `PandoError.unsupported` with the feature named): sort, filter, shuffle, sample (pando's sampling is
+  CLI-side), line groups, subcorpora, the dispersion plot, extended context (no structure-at-position lookup via this API).
+  `EngineCapabilities` (new, in `CorpusEngine`) lists what an engine can do; the UI wiring that greys controls out is still to do.
+- **Limits of the spike:** context tokens carry no secondary attributes (pando returns plain strings; its `fragment` option could
+  fix that), structure contexts such as Bonito's `-1:s` fall back to 10 tokens, and corpus naming/discovery is a bare directory.
+- **Tests:** 12 `PandoEngineTests` (build a two-sentence index with pando's own `pando-index`, then drive everything through the
+  protocols; skip without `KORPORA_PANDO_LIB`) and 2 app tests running a real `ConcordanceDocument` against pando
+  (`TEST_RUNNER_KORPORA_PANDO_LIB=... xcodebuild test`), including an unsupported operation (shuffle) showing a clear status.
+  Everything passes (app 171 with the pando tests, 3 runs; ManateeKit 120 + 12).
+
+**Two Manatee concurrency bugs the engine seam exposed, both fixed on `main`** (the second is older than the seam):
+1. Phase B made `openCorpus` async, so corpora opened on the cooperative pool instead of the main thread, and overlapping opens
+   corrupted Manatee's heap: the app test suite crashed in `Corpus::~Corpus` in ~1 of 4 runs (0 of 12 at v0.3). Opens now go
+   through one actor (`OpenGate`); 12 of 12 clean after, plus 6 with pando loaded.
+2. Manatee's CQL parser keeps state in globals, so concurrent searches could fail with "unexpected end of file" on a valid query
+   (two windows searching at once could hit this in v0.3 too). The bridge now serializes only the parse step; evaluation still
+   overlaps. A 24-task stress test fails 3 of 3 without the lock and passes with it.
+   Takeaway: any engine behind the seam must be assumed single-threaded unless proven otherwise; FQS's per-corpus lock and
+   crash-isolated worker processes are the same lesson.
+
+**What the spike says about the decision:** the seam fits. A second engine needed ~400 lines of Swift, no change to the app's
+document code, and the protocols were enough for KWIC, analyses and cancellation. The cost is in the gaps: operations pando
+lacks (sort, filter, line groups, subcorpora) are most of what makes Korpora's concordance window useful, so a pando corpus
+would be a read-mostly experience until pando or the app fills them. Next steps if we continue: wire `capabilities` into the
+toolbar and menus, corpus discovery/"Add pando corpus" in Settings, a pando-aware query field (CQL colouring and dependency
+operators), `fragment` for secondary attributes in context, and the dispersion plot via a pando position query.
+
 ## Recommendation
 
 Do **not** replace Manatee. Run Phase A now (a few days of work, no risk), decide from its numbers.

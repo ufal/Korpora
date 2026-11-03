@@ -4452,6 +4452,7 @@ C FFI; single author, no license yet, no large-corpus evidence) as a second engi
 replacement of Manatee. Recommendation: keep Manatee, run a measurement spike (Phase A), then only if
 it holds up an engine seam, a PandoKit bridge, and parse-based word profiles. Phase B (engine seam) done: the app opens corpora through `CorpusEngine` protocols (new `CorpusEngine`
 target; `.corpconc` files carry a format version and engine id); tests app 169, ManateeKit 119.
+Phase C spike (branch `spike/pando-engine`, unpushed): `PandoKit` runs KWIC, analyses and cancellation over libpando; Manatee concurrency fixes on main.
 Phase A spike done: builds in 11 s, 1B tokens indexed in 15 min (41 GB), sub-second to a few seconds
 for most queries, C API works on macOS 27 and 15 but drops `dcoll` relations and needs many file
 descriptors; see the analysis for numbers and the caveats (synthetic corpora, warm cache).
