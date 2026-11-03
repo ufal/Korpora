@@ -32,6 +32,8 @@ enum CQLCompletionContext: Equatable {
     /// and offering keywords or attribute names here would be actively
     /// wrong.
     case value
+    /// After `::`, where global conditions go (`:: distance(a,b) < 5`): pando's functions.
+    case globalCondition(prefix: String)
 
     /// Classifies the caret at `partialWordRange` (exactly what
     /// `NSTextView.completions(forPartialWordRange:…)` is handed, i.e.
@@ -70,8 +72,10 @@ enum CQLCompletionContext: Equatable {
         if hasUnclosedQuote(in: before) {
             return .value
         }
-        guard isInsideBrackets(before) else {
-            return .keyword(prefix: prefix)
+        guard bracketDepth(before) > 0 else {
+            // Between tokens. After `::` (and before the next `;`) it is a global condition.
+            let segment = before.split(separator: ";", omittingEmptySubsequences: false).last.map(String.init) ?? before
+            return segment.contains("::") ? .globalCondition(prefix: prefix) : .keyword(prefix: prefix)
         }
         // Inside brackets, position is decided by the last non-space
         // character before the caret.
@@ -80,11 +84,48 @@ enum CQLCompletionContext: Equatable {
             // than a list of attribute names the user can't use here.
             return .value
         }
+        if prefix.isEmpty, let word = lastWord(before) {
+            // `[child ` and `[upos="NOUN" & not child `: a `[` comes next.
+            if CQLCompletionProvider.restrictionWords.contains(word) { return .value }
+            // `[ & not `: another condition or restriction comes next, not an operator.
+            if word == "not" { return .attributeName(prefix: prefix) }
+        }
         if prefix.isEmpty, endsWithIdentifier(before) {
             // `[word ` - a name was just finished, an operator comes next.
             return .comparisonOperator(prefix: prefix)
         }
         return .attributeName(prefix: prefix)
+    }
+
+    /// How many `[` are still open at the end of `before`: nesting counts (`[upos="NOUN" & child
+    /// [upos="DET"] & ` is still inside the outer one), and brackets inside quoted values and
+    /// `/regex/` values don't.
+    private static func bracketDepth(_ before: String) -> Int {
+        var depth = 0
+        var inQuote = false, inSlash = false, escaped = false
+        var previous: Character?
+        for ch in before {
+            if escaped { escaped = false; continue }
+            if ch == "\\" { escaped = true; continue }
+            if inQuote { if ch == "\"" { inQuote = false; previous = ch }; continue }
+            if inSlash { if ch == "/" { inSlash = false; previous = ch }; continue }
+            switch ch {
+            case "\"": inQuote = true
+            case "/" where previous == "=": inSlash = true
+            case "[": depth += 1; previous = ch
+            case "]": depth = max(0, depth - 1); previous = ch
+            case " ", "\t", "\n": break
+            default: previous = ch
+            }
+        }
+        return depth
+    }
+
+    /// The identifier right before the caret, ignoring spaces: `child` in `[… & child `.
+    private static func lastWord(_ before: String) -> String? {
+        let trimmed = before.trimmingCharacters(in: .whitespaces)
+        let word = String(trimmed.reversed().prefix { $0.isLetter || $0.isNumber || $0 == "_" }.reversed())
+        return word.isEmpty ? nil : word
     }
 
     /// True when a `"` in `before` is still open. A `\"` doesn't count -
@@ -108,14 +149,6 @@ enum CQLCompletionContext: Equatable {
             index += 1
         }
         return open
-    }
-
-    /// True when the last unmatched `[` in `before` is still open - i.e.
-    /// there's a `[` with no `]` after it.
-    private static func isInsideBrackets(_ before: String) -> Bool {
-        guard let open = before.lastIndex(of: "[") else { return false }
-        guard let close = before.lastIndex(of: "]") else { return true }
-        return open > close
     }
 
     /// True when `before`, ignoring trailing spaces/tabs, ends in an
@@ -163,16 +196,32 @@ enum CQLCompletionContext: Equatable {
 /// still needs them from a synchronous AppKit callback.
 @MainActor
 final class CQLCompletionProvider {
-    /// pando-CQL's word-like language constructs: region scoping (`within s`, `containing`,
-    /// `having`) and the dependency restrictions inside a token (`child [...]`, `not child [...]`).
-    /// `CQLQueryField` colours the same set, so what's completed and what's coloured can't drift apart.
-    nonisolated static let keywords = [
-        "within", "containing", "having", "subtree", "not", "child", "parent", "sibling", "ancestor", "descendant",
+    /// pando-CQL's word-like constructs between tokens: region scoping (`within s`, `containing`,
+    /// `having`, `containing subtree`) and `not` (`not within`, `not containing`).
+    nonisolated static let regionKeywords = ["within", "containing", "having", "subtree", "not"]
+
+    /// The relations written *inside* a token, PML-TQ style: `[upos="NOUN" & child [upos="DET"]]`,
+    /// `not child [...]`, `next [...]`. Only directly before a `[` are they relations (an attribute
+    /// may also be called `after`), so they are coloured only there.
+    nonisolated static let restrictionWords = [
+        "child", "parent", "ancestor", "descendant", "sibling", "next", "prev", "after", "before",
     ]
 
-    /// The regular expression `CQLQueryField` uses to colour `keywords`.
+    /// The dependency arrows between two tokens: `A > B` (A is the head of B), `A < B` (A depends on
+    /// B), `>>` and `<<` for any distance in the tree, `!>` and `!<` negated.
+    nonisolated static let dependencyArrows = [">", "<", ">>", "<<", "!>", "!<"]
+
+    /// What goes after `::` (pando-CQL reference, "Global functions"; dates and locations included).
+    nonisolated static let globalFunctions = [
+        "century", "day", "decade", "depth", "distabs", "distance", "earliest", "f", "gaps", "geodist", "lat", "latest",
+        "lon", "match", "month", "nchildren", "ndescendants", "nvals", "strlen", "tcnt", "week", "year",
+    ]
+
+    /// Everything `CQLQueryField` colours as a keyword. `CQLQueryField` colours the same set, so what's
+    /// completed and what's coloured can't drift apart.
     nonisolated static var keywordPattern: String {
-        #"\b("# + keywords.joined(separator: "|") + #")\b"#
+        #"\b("# + regionKeywords.joined(separator: "|") + #")\b|\b("#
+            + restrictionWords.joined(separator: "|") + #")\b(?=\s*\[)"#
     }
 
     /// Comparison operators, matching the set `CQLQueryField.recolor`
@@ -215,9 +264,11 @@ final class CQLCompletionProvider {
     func candidates(for context: CQLCompletionContext) -> [String]? {
         switch context {
         case .keyword(let prefix):
-            return Self.matching(Self.keywords, prefix: prefix)
+            return Self.matching(Self.regionKeywords + Self.dependencyArrows, prefix: prefix)
         case .attributeName(let prefix):
-            return Self.matching(attributeNames, prefix: prefix)
+            return Self.matching(attributeNames + Self.restrictionWords, prefix: prefix)
+        case .globalCondition(let prefix):
+            return Self.matching(Self.globalFunctions, prefix: prefix)
         case .comparisonOperator(let prefix):
             return Self.matching(Self.comparisonOperators, prefix: prefix)
         case .value:

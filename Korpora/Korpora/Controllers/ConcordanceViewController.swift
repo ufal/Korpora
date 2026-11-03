@@ -8,6 +8,8 @@ final class ConcordanceViewController: NSViewController {
 
     private let document: ConcordanceDocument
     private let queryField = CQLQueryField()
+    /// "Insert pattern": starting points for dependency relations and other hard-to-type pando-CQL.
+    private let patternsButton = NSButton()
     /// The corpus `queryField.completionProvider` was built for - see
     /// `updateCompletionProvider`.
     private var completionCorpusName = ""
@@ -84,6 +86,14 @@ final class ConcordanceViewController: NSViewController {
         statusLabel.lineBreakMode = .byTruncatingTail
 
         root.addSubview(queryField)
+        patternsButton.translatesAutoresizingMaskIntoConstraints = false
+        patternsButton.image = NSImage(
+            systemSymbolName: "chevron.left.forwardslash.chevron.right", accessibilityDescription: "Insert pattern")
+        patternsButton.bezelStyle = .texturedRounded
+        patternsButton.toolTip = "Insert a query pattern, e.g. a dependency relation"
+        patternsButton.target = self
+        patternsButton.action = #selector(patternsTapped(_:))
+        root.addSubview(patternsButton)
         cancelHintLabel.translatesAutoresizingMaskIntoConstraints = false
         cancelHintLabel.font = .systemFont(ofSize: 11)
         cancelHintLabel.textColor = .secondaryLabelColor
@@ -99,7 +109,10 @@ final class ConcordanceViewController: NSViewController {
         NSLayoutConstraint.activate([
             queryField.topAnchor.constraint(equalTo: root.topAnchor, constant: 8),
             queryField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 8),
-            queryField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -8),
+            queryField.trailingAnchor.constraint(equalTo: patternsButton.leadingAnchor, constant: -6),
+            patternsButton.topAnchor.constraint(equalTo: queryField.topAnchor),
+            patternsButton.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -8),
+            patternsButton.widthAnchor.constraint(equalToConstant: 34),
 
             statusLabel.topAnchor.constraint(equalTo: queryField.bottomAnchor, constant: 4),
             statusLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 8),
@@ -163,6 +176,17 @@ final class ConcordanceViewController: NSViewController {
     /// command, the toolbar item's place in the window.
     private func popoverAnchor(_ sender: Any?, for item: NSToolbarItem.Identifier) -> NSView {
         (sender as? NSView) ?? windowController?.anchorView(for: item) ?? view
+    }
+
+    @objc func patternsTapped(_ sender: NSButton) {
+        let available = queryField.completionProvider.map { Set($0.attributeNames) }
+        let menu = CQLPatterns.makeMenu(target: self, action: #selector(insertPattern(_:)), availableAttributes: available)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: sender.bounds.height + 4), in: sender)
+    }
+
+    @objc private func insertPattern(_ item: NSMenuItem) {
+        guard let template = item.representedObject as? String else { return }
+        queryField.insertPattern(template)
     }
 
     @objc func sortTapped(_ sender: Any?) {

@@ -45,6 +45,18 @@ final class CQLQueryField: NSView {
 
     private var heightConstraint: NSLayoutConstraint!
 
+    /// Inserts a `CQLPattern` template at the caret (replacing the selection) and puts the caret
+    /// where the template marks it.
+    func insertPattern(_ template: String) {
+        let pattern = CQLPattern(title: "", template: template, detail: "")
+        let (text, offset) = pattern.insertion
+        let range = textView.selectedRange()
+        textView.insertText(text, replacementRange: range)
+        textView.setSelectedRange(NSRange(location: range.location + offset, length: 0))
+        window?.makeFirstResponder(textView)
+        onChange?()
+    }
+
     /// Focuses the actual editable text view - nothing does this
     /// automatically just because this view is on screen (a custom
     /// composite view like this one isn't a standard control, so neither
@@ -214,11 +226,16 @@ final class CQLQueryField: NSView {
             // needs nothing from a corpus and still works.
             switch context {
             case .keyword(let prefix):
-                return CQLCompletionProvider.matching(CQLCompletionProvider.keywords, prefix: prefix)
+                return CQLCompletionProvider.matching(
+                    CQLCompletionProvider.regionKeywords + CQLCompletionProvider.dependencyArrows, prefix: prefix)
+            case .globalCondition(let prefix):
+                return CQLCompletionProvider.matching(CQLCompletionProvider.globalFunctions, prefix: prefix)
             case .comparisonOperator(let prefix):
                 return CQLCompletionProvider.matching(
                     CQLCompletionProvider.comparisonOperators, prefix: prefix)
-            case .attributeName, .value:
+            case .attributeName(let prefix):
+                return CQLCompletionProvider.matching(CQLCompletionProvider.restrictionWords, prefix: prefix)
+            case .value:
                 return nil
             }
         }

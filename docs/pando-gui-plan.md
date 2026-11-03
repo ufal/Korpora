@@ -93,6 +93,23 @@ Attributes on context tokens; sentence-bounded context through the C API; a hit-
 Click-through of the whole UI; the workshop (plain text and documents to corpus through Flexiconv and Flexipipe in a
 downloaded Python environment); pagination beyond the load limit (6.11); UD-aware word profiles.
 
+## Query completion and patterns (2026-11-04)
+
+The query bar completes pando-CQL only (no Manatee spellings): between tokens the region words
+(`within`, `containing`, `having`, `subtree`, `not`) and the dependency arrows (`>`, `<`, `>>`, `<<`,
+`!>`, `!<`); inside a token the attribute names plus the relations `child`, `parent`, `ancestor`,
+`descendant`, `sibling`, `next`, `prev`, `after`, `before` (after `not`, too); after `::` the global
+functions (`distance`, `strlen`, `nchildren`, the date functions, ...). Brackets nest (a closed inner
+token no longer ends the outer one) and brackets in quoted or `/regex/` values don't count. The
+relation words are coloured only directly before a `[`.
+
+The button at the right of the query field ("Insert pattern") inserts starting points with the caret
+in the right place: relations inside a token, arrows between two tokens, UD examples (greyed out when
+the corpus has no `upos`/`deprel`) and region forms. Every template is checked against real pando.
+
+Not done: the `;` commands (`count`, `tabulate`, `stats`, `keyness`, `dcoll`), because the app has no
+window for their results yet; completing attribute values. See the aggregates list in the 1.0 notes.
+
 ## Scope for 1.0 (decided 2026-11-03)
 
 In: the pando-only concordancer as it is, with menu commands for every toolbar action and a

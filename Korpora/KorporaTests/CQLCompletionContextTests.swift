@@ -212,7 +212,7 @@ struct CQLQueryFieldCompletionTests {
 
     /// The regression the click-test caught: typing `[` offered nothing.
     @Test func typingAnOpenBracketOffersEveryAttributeName() {
-        #expect(candidates("[") == ["doc_author", "doc_id", "lemma", "tag", "word"])
+        #expect(candidates("[") == ["doc_author", "doc_id", "lemma", "tag", "word"] + CQLCompletionProvider.restrictionWords)
     }
 
     @Test func aPartialAttributeNameNarrowsTheList() {
@@ -241,6 +241,67 @@ struct CQLQueryFieldCompletionTests {
     @Test func withoutACorpusKeywordsStillWorkButNamesDoNot() {
         #expect(candidates("wit", withCorpusSchema: false) == ["within"])
         #expect(candidates("[word ", withCorpusSchema: false) == ["=", "!=", "<", ">"])
-        #expect(candidates("[", withCorpusSchema: false) == nil)
+        #expect(candidates("[", withCorpusSchema: false) == CQLCompletionProvider.restrictionWords)
+        #expect(candidates("[lem", withCorpusSchema: false) == nil)
+    }
+
+    // MARK: Dependency relations and global conditions (pando-CQL)
+
+    /// After a closed token the arrows are offered with the region words.
+    @Test func betweenTokensTheDependencyArrowsAreOffered() {
+        let all = candidates(#"[upos="NOUN"] "#)
+        #expect(all == CQLCompletionProvider.regionKeywords + CQLCompletionProvider.dependencyArrows)
+        #expect(Set([">", "<", ">>", "<<", "!>", "!<"]).isSubset(of: Set(all ?? [])))
+        #expect(candidates(#"[upos="NOUN"] c"#) == ["containing"])
+    }
+
+    /// Inside a token, after `&`, the relations are offered next to the attribute names.
+    @Test func insideATokenTheRestrictionWordsComeWithTheNames() {
+        let all = candidates(#"[upos="NOUN" & "#)
+        #expect(all == ["doc_author", "doc_id", "lemma", "tag", "word"] + CQLCompletionProvider.restrictionWords)
+        #expect(candidates(#"[upos="NOUN" & ch"#) == ["child"])
+        #expect(candidates(#"[upos="NOUN" & not "#)?.contains("child") == true)
+    }
+
+    /// A restriction is followed by `[`, not by an operator or a name.
+    @Test func afterARestrictionWordNothingIsOffered() {
+        #expect(candidates(#"[upos="NOUN" & child "#) == nil)
+        #expect(candidates("[parent ") == nil)
+    }
+
+    /// The nested token is closed, but the outer one is still open: names, not region words.
+    @Test func nestingIsFollowedAcrossInnerBrackets() {
+        let names = candidates(#"[upos="NOUN" & child [upos="DET"] & "#)
+        #expect(names?.contains("lemma") == true && names?.contains("within") == false)
+        // and inside the inner one, as well
+        #expect(candidates(#"[upos="NOUN" & child [lem"#) == ["lemma"])
+    }
+
+    /// Brackets inside a quoted value or a /regex/ don't count.
+    @Test func bracketsInValuesDoNotOpenTokens() {
+        #expect(candidates(#"[word="[a-z]+"] "#)?.contains("within") == true)
+        #expect(candidates(#"[word=/[a-z]+/] "#)?.contains("within") == true)
+    }
+
+    @Test func afterDoubleColonTheGlobalFunctionsAreOffered() {
+        #expect(candidates(#"a:[] b:[] :: dist"#) == ["distabs", "distance"])
+        #expect(candidates(#"a:[] :: "#) == CQLCompletionProvider.globalFunctions)
+        #expect(candidates(#"a:[] :: ndesc"#) == ["ndescendants"])
+        // The language half needs no corpus.
+        #expect(candidates(#"a:[] :: str"#, withCorpusSchema: false) == ["strlen"])
+        // A new command after `;` is between tokens again.
+        #expect(candidates(#"a:[] :: a != b; wit"#) == ["within"])
+    }
+
+    /// The restriction words are only coloured as keywords directly before a `[`.
+    @Test func restrictionWordsAreColouredOnlyBeforeABracket() throws {
+        let regex = try NSRegularExpression(pattern: CQLCompletionProvider.keywordPattern)
+        func matches(_ query: String) -> [String] {
+            let ns = query as NSString
+            return regex.matches(in: query, range: NSRange(location: 0, length: ns.length)).map { ns.substring(with: $0.range) }
+        }
+        #expect(matches(#"[upos="NOUN" & child [upos="DET"]]"#) == ["child"])
+        #expect(matches(#"[after="x"]"#).isEmpty)
+        #expect(matches(#"[upos="ADJ" & not next [upos="NOUN"]] within s"#) == ["not", "next", "within"])
     }
 }
