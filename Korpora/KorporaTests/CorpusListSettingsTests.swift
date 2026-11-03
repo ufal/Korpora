@@ -23,8 +23,8 @@ import Testing
     }
 
     @Test func sourceLabels() {
-        #expect(CorporaSettingsViewController.sourceTitle(.built) == "Built by Korpora")
-        #expect(CorporaSettingsViewController.sourceTitle(.linked(target: URL(fileURLWithPath: "/x"))) == "Linked folder")
+        #expect(CorporaSettingsViewController.sourceTitle(.built) == "Built")
+        #expect(CorporaSettingsViewController.sourceTitle(.linked(target: URL(fileURLWithPath: "/x"))) == "Linked")
         #expect(CorporaSettingsViewController.sourceDetail(.linked(target: URL(fileURLWithPath: "/x"))).contains("/x"))
     }
 

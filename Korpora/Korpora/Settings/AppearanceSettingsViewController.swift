@@ -30,7 +30,7 @@ final class AppearanceSettingsViewController: NSViewController {
     private(set) var pendingScript: UnicodeScript?
 
     override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 400))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 470))
 
         let fontTitle = NSTextField(labelWithString: "Results font:")
         let selectFontButton = NSButton(title: "Select…", target: self, action: #selector(selectFont))
@@ -142,8 +142,8 @@ final class AppearanceSettingsViewController: NSViewController {
             scriptScrollView.topAnchor.constraint(equalTo: scriptHint.bottomAnchor, constant: 8),
             scriptScrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20),
             scriptScrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -20),
-            // At least 80 tall; takes the spare height when the window is resized.
-            scriptScrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 80),
+            // Room for the header and four rows; takes the spare height when the window is resized.
+            scriptScrollView.heightAnchor.constraint(greaterThanOrEqualToConstant: 130),
 
             addButton.topAnchor.constraint(equalTo: scriptScrollView.bottomAnchor, constant: 6),
             addButton.leadingAnchor.constraint(equalTo: scriptScrollView.leadingAnchor),
@@ -156,7 +156,7 @@ final class AppearanceSettingsViewController: NSViewController {
 
         // A centered column; the per-script list in it takes extra height.
         view = SettingsLayout.centeredRoot(around: root, width: 420)
-        preferredContentSize = NSSize(width: 420, height: 400)
+        preferredContentSize = NSSize(width: 420, height: 470)
         reloadScriptOverrides()
     }
 
@@ -300,16 +300,26 @@ extension AppearanceSettingsViewController: NSTableViewDataSource, NSTableViewDe
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let override = scriptOverrideRows[row]
+        let field: NSTextField
         if tableColumn?.identifier.rawValue == "script" {
-            let field = NSTextField(labelWithString: override.script.displayName)
+            field = NSTextField(labelWithString: override.script.displayName)
             field.font = .systemFont(ofSize: 12)
-            return field
+        } else {
+            // The font's name, set in that font.
+            field = NSTextField(labelWithString: override.fontName)
+            field.font = NSFont(name: override.fontName, size: 12) ?? .systemFont(ofSize: 12)
+            field.lineBreakMode = .byTruncatingTail
         }
-        // The font's name, set in that font.
-        let field = NSTextField(labelWithString: override.fontName)
-        field.font = NSFont(name: override.fontName, size: 12) ?? .systemFont(ofSize: 12)
-        field.lineBreakMode = .byTruncatingTail
-        return field
+        // Centred in the row, so fonts with different metrics line up.
+        let cell = NSView()
+        field.translatesAutoresizingMaskIntoConstraints = false
+        cell.addSubview(field)
+        NSLayoutConstraint.activate([
+            field.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 2),
+            field.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: -2),
+            field.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+        ])
+        return cell
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {

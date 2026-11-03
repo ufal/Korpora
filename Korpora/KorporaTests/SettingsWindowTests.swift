@@ -31,8 +31,8 @@ import Testing
         defer { window.orderOut(nil) }
         #expect(window.styleMask.contains(.resizable))
         let designed: [SettingsWindowController.Pane: NSSize] = [
-            .corpora: NSSize(width: 600, height: 440),
-            .appearance: NSSize(width: 420, height: 400),
+            .corpora: NSSize(width: 680, height: 440),
+            .appearance: NSSize(width: 420, height: 470),
             .concordance: NSSize(width: 460, height: 260),
         ]
         for pane in SettingsWindowController.Pane.allCases {
@@ -42,6 +42,39 @@ import Testing
             #expect(window.contentMinSize == size, "\(pane) minimum")
             #expect(window.contentView?.frame.size == size, "\(pane) opening size")
         }
+    }
+
+    /// The Name column is the one that needs room: at the opening size it is much the widest, long names fit, and
+    /// the fixed columns are no wider than their headings need.
+    @Test func theNameColumnGetsMostOfTheRoomAtTheOpeningSize() throws {
+        let box = try TestPando.Sandbox()
+        try box.fakeIndex(named: "Czech National Corpus SYN2025", tokens: 122_251_447)
+        let window = try shownWindow()
+        defer { window.orderOut(nil) }
+        SettingsWindowController.shared.showPane(.corpora)
+        layOut(window)
+        let controller = try #require(window.contentViewController as? CorporaSettingsViewController)
+        let widths = Dictionary(uniqueKeysWithValues: controller.tableView.tableColumns.map { ($0.identifier.rawValue, $0.width) })
+        let name = try #require(widths["name"])
+        #expect(name >= 220, "Name has \(name)")
+        let others = widths.filter { $0.key != "name" }.values.reduce(0, +)
+        #expect(name > others * 0.6, "Name \(name) vs the other columns together \(others)")
+        let longName = NSAttributedString(string: "Czech National Corpus SYN2025", attributes: [.font: NSFont.systemFont(ofSize: 12)])
+        #expect(longName.size().width + 12 < name, "a long corpus name is not cut off")
+        #expect(widths["resident"] ?? 999 <= 110, "the In Memory column is no wider than it needs")
+    }
+
+    /// A long folder path in the pane must not widen the Settings window: it is shortened instead.
+    @Test func aLongFolderPathDoesNotWidenTheWindow() throws {
+        let long = "/very/long/" + String(repeating: "folder-name/", count: 12) + "Corpora"
+        let saved = ProcessInfo.processInfo.environment["KORPORA_CORPORA_DIRECTORY"]
+        setenv("KORPORA_CORPORA_DIRECTORY", long, 1)
+        defer { if let saved { setenv("KORPORA_CORPORA_DIRECTORY", saved, 1) } else { unsetenv("KORPORA_CORPORA_DIRECTORY") } }
+        let window = try shownWindow()
+        defer { window.orderOut(nil) }
+        SettingsWindowController.shared.showPane(.corpora)
+        layOut(window)
+        #expect(window.contentView?.frame.width == 680, "\(window.contentView?.frame.width ?? 0)")
     }
 
     /// Regression: AppKit turns a non-zero `preferredContentSize` into
@@ -70,7 +103,7 @@ import Testing
         let list = try #require(controller.tableView.enclosingScrollView)
         let before = list.frame
 
-        window.setContentSize(NSSize(width: 820, height: 740))
+        window.setContentSize(NSSize(width: 900, height: 740))
         layOut(window)
         #expect(list.frame.height >= before.height + 250, "list went from \(before.height) to \(list.frame.height)")
         #expect(list.frame.width >= before.width + 180, "list went from \(before.width) to \(list.frame.width)")
@@ -115,7 +148,7 @@ import Testing
 
         check("opening size")
         let opening = widths()
-        window.setContentSize(NSSize(width: 800, height: 500))
+        window.setContentSize(NSSize(width: 900, height: 500))
         layOut(window)
         check("wider")
         let wider = widths()
@@ -123,7 +156,7 @@ import Testing
         #expect(Array(wider.dropFirst()) == Array(opening.dropFirst()), "the other columns keep their widths")
 
         window.setContentSize(controller.view.frame.size)
-        window.setContentSize(NSSize(width: 600, height: 440))
+        window.setContentSize(NSSize(width: 680, height: 440))
         layOut(window)
         check("back at the minimum")
         #expect(widths() == opening, "same layout at the same size")
@@ -147,5 +180,79 @@ import Testing
             #expect(abs(column.frame.midX - controller.view.bounds.midX) < 1, "\(pane) is centered: \(column.frame)")
             #expect(column.frame.minY == 0 && column.frame.height == controller.view.bounds.height, "\(pane) full height")
         }
+    }
+}
+
+/// The Settings window reopens as it was left: the pane last used, and the size the user gave each pane.
+@MainActor @Suite(.serialized) struct SettingsWindowMemoryTests {
+    private func freshMemory() -> SettingsWindowMemory {
+        SettingsWindowMemory(defaults: UserDefaults(suiteName: "SettingsWindowMemoryTests-\(UUID().uuidString)")!)
+    }
+
+    @Test func rememberedValuesComeBack() {
+        let memory = freshMemory()
+        #expect(memory.lastPane == nil && memory.topLeft == nil && memory.size(for: .corpora) == nil)
+        memory.lastPane = .appearance
+        memory.topLeft = NSPoint(x: 120, y: 700)
+        memory.setSize(NSSize(width: 900, height: 600), for: .corpora)
+        #expect(memory.lastPane == .appearance)
+        #expect(memory.topLeft == NSPoint(x: 120, y: 700))
+        #expect(memory.size(for: .corpora) == NSSize(width: 900, height: 600))
+        #expect(memory.size(for: .appearance) == nil, "sizes are kept per pane")
+    }
+
+    @Test func aSavedSizeIsClampedToWhatTheSizeCanBe() {
+        let designed = NSSize(width: 680, height: 440)
+        let screen = NSSize(width: 1440, height: 900)
+        #expect(SettingsWindowMemory.restoredSize(saved: nil, designed: designed, screen: screen) == designed)
+        #expect(SettingsWindowMemory.restoredSize(saved: NSSize(width: 900, height: 600), designed: designed, screen: screen)
+                == NSSize(width: 900, height: 600))
+        #expect(SettingsWindowMemory.restoredSize(saved: NSSize(width: 300, height: 200), designed: designed, screen: screen)
+                == designed, "never below the size the pane is laid out for")
+        let huge = SettingsWindowMemory.restoredSize(saved: NSSize(width: 9000, height: 9000), designed: designed, screen: screen)
+        #expect(huge.width <= 1440 && huge.height <= 900, "never bigger than the screen: \(huge)")
+    }
+
+    @Test func theWindowReopensOnTheLastPaneAtTheSizeTheUserGaveIt() throws {
+        let controller = SettingsWindowController.shared
+        let saved = controller.memory
+        controller.memory = freshMemory()
+        defer { controller.memory = saved; controller.window?.orderOut(nil) }
+        let window = try #require(controller.window)
+        window.makeKeyAndOrderFront(nil)
+
+        controller.showPane(.corpora)
+        let designed = try #require(window.contentView?.frame.size)
+        window.setContentSize(NSSize(width: designed.width + 220, height: designed.height + 160))
+        controller.windowDidEndLiveResize(Notification(name: NSWindow.didEndLiveResizeNotification, object: window))
+        let given = try #require(window.contentView?.frame.size)
+
+        controller.showPane(.appearance)
+        #expect(controller.memory.lastPane == .appearance)
+        controller.showPane(.corpora)
+        #expect(window.contentView?.frame.size == given, "the corpora pane got its size back")
+        #expect(window.contentMinSize == designed, "the minimum is still the designed size")
+
+        // The other pane is untouched by it.
+        controller.showPane(.concordance)
+        #expect(window.contentView?.frame.size == window.contentMinSize)
+        #expect(controller.memory.lastPane == .concordance)
+    }
+
+    @Test func switchingPanesKeepsTheTopLeftCornerInPlace() throws {
+        let controller = SettingsWindowController.shared
+        let saved = controller.memory
+        controller.memory = freshMemory()
+        defer { controller.memory = saved; controller.window?.orderOut(nil) }
+        let window = try #require(controller.window)
+        controller.showPane(.corpora)
+        window.makeKeyAndOrderFront(nil)
+        let top = window.frame.maxY, left = window.frame.minX
+        controller.showPane(.concordance)
+        #expect(window.frame.maxY == top && window.frame.minX == left, "the pane changed under the same top-left corner")
+    }
+
+    @Test func testsDoNotWriteIntoTheAppsOwnPreferences() {
+        #expect(SettingsWindowMemory().defaults !== UserDefaults.standard)
     }
 }

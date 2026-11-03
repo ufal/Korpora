@@ -68,6 +68,13 @@ by clicking it in Settings > Corpora. A built corpus's folder is renamed, a link
 touched); Keep in Memory, saved subcorpora and search history follow the new name. Saved concordance documents still name
 the old corpus and won't find it after a rename.
 
+### Settings window
+Follows the HIG for settings windows: it reopens on the pane last used, where it was left, and at the size the user gave each
+pane (never below the pane's designed size or beyond the screen); switching panes keeps the top-left corner in place. In
+Corpora the Name column is the flexible one (the others are as narrow as their headings), column widths the user sets are
+remembered, a long folder path is shortened rather than widening the window, and the periodic memory refresh does nothing
+while a name is being edited.
+
 ### Differences users will notice
 - Searches load the first 10,000 hits (Settings > Concordance); the status line says "10,000 of 3,978,146 hits (the first
   ones)". Sorting, sampling and line groups work on the loaded hits.

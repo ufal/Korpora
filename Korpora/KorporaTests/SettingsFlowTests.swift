@@ -255,3 +255,53 @@ import Testing
         #expect(settings.keepResidentCorpora == ["z"], "a corpus that wasn't kept in memory stays out")
     }
 }
+
+/// Typing a new corpus name must not be interrupted by the list refreshing itself (it did: the name was
+/// committed after two or three characters, and one corpus ended up called "S").
+@MainActor @Suite(.serialized) struct CorpusNameEditingTests {
+    private func shownList() throws -> (NSWindow, CorporaSettingsViewController) {
+        SettingsWindowController.shared.showPane(.corpora)
+        let window = try #require(SettingsWindowController.shared.window)
+        window.makeKeyAndOrderFront(nil)
+        window.contentView?.layoutSubtreeIfNeeded()
+        return (window, try #require(window.contentViewController as? CorporaSettingsViewController))
+    }
+
+    @Test func theRefreshTimerLeavesAnEditInProgressAlone() throws {
+        let box = try TestPando.Sandbox()
+        try box.fakeIndex(named: "idx")
+        try box.fakeIndex(named: "two")
+        let (window, list) = try shownList()
+        defer { window.orderOut(nil) }
+        list.reloadCorpora()
+        list.tableView.selectRowIndexes([0], byExtendingSelection: false)
+        window.makeFirstResponder(list.tableView)
+        // What a click on a selected name does: its field takes the first responder and starts editing.
+        let cell = try #require(list.tableView.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTextField)
+        #expect(window.makeFirstResponder(cell))
+        let editor = try #require(cell.currentEditor(), "editing started")
+        editor.string = "Syn"
+        #expect(list.isEditingName)
+
+        for _ in 0..<3 { list.refreshOnTimer() }
+
+        #expect(list.isEditingName, "the edit is still going")
+        #expect(cell.currentEditor()?.string == "Syn", "and keeps what was typed")
+        #expect(CorpusLibrary.names().sorted() == ["idx", "two"], "nothing was renamed by the refresh")
+    }
+
+    @Test func theRefreshRunsAsUsualWhenNothingIsBeingEdited() throws {
+        let box = try TestPando.Sandbox()
+        try box.fakeIndex(named: "idx")
+        let (window, list) = try shownList()
+        defer { window.orderOut(nil) }
+        list.reloadCorpora()
+        #expect(!list.isEditingName)
+        let before = list.tableView.view(atColumn: list.tableView.column(withIdentifier: .init("resident")),
+                                         row: 0, makeIfNecessary: true)
+        list.refreshOnTimer()
+        let after = list.tableView.view(atColumn: list.tableView.column(withIdentifier: .init("resident")),
+                                        row: 0, makeIfNecessary: true)
+        #expect(before !== after, "the Keep in Memory cells were refreshed")
+    }
+}

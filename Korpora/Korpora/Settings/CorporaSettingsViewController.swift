@@ -72,13 +72,15 @@ final class CorporaSettingsViewController: NSViewController {
     private var refreshTimer: Timer?
 
     override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 600, height: 440))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 680, height: 440))
         // Follow the window when it's resized; without this Auto Layout pins the
         // view to the size it was created with.
         root.autoresizingMask = [.width, .height]
 
         let directoryLabel = NSTextField(labelWithString: "Corpora built by Korpora are stored in:")
         directoryPathLabel.lineBreakMode = .byTruncatingMiddle
+        // A long folder path is shortened in the middle rather than widening the whole Settings window.
+        directoryPathLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         directoryPathLabel.font = .systemFont(ofSize: 11)
         directoryPathLabel.textColor = .secondaryLabelColor
         let chooseDirectoryButton = NSButton(title: "Show in Finder", target: self, action: #selector(showLibraryInFinder))
@@ -95,33 +97,45 @@ final class CorporaSettingsViewController: NSViewController {
         nameColumn.minWidth = 100
         nameColumn.width = 150
         nameColumn.resizingMask = [.autoresizingMask, .userResizingMask]
+        // The fixed columns are as narrow as their own heading and content allow, so the Name column - the one
+        // that needs room - gets nearly all of the rest.
         let tokensColumn = NSTableColumn(identifier: .init(Column.tokens.rawValue))
         tokensColumn.title = "Tokens"
-        tokensColumn.minWidth = 90
+        tokensColumn.minWidth = 95
         tokensColumn.width = 100
         tokensColumn.resizingMask = .userResizingMask
         let sourceColumn = NSTableColumn(identifier: .init(Column.source.rawValue))
         sourceColumn.title = "Source"
-        sourceColumn.minWidth = 90
-        sourceColumn.width = 100
+        sourceColumn.minWidth = 80
+        sourceColumn.width = 80
         sourceColumn.resizingMask = .userResizingMask
         let sizeColumn = NSTableColumn(identifier: .init(Column.size.rawValue))
         sizeColumn.title = "On disk"
-        sizeColumn.minWidth = 70
+        sizeColumn.minWidth = 80
         sizeColumn.width = 80
         sizeColumn.resizingMask = .userResizingMask
+        // "Keep in Memory" was the widest heading by far; the checkbox under it is explained by a tooltip.
         let residentColumn = NSTableColumn(identifier: .init(Column.resident.rawValue))
-        residentColumn.title = "Keep in Memory"
-        residentColumn.minWidth = 125
-        residentColumn.width = 130
+        residentColumn.title = "In Memory"
+        residentColumn.headerToolTip = "Keep the corpus in memory, so searches don\u{2019}t wait for the disk"
+        residentColumn.headerCell.alignment = .center
+        residentColumn.minWidth = 95
+        residentColumn.width = 95
         residentColumn.resizingMask = .userResizingMask
         for column in [nameColumn, tokensColumn, sourceColumn, sizeColumn, residentColumn] {
             tableView.addTableColumn(column)
         }
-        // Extra width goes to the Name column, not spread over all four.
-        tableView.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
+        // Name is the flexible column: `fitNameColumn()` gives it the width the others leave.
+        tableView.columnAutoresizingStyle = .noColumnAutoresizing
+        // The widths the user drags the columns to are remembered. (Not under test: the tests would share them.)
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            tableView.autosaveName = "CorporaTable"
+            tableView.autosaveTableColumns = true
+        }
         tableView.dataSource = self
         tableView.delegate = self
+        // AppKit's default 17-point gap between columns would take 85 points of a five-column list.
+        tableView.intercellSpacing = NSSize(width: 6, height: 2)
         tableView.usesAlternatingRowBackgroundColors = true
 
         scrollView.documentView = tableView
@@ -210,7 +224,7 @@ final class CorporaSettingsViewController: NSViewController {
         ])
 
         view = root
-        preferredContentSize = NSSize(width: 600, height: 440)
+        preferredContentSize = NSSize(width: 680, height: 440)
     }
 
     override func viewDidLoad() {
@@ -227,8 +241,7 @@ final class CorporaSettingsViewController: NSViewController {
     override func viewWillAppear() {
         super.viewWillAppear()
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            self?.updateMemoryBar()
-            self?.refreshMemoryDependentColumn()
+            self?.refreshOnTimer()
         }
     }
 
@@ -266,7 +279,56 @@ final class CorporaSettingsViewController: NSViewController {
     /// the "Keep in Memory" checkboxes are refreshed on a timer. Only that
     /// column: `reloadData()` would clear the selection, and with it the
     /// chance to click "\u{2212}" (found in the macOS 15 smoke test of 0.2).
+    /// The first time the table has its real width the narrow columns get their designed widths (unless the user's
+    /// own were saved); from then on, every layout gives the Name column whatever the others leave. AppKit's own
+    /// "first column only" autoresizing left a gap on first layout and spread the rest over every column.
+    private var appliedInitialWidths = false
+    private static let designedWidths: [Column: CGFloat] = [.tokens: 100, .source: 80, .size: 80, .resident: 95]
+
+    override func viewDidLayout() {
+        super.viewDidLayout()
+        guard scrollView.frame.width > 200 else { return }
+        if !appliedInitialWidths {
+            appliedInitialWidths = true
+            let saved = tableView.autosaveName.flatMap {
+                UserDefaults.standard.object(forKey: "NSTableView Columns \($0)")
+            }
+            if saved == nil {
+                for column in tableView.tableColumns {
+                    guard let kind = Column(rawValue: column.identifier.rawValue),
+                          let width = Self.designedWidths[kind] else { continue }
+                    column.width = width
+                }
+            }
+        }
+        fitNameColumn()
+    }
+
+    func fitNameColumn() {
+        guard let name = tableView.tableColumns.first else { return }
+        let spacing = tableView.intercellSpacing.width
+        let others = tableView.tableColumns.dropFirst().reduce(CGFloat(0)) { $0 + $1.width + spacing }
+        let width = max(scrollView.contentSize.width - others - spacing, name.minWidth)
+        if abs(name.width - width) > 0.5 { name.width = width }
+    }
+
+    /// Whether a name in the list is being edited right now: its field is the window's first responder
+    /// (the window's field editor), which is not the table itself.
+    var isEditingName: Bool {
+        guard let editor = view.window?.firstResponder as? NSTextView, editor.isFieldEditor else { return false }
+        return (editor.delegate as? NSView)?.isDescendant(of: tableView) == true
+    }
+
+    /// Runs every two seconds. Not while a name is being typed: reloading cells of the row being edited ends
+    /// the edit and commits what is typed so far (a corpus once got renamed to "S" that way).
+    func refreshOnTimer() {
+        guard !isEditingName else { return }
+        updateMemoryBar()
+        refreshMemoryDependentColumn()
+    }
+
     func refreshMemoryDependentColumn() {
+        guard !isEditingName else { return }
         let column = tableView.column(withIdentifier: NSUserInterfaceItemIdentifier(Column.resident.rawValue))
         guard column >= 0, !rows.isEmpty else { return }
         tableView.reloadData(forRowIndexes: IndexSet(integersIn: 0..<rows.count),
@@ -536,15 +598,15 @@ extension CorporaSettingsViewController: NSTableViewDataSource, NSTableViewDeleg
 
     static func sourceTitle(_ origin: CorpusLibrary.Origin) -> String {
         switch origin {
-        case .built: return "Built by Korpora"
-        case .linked: return "Linked folder"
+        case .built: return "Built"
+        case .linked: return "Linked"
         }
     }
 
     static func sourceDetail(_ origin: CorpusLibrary.Origin) -> String {
         switch origin {
-        case .built: return "Indexed by Korpora from annotated text."
-        case .linked(let target): return "An index folder kept at \(target.path)"
+        case .built: return "Built by Korpora from annotated text."
+        case .linked(let target): return "Linked: an index folder kept at \(target.path)"
         }
     }
 
@@ -590,7 +652,15 @@ extension CorporaSettingsViewController: NSTableViewDataSource, NSTableViewDeleg
             checkbox.toolTip = checkbox.isEnabled
                 ? "Reads the corpus into memory so searches don\u{2019}t wait for the disk."
                 : "Not enough free memory to keep this corpus resident without going under the minimum."
-            return checkbox
+            // Centred under its heading.
+            let cell = NSView()
+            checkbox.translatesAutoresizingMaskIntoConstraints = false
+            cell.addSubview(checkbox)
+            NSLayoutConstraint.activate([
+                checkbox.centerXAnchor.constraint(equalTo: cell.centerXAnchor),
+                checkbox.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            ])
+            return cell
         }
     }
 }

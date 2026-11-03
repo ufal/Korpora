@@ -28,8 +28,6 @@ final class ConcordanceSettingsViewController: NSViewController {
         let rightLabel = NSTextField(labelWithString: "Right:")
         let viewModeLabel = NSTextField(labelWithString: "Load at most (hits):")
         let extendedLabel = NSTextField(labelWithString: "Extended context tokens:")
-        extendedLabel.font = .systemFont(ofSize: 11)
-        extendedLabel.textColor = .secondaryLabelColor
         let extendedDisplayLabel = NSTextField(labelWithString: "Extended context display:")
 
         leftContextField.delegate = self
@@ -46,7 +44,7 @@ final class ConcordanceSettingsViewController: NSViewController {
         leftContextField.stringValue = String(settings.defaultLeftContext)
         rightContextField.stringValue = String(settings.defaultRightContext)
         extendedContextField.stringValue = String(settings.defaultExtendedContextTokens)
-        maxLinesField.stringValue = String(settings.maxConcordanceLines)
+        maxLinesField.stringValue = settings.maxConcordanceLines.formatted()
         extendedContextDisplayControl.selectedSegment = settings.extendedContextDisplayMode == .inline ? 1 : 0
         allowMultipleExtendedContextsButton.state = settings.allowMultipleExtendedContexts ? .on : .off
 
@@ -128,8 +126,8 @@ extension ConcordanceSettingsViewController: NSTextFieldDelegate {
         case rightContextField:
             settings.defaultRightContext = max(Int(field.stringValue) ?? settings.defaultRightContext, 0)
         case maxLinesField:
-            settings.maxConcordanceLines = max(Int(field.stringValue.filter(\.isNumber)) ?? settings.maxConcordanceLines, 100)
-            field.stringValue = String(settings.maxConcordanceLines)
+            settings.maxConcordanceLines = max(Int(field.stringValue.filter { $0.isASCII && $0.isNumber }) ?? settings.maxConcordanceLines, 100)
+            field.stringValue = settings.maxConcordanceLines.formatted()
         case extendedContextField:
             settings.defaultExtendedContextTokens = max(Int(field.stringValue) ?? settings.defaultExtendedContextTokens, 1)
         default:
