@@ -90,10 +90,33 @@ extension ConcordanceHandle {
     }
 }
 
+/// What an engine can do beyond opening corpora and running queries. The app
+/// disables the matching controls for an engine that lacks one.
+public struct EngineCapabilities: OptionSet, Sendable {
+    public let rawValue: Int
+    public init(rawValue: Int) { self.rawValue = rawValue }
+
+    public static let sort = EngineCapabilities(rawValue: 1 << 0)
+    public static let filter = EngineCapabilities(rawValue: 1 << 1)
+    public static let shuffle = EngineCapabilities(rawValue: 1 << 2)
+    public static let sample = EngineCapabilities(rawValue: 1 << 3)
+    public static let lineGroups = EngineCapabilities(rawValue: 1 << 4)
+    public static let subcorpora = EngineCapabilities(rawValue: 1 << 5)
+    public static let hitHistogram = EngineCapabilities(rawValue: 1 << 6)
+    /// Wide context around one hit, and structural attributes at a position.
+    public static let extendedContext = EngineCapabilities(rawValue: 1 << 7)
+
+    public static let all: EngineCapabilities = [
+        .sort, .filter, .shuffle, .sample, .lineGroups, .subcorpora, .hitHistogram, .extendedContext,
+    ]
+}
+
 /// An engine: opens corpora and runs queries on them.
 public protocol CorpusEngine: Sendable {
     /// Stable identifier stored with saved documents (`"manatee"`).
     var id: String { get }
+
+    var capabilities: EngineCapabilities { get }
 
     func openCorpus(name: String) async throws -> any CorpusHandle
 
@@ -101,6 +124,10 @@ public protocol CorpusEngine: Sendable {
     /// must have been opened by this engine. Cancelling the calling task
     /// aborts the query and throws `CancellationError`.
     func openConcordance(query: String, in corpus: any CorpusHandle) async throws -> any ConcordanceHandle
+}
+
+extension CorpusEngine {
+    public var capabilities: EngineCapabilities { .all }
 }
 
 public enum CorpusEngineError: Error, CustomStringConvertible {

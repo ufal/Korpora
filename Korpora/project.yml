@@ -43,6 +43,8 @@ targets:
         product: ManateeKit
       - package: ManateeKit
         product: CorpusEngine
+      - package: ManateeKit
+        product: PandoKit
     # Bundle encodevert/mkregexattr into Contents/Helpers/ for release
     # builds (see docs/project-plan.md's "Goal - Ship a signed GitHub
     # release", blocker 2: a shipped app can't find them via the #filePath

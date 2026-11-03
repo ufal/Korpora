@@ -15,6 +15,7 @@
 		171B94927CACB5FA8C25D710 /* SettingsWindowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC33C652F154E0B0ACAAAF16 /* SettingsWindowTests.swift */; };
 		1938B1A7AFC746B80688FF6E /* CorporaSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27FD96658F279E86467718F8 /* CorporaSettingsViewController.swift */; };
 		1C1033F37ED198EBDCED9FED /* FilterSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75EAA9D465F5673F768EA3AA /* FilterSheetController.swift */; };
+		1E1A9100D1259F2F4EE83BC1 /* PandoDocumentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 289D95204B8799BAA93FE0AB /* PandoDocumentTests.swift */; };
 		2361BEBD2F8EC06105F54B5F /* ConcordanceOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA5BD468A9C191CD0CB9A323 /* ConcordanceOperation.swift */; };
 		247ED6676A2FED188F50DAF6 /* LegacyDefaultsMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70108D2D157AC3924026A527 /* LegacyDefaultsMigrationTests.swift */; };
 		27404A26816693683E08E07E /* DispersionWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A3520B55F507580A176050 /* DispersionWindowController.swift */; };
@@ -63,6 +64,7 @@
 		D2292F83A25C875C1174CC94 /* ActiveImportTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E43418276694BEE9E6FD9C7 /* ActiveImportTracker.swift */; };
 		D2DB97BA102AA3F70C5066BF /* HistoryPopoverController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 548B42C845A6C7B07CCE870F /* HistoryPopoverController.swift */; };
 		D70E975D7CE75D961FED9942 /* CorpusImportSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73CC906E25B06673D997CBD4 /* CorpusImportSheetController.swift */; };
+		D8CEAB959B1395562E61D32C /* PandoKit in Frameworks */ = {isa = PBXBuildFile; productRef = DF4DC831B7B2D28715D0DAFA /* PandoKit */; };
 		DA2EEF3E76DF1BE3F5518902 /* UnicodeScriptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50429E54926CEE548BDD9820 /* UnicodeScriptTests.swift */; };
 		DF41E0A7E0BECE4B5D74495C /* NewConcordanceSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = F498141E2902F7FE889DE76F /* NewConcordanceSheetController.swift */; };
 		E53BAC3E721B476D18C010CE /* DispersionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 712827F20614CE4E88A28D46 /* DispersionView.swift */; };
@@ -101,6 +103,7 @@
 		2244ED579AEB14CE01DD800F /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		24BB2E68E54F740A40A1DF52 /* DispersionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispersionTests.swift; sourceTree = "<group>"; };
 		27FD96658F279E86467718F8 /* CorporaSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorporaSettingsViewController.swift; sourceTree = "<group>"; };
+		289D95204B8799BAA93FE0AB /* PandoDocumentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PandoDocumentTests.swift; sourceTree = "<group>"; };
 		29FC66C90A00125753A67D28 /* FrequencySheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrequencySheetController.swift; sourceTree = "<group>"; };
 		33523E2968DE7282B8143137 /* EngineSeamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSeamTests.swift; sourceTree = "<group>"; };
 		36AD3505A6B115D835CFF1D6 /* KWICCellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KWICCellView.swift; sourceTree = "<group>"; };
@@ -166,6 +169,7 @@
 			files = (
 				F862FD9EFBFAFD408F69D5F0 /* ManateeKit in Frameworks */,
 				C90E4F31E1D61DB5933946F3 /* CorpusEngine in Frameworks */,
+				D8CEAB959B1395562E61D32C /* PandoKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -251,6 +255,7 @@
 				EAE6AD349C15F21FFD850145 /* ExtendedContextOverlayInsetTests.swift */,
 				0FBC2AD51085ABA715C92CF9 /* KWICFormatterTests.swift */,
 				70108D2D157AC3924026A527 /* LegacyDefaultsMigrationTests.swift */,
+				289D95204B8799BAA93FE0AB /* PandoDocumentTests.swift */,
 				D3253FB4AE0CC8DDD22A9B12 /* QueryHistoryStoreTests.swift */,
 				FC33C652F154E0B0ACAAAF16 /* SettingsWindowTests.swift */,
 				91CE8F8CB611E321AAA51650 /* SubcorpusValuePickerModelTests.swift */,
@@ -340,6 +345,7 @@
 			packageProductDependencies = (
 				451B02C818B4142D28EA7E25 /* ManateeKit */,
 				3BA10D284DD88557535ED345 /* CorpusEngine */,
+				DF4DC831B7B2D28715D0DAFA /* PandoKit */,
 			);
 			productName = Korpora;
 			productReference = F564FB37D52D1AD65CC90F09 /* Korpora.app */;
@@ -446,6 +452,7 @@
 				753C61BDF55CC67A1C13E23A /* ExtendedContextOverlayInsetTests.swift in Sources */,
 				45074C6E1CD3CB489C2A8F86 /* KWICFormatterTests.swift in Sources */,
 				247ED6676A2FED188F50DAF6 /* LegacyDefaultsMigrationTests.swift in Sources */,
+				1E1A9100D1259F2F4EE83BC1 /* PandoDocumentTests.swift in Sources */,
 				2B2B70AE01B0E3943F49F804 /* QueryHistoryStoreTests.swift in Sources */,
 				171B94927CACB5FA8C25D710 /* SettingsWindowTests.swift in Sources */,
 				8EE0AC24488FF49D925A04ED /* SubcorpusValuePickerModelTests.swift in Sources */,
@@ -768,6 +775,10 @@
 		451B02C818B4142D28EA7E25 /* ManateeKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ManateeKit;
+		};
+		DF4DC831B7B2D28715D0DAFA /* PandoKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PandoKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

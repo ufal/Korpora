@@ -98,6 +98,7 @@ let package = Package(
     products: [
         .library(name: "CorpusEngine", targets: ["CorpusEngine"]),
         .library(name: "ManateeKit", targets: ["ManateeKit"]),
+        .library(name: "PandoKit", targets: ["PandoKit"]),
         .executable(name: "manateekit-cli", targets: ["manateekit-cli"]),
     ],
     targets: [
@@ -113,10 +114,14 @@ let package = Package(
             name: "ManateeKit",
             dependencies: ["CManatee", "CorpusEngine"]
         ),
+        // pando as a second engine (docs/pando-analysis.md): pure Swift, loads
+        // libpando at run time (dlopen), so nothing links against it.
+        .target(name: "PandoKit", dependencies: ["CorpusEngine"]),
         .executableTarget(
             name: "manateekit-cli",
             dependencies: ["ManateeKit"]
         ),
+        .testTarget(name: "PandoKitTests", dependencies: ["PandoKit", "CorpusEngine"]),
         .testTarget(
             name: "ManateeKitTests",
             dependencies: ["ManateeKit", "CorpusEngine"]
