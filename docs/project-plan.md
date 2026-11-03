@@ -334,11 +334,6 @@ not yet released):
 - 6.9 lists a count next to each value.
 
 **Known bugs**
-- **#11, tooltips** (KWIC hover and toolbar) don't appear until the app has
-  been deactivated and reactivated once per launch. Confirmed real by the
-  user on macOS 27 (0.2); the investigation in Phase 5.3 ruled out the
-  tooltip mechanism, so it's something about the app's window setup or the
-  OS. Not yet checked on macOS 15.
 - A one-off 0-hit result (Phase 5.5) was seen once and never reproduced.
 
 **Release and distribution**
@@ -2359,6 +2354,10 @@ narrowed further and closed as a known, accepted, non-blocking issue:**
   still there on macOS 27 (0.2), not a beta artefact. Tracked as
   [issue #11](https://github.com/stranak/Korpora/issues/11), which lists
   everything ruled out above and what hasn't been tried.
+- **Update 2026-11-03: gone.** After the toolbar moved to standard segmented
+  `NSToolbarItemGroup`s (and the pando work around it), the user finds that tooltips
+  appear immediately, with no deactivate/reactivate. Cause never identified; issue #11
+  closed.
 - **Process note**: this session initially told the user it had no way to
   read the app's live console output, which was wrong - `GetConsoleOutput`
   (part of the same xcode-tools MCP surface already used for `BuildProject`/
@@ -3754,9 +3753,8 @@ Yes for the bar charts, with the mix kept small.
   window first): (1) the "printing is close to free" claim above is
   untested; a hosted SwiftUI chart may rasterize or clip under
   `NSPrintOperation`, and `ImageRenderer` is the alternative; (2) hover
-  inside a hosted view, next to the unresolved app-activation behavior
-  ([issue #11](https://github.com/stranak/Korpora/issues/11)), so check it
-  on a fresh launch; (3) layout and resizing inside the existing window
+  inside a hosted view (the old tooltip-after-reactivation bug, issue #11, is gone,
+  but check it on a fresh launch anyway); (3) layout and resizing inside the existing window
   controllers; (4) dark mode and VoiceOver defaults, on the macOS 15 VM as
   well as macOS 27.
 - **Fallback:** a hand-drawn `NSView` bar chart if the spike shows print or
@@ -4071,12 +4069,9 @@ can be verified on its own.
      `isDocumentEdited=false`, restoration disabled, unconditional
      `.terminateNow` are all explicitly marked "revisit before real
      release");
-   - the per-launch tooltips quirk (Phase 5.3) and the one-off 0-hit
-     result (Phase 5.5) were both attributed to macOS 27 beta / left
-     unreproduced — re-verify both on the floor OS before tagging.
-     *(2026-09-29: the tooltip one is a real bug, not a beta artefact —
-     [issue #11](https://github.com/stranak/Korpora/issues/11); the 0-hit
-     one is still unreproduced.)*;
+   - the one-off 0-hit result (Phase 5.5) was left unreproduced — re-verify
+     it on the floor OS before tagging. *(The per-launch tooltips quirk,
+     issue #11, is gone as of 2026-11-03.)*;
    - ~~**no app icon exists**~~ *(done 2026-09-29, `feat/app-icon`)*: the
      "Monogram" icon — a K whose stem is a stack of gold KWIC keyword
      pills and whose arms are lines of context, on oxblood. Source is
@@ -4427,8 +4422,8 @@ itself (`release/notes-0.2.md` locally, gitignored).
   everywhere else (Finder, Xcode, a release build, the macOS 15 VM).
   Launch Services also knew 15 stray copies of the app then (old
   DerivedData, temp builds); unregistering them didn't change it. It may
-  share a cause with the tooltip bug ([issue #11](https://github.com/stranak/Korpora/issues/11)),
-  unproven: both look like the app not being fully activated from the
+  share a cause with the old tooltip bug (issue #11, gone since 2026-11-03),
+  unproven: both looked like the app not being fully activated from the
   window server's point of view.
 - **Tooling notes for the next run.** `tart` is not in Homebrew's working
   formula: 2.40.0 from the release tarball (checksum and notarization
