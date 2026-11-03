@@ -53,6 +53,14 @@ final class SettingsWindowController: NSWindowController, NSToolbarDelegate {
         showPane(.corpora)
     }
 
+    /// Opens the Settings window on `pane`, in front: what other parts of the app call to send the user there
+    /// (`showPane` alone only switches what is in the window, which may not even be on screen).
+    func show(_ pane: Pane) {
+        showPane(pane)
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+    }
+
     /// Each pane is laid out for a minimum size (its `preferredContentSize`)
     /// and is free to grow from there: the Corpora and Appearance lists take
     /// the extra height, the forms just get more room. Switching panes

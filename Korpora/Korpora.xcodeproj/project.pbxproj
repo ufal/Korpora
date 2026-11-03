@@ -37,6 +37,7 @@
 		74DDB78063606DD0DF6872E6 /* PaperSafeDrawing.swift in Sources */ = {isa = PBXBuildFile; fileRef = B60D663EE612B1052D505E72 /* PaperSafeDrawing.swift */; };
 		753C61BDF55CC67A1C13E23A /* ExtendedContextOverlayInsetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAE6AD349C15F21FFD850145 /* ExtendedContextOverlayInsetTests.swift */; };
 		78B53C98D1A5A167B0CA9400 /* Korpora.icon in Resources */ = {isa = PBXBuildFile; fileRef = 0BFAF9063885A84A320C7405 /* Korpora.icon */; };
+		7C51472C41F8F9E040526D02 /* SettingsFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB308D76FA5C93BE1B12F54A /* SettingsFlowTests.swift */; };
 		7F41071BF0E94BB152F02C33 /* ConcordanceExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EE043A10DE130AB36BA0F1C /* ConcordanceExporter.swift */; };
 		8A9BD412E2BB01965893F7C1 /* KWICCellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36AD3505A6B115D835CFF1D6 /* KWICCellView.swift */; };
 		8EE0AC24488FF49D925A04ED /* SubcorpusValuePickerModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91CE8F8CB611E321AAA51650 /* SubcorpusValuePickerModelTests.swift */; };
@@ -129,6 +130,7 @@
 		8EA20AB3943E5955AFF4F9E1 /* ConcordanceSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConcordanceSettingsViewController.swift; sourceTree = "<group>"; };
 		91CE8F8CB611E321AAA51650 /* SubcorpusValuePickerModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubcorpusValuePickerModelTests.swift; sourceTree = "<group>"; };
 		9BC23CBE793C2ED01EFAE067 /* CollocationSheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollocationSheetController.swift; sourceTree = "<group>"; };
+		AB308D76FA5C93BE1B12F54A /* SettingsFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsFlowTests.swift; sourceTree = "<group>"; };
 		AC4BF85C4540BAB954E61CCC /* UnicodeScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnicodeScript.swift; sourceTree = "<group>"; };
 		AD2EE2396662652C35562289 /* SubcorpusValuePickerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubcorpusValuePickerModel.swift; sourceTree = "<group>"; };
 		AD9F1A60D4DB64C1116DAE9F /* CorpusResidencyManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusResidencyManager.swift; sourceTree = "<group>"; };
@@ -250,6 +252,7 @@
 				70108D2D157AC3924026A527 /* LegacyDefaultsMigrationTests.swift */,
 				892F0CB7F666BA4DDAF0C975 /* PandoTestSupport.swift */,
 				D3253FB4AE0CC8DDD22A9B12 /* QueryHistoryStoreTests.swift */,
+				AB308D76FA5C93BE1B12F54A /* SettingsFlowTests.swift */,
 				FC33C652F154E0B0ACAAAF16 /* SettingsWindowTests.swift */,
 				91CE8F8CB611E321AAA51650 /* SubcorpusValuePickerModelTests.swift */,
 				50429E54926CEE548BDD9820 /* UnicodeScriptTests.swift */,
@@ -445,6 +448,7 @@
 				247ED6676A2FED188F50DAF6 /* LegacyDefaultsMigrationTests.swift in Sources */,
 				648BECFAEFA6FE5FE21E9572 /* PandoTestSupport.swift in Sources */,
 				2B2B70AE01B0E3943F49F804 /* QueryHistoryStoreTests.swift in Sources */,
+				7C51472C41F8F9E040526D02 /* SettingsFlowTests.swift in Sources */,
 				171B94927CACB5FA8C25D710 /* SettingsWindowTests.swift in Sources */,
 				8EE0AC24488FF49D925A04ED /* SubcorpusValuePickerModelTests.swift in Sources */,
 				DA2EEF3E76DF1BE3F5518902 /* UnicodeScriptTests.swift in Sources */,

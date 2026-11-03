@@ -103,6 +103,25 @@ final class PandoEngineTests: XCTestCase {
         let live = try await engine.openConcordance(query: #"[lemma="cat"]"#, in: corpus)
         let items = try await live.frequencyDistribution([FrequencyCriterion(attribute: "doc.genre")])
         XCTAssertEqual(Dictionary(uniqueKeysWithValues: items.map { ($0.word, $0.freq) }), ["fiction": 3, "news report": 2])
+        // Relative to the tokens of each value's documents: 11 tokens of fiction, 4 of news.
+        let byValue = Dictionary(uniqueKeysWithValues: items.map { ($0.word, $0) })
+        XCTAssertEqual(byValue["fiction"]?.norm, 11)
+        XCTAssertEqual(byValue["news report"]?.norm, 4)
+        XCTAssertEqual(try XCTUnwrap(byValue["fiction"]?.perMillion), 3.0 / 11 * 1_000_000, accuracy: 1)
+        XCTAssertEqual(try XCTUnwrap(byValue["news report"]?.perMillion), 2.0 / 4 * 1_000_000, accuracy: 1)
+    }
+
+    func testFrequencyOfAnOrdinaryAttributeIsPerMillionOfTheWholeCorpus() async throws {
+        let box = try TestPando.Sandbox()
+        let engine = try await TestPando.buildCorpus("Cats", conllu: TestPando.catsConllu, in: box)
+        let corpus = try await engine.openCorpus(name: "Cats")
+        let live = try await engine.openConcordance(query: #"[lemma="cat"]"#, in: corpus)
+        let items = try await live.frequencyDistribution([FrequencyCriterion(attribute: "form")])
+        XCTAssertEqual(items.map(\.freq).reduce(0, +), 5)
+        XCTAssertNil(items.first?.norm, "no group size for an ordinary attribute")
+        // 15 tokens in the corpus: 5 hits of the form "cat" are 333,333 per million.
+        let cat = try XCTUnwrap(items.first { $0.word == "cat" })
+        XCTAssertEqual(try XCTUnwrap(cat.perMillion), 5.0 / 15 * 1_000_000, accuracy: 1)
     }
 
     func testAttributeValues() async throws {

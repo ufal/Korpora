@@ -21,7 +21,7 @@ final class FrequencyWindowController: NSWindowController {
 }
 
 private final class FrequencyViewController: NSViewController {
-    private enum Column: String { case word, freq, norm }
+    private enum Column: String { case word, freq, perMillion }
 
     private var items: [FrequencyItem]
     private let tableView = SortableTableView()
@@ -42,7 +42,7 @@ private final class FrequencyViewController: NSViewController {
 
     override func loadView() {
         container = TableChartContainerView(table: scrollView)
-        container.setMeasures([
+        var measures: [TableChartContainerView.Measure] = [
             .init(title: "Frequency") { [weak self] in
                 // A multi-level key is tab-joined; a tab doesn't draw.
                 (self?.items ?? []).map {
@@ -50,7 +50,18 @@ private final class FrequencyViewController: NSViewController {
                                      value: Double($0.freq))
                 }
             },
-        ])
+        ]
+        // Only when the engine gave relative frequencies.
+        if items.contains(where: { $0.perMillion != nil }) {
+            measures.append(.init(title: "Per million") { [weak self] in
+                (self?.items ?? []).compactMap { item in
+                    item.perMillion.map {
+                        BarChartView.Bar(label: item.word.replacingOccurrences(of: "\t", with: " \u{00B7} "), value: $0)
+                    }
+                }
+            })
+        }
+        container.setMeasures(measures)
         view = container
     }
 
@@ -76,10 +87,12 @@ private final class FrequencyViewController: NSViewController {
         freq.width = 90
         freq.sortDescriptorPrototype = NSSortDescriptor(key: Column.freq.rawValue, ascending: false)
 
-        let norm = NSTableColumn(identifier: .init(Column.norm.rawValue))
-        norm.title = "Norm"
-        norm.width = 90
-        norm.sortDescriptorPrototype = NSSortDescriptor(key: Column.norm.rawValue, ascending: false)
+        // Relative to the whole corpus, or for a document property to that value's documents.
+        let norm = NSTableColumn(identifier: .init(Column.perMillion.rawValue))
+        norm.title = "Per million"
+        norm.width = 100
+        norm.headerToolTip = "Instances per million tokens (of the corpus, or of the documents with this value)"
+        norm.sortDescriptorPrototype = NSSortDescriptor(key: Column.perMillion.rawValue, ascending: false)
 
         for column in [word, freq, norm] {
             tableView.addTableColumn(column)
@@ -103,9 +116,8 @@ extension FrequencyViewController: NSTableViewDataSource, NSTableViewDelegate {
         switch identifier {
         case .word: text = item.word
         case .freq: text = String(item.freq)
-        // Blank, not "0", when not applicable (a plain positional-attribute
-        // criterion) - "0" would misleadingly read as a real measured value.
-        case .norm: text = item.norm.map(String.init) ?? ""
+        // Blank, not "0", when the engine gave none: "0" would read as a measured value.
+        case .perMillion: text = item.perMillion.map { $0.formatted(.number.precision(.fractionLength(2))) } ?? ""
         }
         let field = NSTextField(labelWithString: text)
         field.font = .systemFont(ofSize: 12)
@@ -120,7 +132,8 @@ extension FrequencyViewController: NSTableViewDataSource, NSTableViewDelegate {
             switch column {
             case .word: return ascending ? a.word < b.word : a.word > b.word
             case .freq: return ascending ? a.freq < b.freq : a.freq > b.freq
-            case .norm: return ascending ? (a.norm ?? 0) < (b.norm ?? 0) : (a.norm ?? 0) > (b.norm ?? 0)
+            case .perMillion:
+                return ascending ? (a.perMillion ?? 0) < (b.perMillion ?? 0) : (a.perMillion ?? 0) > (b.perMillion ?? 0)
             }
         }
         tableView.reloadData()

@@ -14,15 +14,20 @@ final class AppearanceSettingsViewController: NSViewController {
     private let structuralColorWell = NSColorWell()
     private let alternatingRowCheckbox = NSButton(
         checkboxWithTitle: "Alternate row background", target: nil, action: nil)
-    private let scriptTableView = NSTableView()
+    let scriptTableView = NSTableView()
     private let scriptScrollView = NSScrollView()
+    let changeScriptFontButton = NSButton(title: "Change Font\u{2026}", target: nil, action: nil)
+    let removeScriptFontButton = NSButton(
+        image: NSImage(systemSymbolName: "minus", accessibilityDescription: "Remove")!, target: nil, action: nil)
+    /// The settings the per-script list reads and writes (the app's own; tests pass their own).
+    var settings: AppSettings = .shared
 
     /// Sorted for stable display - `AppSettings.scriptFontOverrides` is a
     /// plain `[String: String]` with no inherent order.
-    private var scriptOverrideRows: [(script: UnicodeScript, fontName: String)] = []
-    /// The script a "Select Font…" menu pick is for, until the Font Panel
-    /// reports back a chosen font - see `pickScriptFont`/`scriptFontChanged`.
-    private var pendingScript: UnicodeScript?
+    private(set) var scriptOverrideRows: [(script: UnicodeScript, fontName: String)] = []
+    /// The script the Font Panel is currently choosing a font for. Stays set while the panel is open,
+    /// so every change made in it is applied (not just the first); follows the selected row.
+    private(set) var pendingScript: UnicodeScript?
 
     override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 400))
@@ -49,13 +54,23 @@ final class AppearanceSettingsViewController: NSViewController {
         let scriptTitle = NSTextField(labelWithString: "Per-script fonts:")
         scriptTitle.font = .boldSystemFont(ofSize: 12)
         let scriptHint = NSTextField(wrappingLabelWithString:
-            "Overrides the results font above for text in a specific script - useful when one font's "
-                + "glyph coverage isn't ideal for every script a corpus's text contains.")
+            "Gives text in a specific script its own font instead of the results font above - useful when "
+                + "one font doesn't cover every script a corpus contains. Double-click a row to change its font.")
         scriptHint.font = .systemFont(ofSize: 11)
         scriptHint.textColor = .secondaryLabelColor
 
-        scriptTableView.headerView = nil
-        scriptTableView.addTableColumn(NSTableColumn(identifier: .init("override")))
+        let scriptColumn = NSTableColumn(identifier: .init("script"))
+        scriptColumn.title = "Script"
+        scriptColumn.width = 110
+        scriptColumn.minWidth = 80
+        let fontColumn = NSTableColumn(identifier: .init("font"))
+        fontColumn.title = "Font"
+        fontColumn.minWidth = 120
+        scriptTableView.addTableColumn(scriptColumn)
+        scriptTableView.addTableColumn(fontColumn)
+        scriptTableView.headerView = NSTableHeaderView()
+        scriptTableView.target = self
+        scriptTableView.doubleAction = #selector(changeSelectedOverride)
         scriptTableView.dataSource = self
         scriptTableView.delegate = self
         scriptTableView.style = .plain
@@ -67,15 +82,22 @@ final class AppearanceSettingsViewController: NSViewController {
         let addButton = NSButton(
             image: NSImage(systemSymbolName: "plus", accessibilityDescription: "Add")!,
             target: self, action: #selector(addOverrideTapped))
-        let removeButton = NSButton(
-            image: NSImage(systemSymbolName: "minus", accessibilityDescription: "Remove")!,
-            target: self, action: #selector(removeSelectedOverride))
+        let removeButton = removeScriptFontButton
+        removeButton.target = self
+        removeButton.action = #selector(removeSelectedOverride)
+        removeButton.toolTip = "Stop using a special font for the selected script"
+        addButton.toolTip = "Choose a script to give its own font"
+        changeScriptFontButton.target = self
+        changeScriptFontButton.action = #selector(changeSelectedOverride)
+        changeScriptFontButton.toolTip = "Choose another font for the selected script (or double-click it)"
+        changeScriptFontButton.isEnabled = false
+        removeButton.isEnabled = false
 
         let views: [NSView] = [
             fontTitle, fontLabel, selectFontButton,
             colorsTitle, positionalLabel, positionalColorWell, structuralLabel, structuralColorWell,
             alternatingRowCheckbox,
-            scriptTitle, scriptHint, scriptScrollView, addButton, removeButton,
+            scriptTitle, scriptHint, scriptScrollView, addButton, removeButton, changeScriptFontButton,
         ]
         for v in views {
             v.translatesAutoresizingMaskIntoConstraints = false
@@ -128,6 +150,8 @@ final class AppearanceSettingsViewController: NSViewController {
             removeButton.topAnchor.constraint(equalTo: scriptScrollView.bottomAnchor, constant: 6),
             removeButton.leadingAnchor.constraint(equalTo: addButton.trailingAnchor, constant: 2),
             removeButton.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -20),
+            changeScriptFontButton.centerYAnchor.constraint(equalTo: removeButton.centerYAnchor),
+            changeScriptFontButton.trailingAnchor.constraint(equalTo: scriptScrollView.trailingAnchor),
         ])
 
         // A centered column; the per-script list in it takes extra height.
@@ -170,20 +194,39 @@ final class AppearanceSettingsViewController: NSViewController {
     }
 
     private func reloadScriptOverrides() {
-        let overrides = AppSettings.shared.scriptFontOverrides
+        let selected = selectedScript
+        let overrides = settings.scriptFontOverrides
         scriptOverrideRows = overrides.compactMap { key, fontName in
             UnicodeScript(rawValue: key).map { (script: $0, fontName: fontName) }
         }.sorted { $0.script.displayName < $1.script.displayName }
         scriptTableView.reloadData()
+        if let selected, let row = scriptOverrideRows.firstIndex(where: { $0.script == selected }) {
+            scriptTableView.selectRowIndexes([row], byExtendingSelection: false)
+        }
+        updateScriptButtons()
     }
 
-    /// A pull-down of scripts not yet overridden (picking an already-
-    /// overridden one would need a separate "change" affordance the
-    /// remove-then-re-add flow already covers) - choosing one immediately
-    /// opens the Font Panel for it, same "Select…" pattern as the base
-    /// results font above.
+    private var selectedScript: UnicodeScript? {
+        scriptOverrideRows.indices.contains(scriptTableView.selectedRow)
+            ? scriptOverrideRows[scriptTableView.selectedRow].script : nil
+    }
+
+    private func updateScriptButtons() {
+        let hasSelection = selectedScript != nil
+        changeScriptFontButton.isEnabled = hasSelection
+        removeScriptFontButton.isEnabled = hasSelection
+    }
+
+    /// The font an override currently has (the results font if there is none yet).
+    private func font(for script: UnicodeScript) -> NSFont {
+        settings.scriptFontOverrides[script.rawValue]
+            .flatMap { NSFont(name: $0, size: CGFloat(settings.resultsFontSize)) } ?? settings.resultsFont
+    }
+
+    /// A pull-down of scripts not yet overridden: choosing one opens the Font Panel for it. (A script
+    /// that already has a font is changed with "Change Font\u{2026}" or by double-clicking it.)
     @objc private func addOverrideTapped(_ sender: NSButton) {
-        let existing = Set(AppSettings.shared.scriptFontOverrides.keys)
+        let existing = Set(settings.scriptFontOverrides.keys)
         let menu = NSMenu()
         for script in UnicodeScript.allCases where script != .other && !existing.contains(script.rawValue) {
             let item = NSMenuItem(title: script.displayName, action: #selector(scriptPicked(_:)), keyEquivalent: "")
@@ -197,31 +240,58 @@ final class AppearanceSettingsViewController: NSViewController {
 
     @objc private func scriptPicked(_ sender: NSMenuItem) {
         guard let script = sender.representedObject as? UnicodeScript else { return }
+        // A new override starts as the results font, so choosing in the panel changes it from there.
+        var overrides = settings.scriptFontOverrides
+        overrides[script.rawValue] = settings.resultsFontName
+        settings.scriptFontOverrides = overrides
+        reloadScriptOverrides()
+        if let row = scriptOverrideRows.firstIndex(where: { $0.script == script }) {
+            scriptTableView.selectRowIndexes([row], byExtendingSelection: false)
+        }
+        beginChoosingFont(for: script)
+    }
+
+    @objc private func changeSelectedOverride() {
+        guard let script = selectedScript else { return }
+        beginChoosingFont(for: script)
+    }
+
+    /// Points the Font Panel at `script`'s font; every change made in it is applied to that script.
+    private func beginChoosingFont(for script: UnicodeScript) {
         pendingScript = script
         let manager = NSFontManager.shared
         manager.target = self
         manager.action = #selector(scriptFontChanged(_:))
-        manager.setSelectedFont(AppSettings.shared.resultsFont, isMultiple: false)
+        manager.setSelectedFont(font(for: script), isMultiple: false)
         NSFontPanel.shared.orderFront(self)
     }
 
     @objc func scriptFontChanged(_ sender: NSFontManager?) {
         guard let sender, let script = pendingScript else { return }
-        let newFont = sender.convert(AppSettings.shared.resultsFont)
-        var overrides = AppSettings.shared.scriptFontOverrides
-        overrides[script.rawValue] = newFont.fontName
-        AppSettings.shared.scriptFontOverrides = overrides
-        pendingScript = nil
+        applyFont(sender.convert(font(for: script)), to: script)
+    }
+
+    /// Stores `font` as the font for `script`.
+    func applyFont(_ font: NSFont, to script: UnicodeScript) {
+        var overrides = settings.scriptFontOverrides
+        overrides[script.rawValue] = font.fontName
+        settings.scriptFontOverrides = overrides
         reloadScriptOverrides()
     }
 
     @objc private func removeSelectedOverride() {
-        let index = scriptTableView.selectedRow
-        guard scriptOverrideRows.indices.contains(index) else { return }
-        var overrides = AppSettings.shared.scriptFontOverrides
-        overrides.removeValue(forKey: scriptOverrideRows[index].script.rawValue)
-        AppSettings.shared.scriptFontOverrides = overrides
+        guard let script = selectedScript else { return }
+        var overrides = settings.scriptFontOverrides
+        overrides.removeValue(forKey: script.rawValue)
+        settings.scriptFontOverrides = overrides
+        if pendingScript == script { pendingScript = nil }
         reloadScriptOverrides()
+    }
+
+    override func viewWillDisappear() {
+        super.viewWillDisappear()
+        // Leaving the pane: the Font Panel no longer belongs to a script.
+        pendingScript = nil
     }
 }
 
@@ -230,8 +300,23 @@ extension AppearanceSettingsViewController: NSTableViewDataSource, NSTableViewDe
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let override = scriptOverrideRows[row]
-        let field = NSTextField(labelWithString: "\(override.script.displayName): \(override.fontName)")
-        field.font = .systemFont(ofSize: 12)
+        if tableColumn?.identifier.rawValue == "script" {
+            let field = NSTextField(labelWithString: override.script.displayName)
+            field.font = .systemFont(ofSize: 12)
+            return field
+        }
+        // The font's name, set in that font.
+        let field = NSTextField(labelWithString: override.fontName)
+        field.font = NSFont(name: override.fontName, size: 12) ?? .systemFont(ofSize: 12)
+        field.lineBreakMode = .byTruncatingTail
         return field
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        updateScriptButtons()
+        // With the Font Panel open for a script, selecting another row moves it to that row's script.
+        if pendingScript != nil, let script = selectedScript {
+            beginChoosingFont(for: script)
+        }
     }
 }

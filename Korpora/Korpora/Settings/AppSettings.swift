@@ -5,6 +5,9 @@ import KorporaEngine
 final class AppSettings {
     static let shared = AppSettings()
     static let didChangeNotification = Notification.Name("AppSettingsDidChange")
+    /// Posted when the set of corpora may have changed (Settings > Corpora added, imported or removed one),
+    /// so open windows (the New Concordance sheet) can refresh their lists.
+    static let corporaDidChangeNotification = Notification.Name("AppCorporaDidChange")
 
     private enum Key {
         /// Retired: Settings once had a separate list of registry

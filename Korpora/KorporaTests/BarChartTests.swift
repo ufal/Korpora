@@ -241,6 +241,23 @@ import Testing
         #expect(c.measurePopUp.isHidden, "one measure, no pop-up")
     }
 
+    @Test func theFrequencyWindowChartsPerMillionWhenTheEngineGaveIt() throws {
+        let items = [
+            FrequencyItem(word: "fiction", freq: 3, norm: 11, perMillion: 272_727.27),
+            FrequencyItem(word: "news", freq: 2, norm: 4, perMillion: 500_000),
+        ]
+        let controller = FrequencyWindowController(criterion: .init(attribute: "doc.genre"), items: items)
+        let c = try container(of: controller.window)
+        c.setMode(.chart)
+        #expect(c.measurePopUp.itemTitles == ["Frequency", "Per million"])
+        // By raw frequency fiction leads; per million the shorter news documents do.
+        #expect(c.chart.bars.map(\.label) == ["fiction", "news"])
+        c.measurePopUp.selectItem(withTitle: "Per million")
+        _ = c.measurePopUp.sendAction(c.measurePopUp.action, to: c.measurePopUp.target)
+        #expect(c.chart.bars.map(\.label) == ["news", "fiction"])
+        #expect(c.chart.valueTitle == "Per million")
+    }
+
     @Test func theCollocationWindowOffersScoreCooccurrencesAndFrequency() throws {
         let items = [
             CollocationItem(word: "brown", freq: 40, cnt: 3, score: 8.5),

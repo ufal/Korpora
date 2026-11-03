@@ -96,20 +96,23 @@ public struct FrequencyCriterion: Sendable, Codable {
     }
 }
 
-/// One bin from `LiveConcordance.frequencyDistribution(_:minFrequency:)`,
+/// One bin from `ConcordanceHandle.frequencyDistribution(_:minFrequency:)`,
 /// sorted by `freq` descending.
-public struct FrequencyItem: Sendable {
+public struct FrequencyItem: Sendable, Equatable {
     /// The (possibly multi-level, tab-joined) key this bin was grouped by.
     public let word: String
     public let freq: Int
-    /// A per-struct-value token count, only present when the first
-    /// criterion is a structural attribute - usable to compute a relative/
-    /// normalized frequency. `nil` for a plain positional-attribute criterion.
+    /// For a document property (`doc.genre`): how many tokens the documents with this value have in all,
+    /// the size the frequency is relative to. `nil` for an ordinary attribute.
     public let norm: Int?
+    /// Instances per million tokens: `freq` relative to the tokens of the value's documents when there is
+    /// a `norm`, else to the whole corpus. `nil` if the engine didn't say.
+    public let perMillion: Double?
 
-    public init(word: String, freq: Int, norm: Int? = nil) {
+    public init(word: String, freq: Int, norm: Int? = nil, perMillion: Double? = nil) {
         self.word = word
         self.freq = freq
         self.norm = norm
+        self.perMillion = perMillion
     }
 }

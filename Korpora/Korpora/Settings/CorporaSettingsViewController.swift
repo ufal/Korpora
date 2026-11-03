@@ -255,6 +255,7 @@ final class CorporaSettingsViewController: NSViewController {
         }
         updateRemoveButton()
         updateMemoryBar()
+        NotificationCenter.default.post(name: AppSettings.corporaDidChangeNotification, object: nil)
     }
 
     var selectedCorpusName: String? {

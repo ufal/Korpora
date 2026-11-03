@@ -1,7 +1,10 @@
 # The old Manatee checkout, no longer used (can be deleted).
 /manatee-open/
 
-# Swift Package Manager build output
+# Swift Package Manager build output (anywhere in the tree)
+.build/
+**/.build/
+**/.swiftpm/
 KorporaEngine/.build/
 KorporaEngine/.swiftpm/
 KorporaAssistant/.build/

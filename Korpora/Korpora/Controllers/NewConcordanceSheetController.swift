@@ -24,7 +24,8 @@ final class NewConcordanceSheetController: NSViewController {
     private let subcorpusPopUp = NSPopUpButton()
     private let queryField = CQLQueryField()
     private let exampleLabel = NSTextField(wrappingLabelWithString: "")
-    private let importButton = NSButton(title: "Import a Corpus\u{2026}", target: nil, action: nil)
+    private let importButton = NSButton(title: "Open Corpora Settings\u{2026}", target: nil, action: nil)
+    private var corporaObserver: NSObjectProtocol?
     private var searchButton: NSButton!
     private var currentCorpusInfo: CorpusInfo?
 
@@ -36,15 +37,7 @@ final class NewConcordanceSheetController: NSViewController {
 
         let corpusLabel = NSTextField(labelWithString: "Corpus:")
         let availableCorpora = CorpusLibrary.names()
-        if availableCorpora.isEmpty {
-            corpusPopUp.addItem(withTitle: "No corpora yet")
-            corpusPopUp.isEnabled = false
-        } else {
-            corpusPopUp.addItems(withTitles: availableCorpora)
-            if !corpusName.isEmpty {
-                corpusPopUp.selectItem(withTitle: corpusName)
-            }
-        }
+        fillCorpusPopUp(availableCorpora, keeping: corpusName)
         corpusPopUp.target = self
         corpusPopUp.action = #selector(corpusSelectionChanged)
 
@@ -63,6 +56,11 @@ final class NewConcordanceSheetController: NSViewController {
         importButton.action = #selector(importTapped)
         importButton.controlSize = .small
         importButton.isHidden = !availableCorpora.isEmpty
+        importButton.toolTip = "Add or import a corpus in Settings; it appears here when it is ready."
+        // A corpus added or imported in Settings while this sheet is open shows up in the list.
+        corporaObserver = NotificationCenter.default.addObserver(
+            forName: AppSettings.corporaDidChangeNotification, object: nil, queue: .main
+        ) { [weak self] _ in self?.corporaChanged() }
         queryField.text = query
         queryField.onSubmit = { [weak self] in self?.searchTapped() }
 
@@ -140,6 +138,32 @@ final class NewConcordanceSheetController: NSViewController {
         refreshForSelectedCorpus()
     }
 
+    deinit {
+        if let corporaObserver { NotificationCenter.default.removeObserver(corporaObserver) }
+    }
+
+    private func fillCorpusPopUp(_ names: [String], keeping selected: String) {
+        corpusPopUp.removeAllItems()
+        if names.isEmpty {
+            corpusPopUp.addItem(withTitle: "No corpora yet")
+            corpusPopUp.isEnabled = false
+        } else {
+            corpusPopUp.addItems(withTitles: names)
+            corpusPopUp.isEnabled = true
+            if !selected.isEmpty { corpusPopUp.selectItem(withTitle: selected) }
+        }
+    }
+
+    /// The library changed (Settings): rebuild the list, keep the choice if it is still there.
+    private func corporaChanged() {
+        let names = CorpusLibrary.names()
+        let before = corpusPopUp.isEnabled ? corpusPopUp.titleOfSelectedItem : nil
+        fillCorpusPopUp(names, keeping: before ?? "")
+        searchButton?.isEnabled = !names.isEmpty
+        importButton.isHidden = !names.isEmpty
+        refreshForSelectedCorpus()
+    }
+
     /// Nothing focuses `queryField` just because the sheet is on screen -
     /// same root cause as the Tab-loop gap above, a custom composite view
     /// isn't what AppKit's initial-first-responder heuristics expect
@@ -152,7 +176,7 @@ final class NewConcordanceSheetController: NSViewController {
 
     private func refreshForSelectedCorpus() {
         guard let name = corpusPopUp.titleOfSelectedItem, corpusPopUp.isEnabled else {
-            infoLabel.stringValue = ""
+            infoLabel.stringValue = "Korpora has no corpora yet. Import annotated text or add an index folder in Settings."
             subcorpusPopUp.removeAllItems()
             currentCorpusInfo = nil
             queryField.completionProvider = nil
@@ -247,10 +271,10 @@ final class NewConcordanceSheetController: NSViewController {
         dismiss(self)
     }
 
+    /// With no corpus yet, the way to get one is Settings > Corpora. The sheet stays: the Settings window opens
+    /// beside it, and the list here fills in when a corpus is added.
     @objc private func importTapped() {
-        dismiss(self)
-        onCancel?()
-        SettingsWindowController.shared.showPane(.corpora)
+        SettingsWindowController.shared.show(.corpora)
     }
 
     @objc private func cancelTapped() {

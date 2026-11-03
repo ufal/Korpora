@@ -342,11 +342,14 @@ public actor PandoConcordance: ConcordanceHandle {
             throw PandoError.unsupported("Frequencies at a context offset")
         }
         let fields = criteria.map { PandoNames.attribute($0.attribute) }.joined(separator: ", ")
+        // `freq` is `count` plus the relative frequency: per million tokens of the corpus, or for a document
+        // property of that value's documents (`subcorpus_size`).
         let object = try library.result(library.run(
-            handle, "\(query); count by \(fields)", PandoLibrary.json(["limit": 100_000])))
+            handle, "\(query); freq by \(fields)", PandoLibrary.json(["limit": 100_000])))
         return (object["rows"] as? [[String: Any]] ?? []).compactMap { row in
             guard let key = row["key"] as? String, let count = row["count"] as? Int, count >= minFrequency else { return nil }
-            return FrequencyItem(word: key, freq: count)
+            let perMillion = (row["ipm"] as? Double) ?? (row["ipm"] as? Int).map(Double.init)
+            return FrequencyItem(word: key, freq: count, norm: row["subcorpus_size"] as? Int, perMillion: perMillion)
         }
     }
 }
