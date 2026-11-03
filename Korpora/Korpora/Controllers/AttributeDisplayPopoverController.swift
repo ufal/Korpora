@@ -144,7 +144,7 @@ final class AttributeDisplayPopoverController: NSViewController {
             do {
                 let corpus = try await Engines.default.openCorpus(name: corpusName)
                 let info = try await corpus.info()
-                populateRows(attributes: info.attributes.filter { $0 != primaryAttribute })
+                populateRows(attributes: info.attributes.filter { $0 != self.primaryAttribute })
                 populateStructuralRows(structures: info.structures)
             } catch {
                 errorLabel.stringValue = "\(error)"

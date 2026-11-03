@@ -47,6 +47,7 @@ targets:
     # prints the variable to export.
     postCompileScripts:
       - name: Bundle pando
+        basedOnDependencyAnalysis: false
         script: |
           if [ -z "${PANDO_BUILD_DIR:-}" ]; then
             echo "PANDO_BUILD_DIR unset - not bundling pando (dev build finds it at runtime)"

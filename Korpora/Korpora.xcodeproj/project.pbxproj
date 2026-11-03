@@ -414,6 +414,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 		C50EC61ABB4C53D661397CBD /* Bundle pando */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);

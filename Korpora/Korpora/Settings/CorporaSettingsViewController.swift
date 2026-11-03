@@ -547,21 +547,21 @@ final class CorporaSettingsViewController: NSViewController {
         // Saved subcorpora go with the data; with the data kept, they stay for when it comes back.
         if deleteData { SubcorpusLibrary.deleteAll(of: row.name) }
         let entry = row.entry
-        Task.detached(priority: .userInitiated) { [weak self] in
-            let failure: Error?
-            do {
-                try CorpusLibrary.remove(entry, deleteData: deleteData)
-                failure = nil
-            } catch {
-                failure = error
-            }
-            await MainActor.run {
-                guard let self else { return }
-                self.reloadCorpora()
-                if let failure, let window = self.view.window {
-                    let alert = NSAlert(error: failure)
-                    alert.beginSheetModal(for: window)
+        Task { @MainActor [weak self] in
+            // The removal itself runs off the main actor; only its outcome comes back here.
+            let failure: Error? = await Task.detached(priority: .userInitiated) {
+                do {
+                    try CorpusLibrary.remove(entry, deleteData: deleteData)
+                    return nil
+                } catch {
+                    return error
                 }
+            }.value
+            guard let self else { return }
+            reloadCorpora()
+            if let failure, let window = view.window {
+                let alert = NSAlert(error: failure)
+                alert.beginSheetModal(for: window, completionHandler: nil)
             }
         }
     }
