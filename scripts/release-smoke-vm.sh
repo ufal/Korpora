@@ -50,6 +50,10 @@ MNT=$(mktemp -d)
 hdiutil attach -nobrowse -readonly -mountpoint "$MNT" "$DMG" >/dev/null || bad "hdiutil attach"
 ls -la "$MNT"
 [ -L "$MNT/Applications" ] && ok "DMG has Applications link" || bad "no Applications link"
+# A Finder drag replaces the old app wholesale; ditto would merge into it and leave the old
+# version's files (a stale helper then breaks the signature seal). Quit it, remove it.
+pkill -x Korpora 2>/dev/null; sleep 1
+rm -rf /Applications/Korpora.app
 ditto "$MNT/Korpora.app" /Applications/Korpora.app
 hdiutil detach "$MNT" >/dev/null
 APP=/Applications/Korpora.app
