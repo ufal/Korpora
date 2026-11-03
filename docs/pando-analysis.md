@@ -252,6 +252,51 @@ No behaviour change; the app now talks to an engine through protocols.
   corpus list and import (`CorpusLibrary`, `CorpusRegistry`, `CorpusImporter`, registry files), subcorpus storage
   (`SubcorpusStore`), and per-engine capability flags for features an engine lacks (sort, line groups, cancellation).
 
+## Update 2026-11-03: pando v0.4.1 (151 commits after the spike's `8952b6d`)
+
+Re-checked by rebuilding `v0.4.1` (125 targets, builds in the same venv; it now wants RE2 for fast regex, I built
+with `-DPANDO_USE_RE2=OFF` rather than install it) and rerunning my reproductions.
+
+**Fixed since the spike (all verified):**
+- `dcoll REL` through the C API now honours the relation (`"relations": ["obj"]`, different lists for `obj`/`nsubj`).
+- `pando_open` holds no file descriptors after mapping: 8 of 8 handles open under `ulimit -n 256` (was 3 of 8).
+  `pando_last_error()` says why an open failed.
+- **Cancellation exists**: `pando_cancel(handle)` from another thread; the call then returns
+  `{"ok":false,"error":"query cancelled","cancelled":true}`. Also `timeout_ms`, and background counts with jobs and `/cancel`.
+- `a.form` after `count M by` works (60/21/13% book/booked/books); `mv_stage1_executor_test` passes; ~15 test binaries.
+- **`--cql manatee`**: a real Manatee CQL dialect (replacing the thin CWB subset): `within <s/>` works, `!( ... )` works,
+  aligned corpora `A within ces: B`. Still unsupported: `containing` with a query, `within s having [..]` (native only).
+  Correction of my earlier note: `<s> [lemma="cat"] </s>` returning 0 was right (it means a one-token sentence; `<s> [] </s>`
+  gives 772); that was not a bug.
+- **Result-format contract**: every JSON answer carries `format_version: 1`, documented in `wiki/Result-Format.md` and `contract/`.
+  Indexes record `indexed_with` and old indexes upgrade (`upgraded_with`); versioned index directories with atomic hot swap.
+  This answers much of my format-stability worry: formats are now versioned, though at v0.x they can still change.
+- Embedding: `server_capi.h` (`pando_server_*`) exposes the whole HTTP API in-process (sessions, jobs, caches, per-request
+  limits); designed for hosts such as FQS (a federation/query server that already embeds pando and Manatee side by side) and
+  for TEITOK/KonText. pando-server handles load (listen backlog 256).
+- New features beyond what we tested: relation layers (enhanced UD `deps`, derived layers), equivalence layers and aligned
+  queries with paging, dependency collocations over layers, keyness, `stats`, date functions, `tabulate`, R/Python tooling.
+- An engine benchmark page (`wiki/Engine-Benchmark.md`) compares pando with Manatee, CWB, BlackLab, PML-TQ and others
+  (work in progress, by the author; not re-run by us).
+
+**Measured again (100M synthetic tokens, same generator as before):** index 85 s (was 90 s), but **5.9 GB** (was 4.2 GB) and
+4.4 GB peak RSS (was 2.0 GB); queries 0.03-0.2 s (the multi-child tree query that took 1.7 s now 0.07 s, `dcoll` 0.08 s, `coll`
+0.19 s). The 1B-token index was not rebuilt (it would be ~58 GB). Index growth comes from new `head#...`/`dep.pair.*` postings.
+
+**Still open:**
+- **No license** (`README.md` still says private/experimental) - the author is a colleague, so it is paperwork.
+- Persistent **subcorpus objects** do not exist (named queries and `within`/region filters remain the model).
+- Version is v0.4.x: the API is plausible to embed now, but the CQL dialect, option keys and index layout still move weekly.
+- New build dependency (RE2 for fast regex) matters for our static, signed bundle: it would have to be built from source
+  (with abseil) like pcre2 is today.
+- Wiki claims ("intended behavior") still outpace tests for some features; we have not tested the new layers or aligned queries.
+
+**What this changes:** the blockers I listed as "small and fixable upstream" were fixed within about a month, and cancellation
+- the largest design gap for an engine seam - now exists. The calculus for Phase C moves from "wait for it to mature" toward
+"worth a prototype": the engine seam (Phase B) already fits `pando_open`/`pando_run`/`pando_cancel`. Remaining reasons to wait are
+the license, subcorpora, the RE2/abseil bundling work, and CQL churn. A reasonable next step is a thin `PandoKit` prototype that
+runs KWIC, `count` and `dcoll` through `libpando` behind the `CorpusEngine` protocols, as a spike branch, not shipped.
+
 ## Recommendation
 
 Do **not** replace Manatee. Run Phase A now (a few days of work, no risk), decide from its numbers.

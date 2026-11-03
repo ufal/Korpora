@@ -1,3 +1,5 @@
+# Status 2026-11-03: **all of these are fixed in v0.4.1 except the `<s> ... </s>` item, which was my misreading (a one-token sentence is correct).** Kept for the record; do not file.
+
 # Draft: issues to report to ufal/pando (from the Korpora Phase A spike, 2026-09-30)
 
 Not filed yet. Tested at `ufal/pando` `main` `8952b6d`, macOS 27 (arm64, Xcode 27) and macOS 15.7.7 (arm64 VM),
