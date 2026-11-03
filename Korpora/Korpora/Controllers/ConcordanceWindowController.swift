@@ -35,10 +35,11 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
         (ItemID.analysisGroup, "Analysis", [ItemID.collocations, ItemID.frequencies, ItemID.dispersion]),
     ]
 
-    private var sortButton: NSButton?
-    private var shuffleButton: NSButton?
-    private var sampleButton: NSButton?
-    private var contextButton: NSButton?
+    static func label(for id: NSToolbarItem.Identifier) -> String { String(id.rawValue.split(separator: ".").last ?? "").capitalized }
+
+    private var sortItem: NSToolbarItem?
+    private var shuffleItem: NSToolbarItem?
+    private var sampleItem: NSToolbarItem?
 
     convenience init(document: ConcordanceDocument) {
         let viewController = ConcordanceViewController(document: document)
@@ -74,12 +75,24 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
         if let group = Self.groups.first(where: { $0.id == identifier }) {
-            let item = NSToolbarItemGroup(itemIdentifier: identifier)
-            // The items keep their own labels (none on the group), and stay one expanded control.
-            item.subitems = group.items.compactMap { makeLeafItem($0) }
-            item.selectionMode = .momentary
+            // The standard segmented group: one control with a shared background, in every display mode.
+            let leaves = group.items.compactMap { makeLeafItem($0) }
+            let item = NSToolbarItemGroup(
+                itemIdentifier: identifier, images: leaves.map { ($0.view as? NSButton)?.image ?? NSImage() },
+                selectionMode: .momentary, labels: leaves.map(\.label), target: self,
+                action: #selector(groupTapped(_:)))
             item.controlRepresentation = .expanded
             item.paletteLabel = group.title
+            for (sub, leaf) in zip(item.subitems, leaves) {
+                sub.toolTip = (leaf.view as? NSButton)?.toolTip
+                sub.paletteLabel = leaf.label
+                switch leaf.itemIdentifier {
+                case ItemID.sort: sortItem = sub
+                case ItemID.shuffle: shuffleItem = sub
+                case ItemID.sample: sampleItem = sub
+                default: break
+                }
+            }
             return item
         }
         return makeLeafItem(identifier)
@@ -103,22 +116,25 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
                 symbol: "arrow.up.arrow.down", label: "Sort",
                 tooltip: "Sort concordance lines", target: viewController,
                 action: #selector(ConcordanceViewController.sortTapped(_:)))
-            sortButton = button
-            return makeItem(identifier, label: "Sort", view: button)
+            let item = makeItem(identifier, label: "Sort", view: button)
+            sortItem = item
+            return item
         case ItemID.shuffle:
             let button = makeButton(
                 symbol: "shuffle", label: "Shuffle",
                 tooltip: "Randomize line order", target: viewController,
                 action: #selector(ConcordanceViewController.shuffleTapped(_:)))
-            shuffleButton = button
-            return makeItem(identifier, label: "Shuffle", view: button)
+            let item = makeItem(identifier, label: "Shuffle", view: button)
+            shuffleItem = item
+            return item
         case ItemID.sample:
             let button = makeButton(
                 symbol: "number", label: "Sample",
                 tooltip: "Reduce to a random sample of lines", target: viewController,
                 action: #selector(ConcordanceViewController.sampleTapped(_:)))
-            sampleButton = button
-            return makeItem(identifier, label: "Sample", view: button)
+            let item = makeItem(identifier, label: "Sample", view: button)
+            sampleItem = item
+            return item
         case ItemID.context:
             // Not tracked in `updateToolbarState`: unlike sort/shuffle/sample, widening
             // context is a display setting (see `ConcordanceDocument.setContext`), not
@@ -128,7 +144,6 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
                 symbol: "arrow.left.and.right", label: "Context",
                 tooltip: "Adjust how much left/right context is shown", target: viewController,
                 action: #selector(ConcordanceViewController.contextTapped(_:)))
-            contextButton = button
             return makeItem(identifier, label: "Context", view: button)
         case ItemID.attributes:
             // Not tracked in a stored property/`updateToolbarState` - same
@@ -188,6 +203,50 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
         return item
     }
 
+    /// A click on a segment of a group: runs that item's action as if its own button had been
+    /// clicked. Popovers need a view to hang from, so a clear button is laid over the segment.
+    @objc private func groupTapped(_ sender: NSToolbarItemGroup) {
+        guard let group = Self.groups.first(where: { $0.id == sender.itemIdentifier }),
+              group.items.indices.contains(sender.selectedIndex),
+              let viewController = window?.contentViewController as? ConcordanceViewController,
+              let leaf = makeLeafItem(group.items[sender.selectedIndex]),
+              let button = leaf.view as? NSButton, let action = button.action else { return }
+        anchorButton?.removeFromSuperview()
+        let anchor = NSButton(frame: .zero)
+        anchor.isBordered = false
+        anchor.title = ""
+        if let control = sender.view ?? segmentedControl(for: Self.groups.firstIndex(where: { $0.id == group.id }) ?? 0) {
+            var x: CGFloat = 0
+            let segments = (control as? NSSegmentedControl)
+            let count = max(group.items.count, 1)
+            let equal = control.bounds.width / CGFloat(count)
+            func width(_ i: Int) -> CGFloat { (segments?.width(forSegment: i)).flatMap { $0 > 0 ? $0 : nil } ?? equal }
+            for i in 0..<sender.selectedIndex { x += width(i) }
+            let width = width(sender.selectedIndex)
+            anchor.frame = NSRect(x: x, y: 0, width: width, height: control.bounds.height)
+            control.addSubview(anchor)
+            anchorButton = anchor
+        }
+        NSApp.sendAction(action, to: viewController, from: anchor)
+    }
+
+    private var anchorButton: NSButton?
+
+    /// The group's segmented control, found in the window's toolbar (a group item has no view of
+    /// its own to ask for): among the controls with the right number of segments, left to right,
+    /// the one at the group's place among the groups of that size.
+    private func segmentedControl(for group: Int) -> NSSegmentedControl? {
+        let size = Self.groups[group].items.count
+        func collect(in view: NSView) -> [NSSegmentedControl] {
+            let own = (view as? NSSegmentedControl).map { $0.segmentCount == size && $0.window != nil ? [$0] : [] } ?? []
+            return own + view.subviews.flatMap(collect(in:))
+        }
+        guard let root = window?.contentView?.superview else { return nil }
+        let found = collect(in: root).sorted { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }
+        let place = Self.groups[..<group].filter { $0.items.count == size }.count
+        return found.indices.contains(place) ? found[place] : nil
+    }
+
     /// Custom-view toolbar items don't auto-validate - called from
     /// `ConcordanceViewController.refresh()` instead, mirroring KonText's own
     /// mutual-exclusion rule (line groups vs. sort/shuffle/sample).
@@ -196,9 +255,12 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
     /// conflict with an active line-group view the way starting a *new*
     /// sort/filter/shuffle/sample would.
     func updateToolbarState(hasLineGroups: Bool) {
-        sortButton?.isEnabled = !hasLineGroups
-        shuffleButton?.isEnabled = !hasLineGroups
-        sampleButton?.isEnabled = !hasLineGroups
+        sortItem?.isEnabled = !hasLineGroups
+        (sortItem?.view as? NSButton)?.isEnabled = !hasLineGroups
+        shuffleItem?.isEnabled = !hasLineGroups
+        (shuffleItem?.view as? NSButton)?.isEnabled = !hasLineGroups
+        sampleItem?.isEnabled = !hasLineGroups
+        (sampleItem?.view as? NSButton)?.isEnabled = !hasLineGroups
     }
 }
 

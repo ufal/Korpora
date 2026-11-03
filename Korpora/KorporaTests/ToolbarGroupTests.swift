@@ -37,13 +37,13 @@ import Testing
         for group in ConcordanceWindowController.groups {
             let built = controller.toolbar(toolbar, itemForItemIdentifier: group.id, willBeInsertedIntoToolbar: true)
             let item = try #require(built as? NSToolbarItemGroup)
-            #expect(item.subitems.map(\.itemIdentifier) == group.items, Comment(rawValue: group.title))
+            #expect(item.subitems.map(\.label) == group.items.map { ConcordanceWindowController.label(for: $0) }, Comment(rawValue: group.title))
             #expect(item.selectionMode == .momentary, "actions, not a choice")
             #expect(item.controlRepresentation == .expanded, "not collapsed into a pop-up")
             #expect(item.label.isEmpty, "each item keeps its own label")
             for sub in item.subitems {
-                #expect(!sub.label.isEmpty && sub.view is NSButton, "\(sub.itemIdentifier.rawValue)")
-                #expect((sub.view as? NSButton)?.toolTip?.isEmpty == false, "and a tooltip")
+                #expect(!sub.label.isEmpty && sub.image != nil, "\(sub.itemIdentifier.rawValue)")
+                #expect(sub.toolTip?.isEmpty == false, "and a tooltip")
             }
         }
     }
@@ -65,7 +65,7 @@ import Testing
         let ItemID = ConcordanceWindowController.ItemID.self
         let group = try #require(controller.toolbar(toolbar, itemForItemIdentifier: ItemID.resultGroup, willBeInsertedIntoToolbar: true)
                                  as? NSToolbarItemGroup)
-        let buttons = group.subitems.compactMap { $0.view as? NSButton }
+        let buttons = group.subitems
         #expect(buttons.count == 3 && buttons.allSatisfy { $0.isEnabled })
         controller.updateToolbarState(hasLineGroups: true)
         #expect(buttons.allSatisfy { !$0.isEnabled })
@@ -75,7 +75,22 @@ import Testing
         let display = try #require(controller.toolbar(toolbar, itemForItemIdentifier: ItemID.displayGroup, willBeInsertedIntoToolbar: true)
                                    as? NSToolbarItemGroup)
         controller.updateToolbarState(hasLineGroups: true)
-        #expect(display.subitems.compactMap { $0.view as? NSButton }.allSatisfy { $0.isEnabled })
+        #expect(display.subitems.allSatisfy { $0.isEnabled })
+    }
+
+    /// A click on Sort (a popover) and on Shuffle runs the item's action; the popover needs a real
+    /// view to hang from (it once got a toolbar item, which has no bounds).
+    @Test func clickingSegmentsRunsTheirActions() throws {
+        let controller = shownController()
+        let window = try #require(controller.window)
+        defer { window.orderOut(nil) }
+        let toolbar = try #require(window.toolbar)
+        let result = try #require(toolbar.items.first { $0.itemIdentifier == ConcordanceWindowController.ItemID.resultGroup } as? NSToolbarItemGroup)
+        for index in [0, 1] {  // Sort, Shuffle
+            result.selectedIndex = index
+            _ = result.target?.perform(result.action, with: result)
+        }
+        for popoverWindow in NSApp.windows where popoverWindow !== window && popoverWindow.className.contains("Popover") { popoverWindow.close() }
     }
 
     @Test func theRealToolbarHoldsTheGroupsAndSpaces() throws {
