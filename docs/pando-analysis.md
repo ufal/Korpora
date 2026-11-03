@@ -419,6 +419,47 @@ change; **UPSTREAM** needs something from pando; **GAP** not available at first.
 - Needs something from pando, or is lost at first: context-token attributes, positive/negative filter, position-to-region lookup (workaround exists), vertical import.
 - Most of the "ADAPT" rows share one idea: a **client-side operations layer** over a plain "query + page" engine (sort, shuffle, sample, line groups, filter on loaded lines). It is also exactly what a remote FQS backend would need, so it is the one piece worth building for both.
 
+## Direction under discussion: pando as the only engine, and a one-stop corpus workshop (2026-11-03)
+
+Status: **proposal, not decided.** The owner is inclined to switch fully (experimental app, bleeding edge is acceptable) if it
+simplifies both the code and the user experience, and to add a first-class "corpus workshop": plain text and documents in,
+searchable parsed corpus out, in one easy Mac UI.
+
+**The UFAL "Flexi" stack, which makes the workshop possible (checked 2026-11-03):**
+- `flexiconv` (MIT, Python library + CLI + a desktop GUI): converts between many formats through a TEI/TEITOK pivot. Reads txt, md,
+  html, rtf, docx, odt, pdf, epub, OCR layouts, spoken-corpus formats (eaf, textgrid, srt, chat), `conllu`, `vert`, TEI; writes
+  TEITOK TEI, among others. Also deduplication.
+- `flexipipe` (no licence yet; Python): raw text or CoNLL-U to Universal Dependencies (tokenize, tag, lemmatize, parse) through
+  pluggable backends (UDPipe, spaCy, Stanza, Flair, its own C++ `flexitag`); models from `flexipipe-models` (UDPipe models are CC BY-NC-SA).
+- `flexencoder` (no licence yet; C++): TEI to pando index (linked against pando's C++ API, or JSONL piped to `pando-index`), also
+  Manatee VRT and CWB. `flexicorp_pando`: pando plus xidx (byte offsets into the source XML, for showing original text).
+- pando itself reads CoNLL-U and JSONL directly (`pando-index`), so the minimal chain is:
+  `document -> flexiconv -> text/TEI -> flexipipe -> CoNLL-U -> pando-index -> corpus`.
+Open facts: whether flexiconv's txt output needs flexipipe for tokenisation; how large an embedded Python plus neural models
+would be (models are the real cost); the licences of flexipipe and flexencoder; the state of flexiconv's desktop app (only a
+README in `apps/` today).
+
+**What a full switch would remove or simplify:** the C++ bridge to Manatee (about 940 lines, 61 functions) and the manatee-open
+fork with its heap-corruption patch; the pcre2 static build and the `encodevert`/`mkregexattr` helper binaries; registry files,
+the compiled-corpora directory, `.subc` subcorpus storage; the Manatee thread-safety gates and a class of crash risk; GPL-2
+linkage (manatee-open is GPL-2) replaced by libpando under a licence we can agree with its author. The 6-function C API is much
+smaller than ours.
+
+**What it costs or risks (to validate, not assume):**
+- Existing Manatee corpora and verticals: users need a re-import path (flexiconv reads `vert`).
+- Size on disk: pando's index measured 93 bytes/token (EWT, 7 attributes plus dependency postings) and 41-58 GB for a synthetic
+  billion tokens, versus Manatee's 7.4 GB for SYN2025. Not like-for-like, so the decisive test is to index the *same* real
+  corpus (SYN2025 via flexiconv vert -> pando) in both and compare size, build time, memory and query times.
+- Feature parity from the GUI analysis above (filter, line groups, subcorpora, sort, context attributes), pagination (6.11).
+- Pando is v0.4 with weekly changes, one author, no licence yet (a colleague, so paperwork).
+- A Python-based pipeline inside a signed, notarized app: embedding a Python runtime and downloading models on demand, or using
+  only native components (pando-index; flexitag/UDPipe if usable natively); network and licence of models.
+
+**Staging that keeps the experiment safe:** Phase B's engine seam lets Manatee stay until pando has parity. Order: (1) validate
+size and speed on the same real corpus; (2) unified corpus library UI and pando parity for what exists (see the GUI table);
+(3) the workshop (import, convert, annotate, build) and a simplified UX vocabulary; (4) make pando the default, mark Manatee
+deprecated; (5) remove Manatee code and its build in a later release.
+
 ## Recommendation
 
 Do **not** replace Manatee. Run Phase A now (a few days of work, no risk), decide from its numbers.
