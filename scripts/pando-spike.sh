@@ -64,7 +64,7 @@ tests() {
   echo "== App (document tests against pando)"
   (cd "$ROOT/Korpora" && TEST_RUNNER_KORPORA_PANDO_LIB="$KORPORA_PANDO_LIB" \
      TEST_RUNNER_KORPORA_PANDO_SAMPLE="${KORPORA_PANDO_SAMPLE:-}" TEST_RUNNER_KORPORA_PANDO_UD="${KORPORA_PANDO_UD:-}" \
-     xcodebuild -project Korpora.xcodeproj -scheme Korpora -configuration Debug test 2>&1 | grep -E "error:|✘|Test run with|TEST (SUCC|FAIL)")
+     xcodebuild -project Korpora.xcodeproj -scheme Korpora -configuration Debug test 2>&1 | grep -E "error:|✘|Test run with|TEST (SUCC|FAIL)" | grep -v "Connection\]")
 }
 
 case "${1:-}" in
