@@ -1,4 +1,4 @@
-import CorpusEngine
+
 import Foundation
 
 /// pando as a `CorpusEngine` (docs/pando-analysis.md, Phase C spike).
@@ -9,19 +9,29 @@ import Foundation
 /// `PandoError.unsupported` if called anyway.
 public struct PandoEngine: CorpusEngine {
     public let library: PandoLibrary
-    public let corporaRoot: URL
+    private let resolve: @Sendable (String) -> String?
 
+    /// Corpora are found in the app's `CorpusLibrary` by name (or by absolute path).
+    public init(library: PandoLibrary) {
+        self.library = library
+        resolve = { name in name.hasPrefix("/") ? name : CorpusLibrary.directory(forName: name)?.path }
+    }
+
+    /// Corpora are folders under `corporaRoot` (tests, tools).
     public init(library: PandoLibrary, corporaRoot: URL) {
         self.library = library
-        self.corporaRoot = corporaRoot
+        resolve = { name in name.hasPrefix("/") ? name : corporaRoot.appendingPathComponent(name).path }
     }
 
     public var id: String { "pando" }
 
     public var capabilities: EngineCapabilities { [] }
 
-    func directory(for name: String) -> String {
-        name.hasPrefix("/") ? name : corporaRoot.appendingPathComponent(name).path
+    func directory(for name: String) throws -> String {
+        guard let path = resolve(name) else {
+            throw PandoError.failure("There is no corpus named \u{201C}\(name)\u{201D}.")
+        }
+        return path
     }
 
     public func openCorpus(name: String) async throws -> any CorpusHandle {

@@ -1,6 +1,7 @@
-import CorpusEngine
+
 import Foundation
-import PandoKit
+@testable import KorporaEngine
+
 import XCTest
 
 /// Real indexes, set up by `scripts/pando-spike.sh`: pando's built-in sample
@@ -8,7 +9,7 @@ import XCTest
 /// (`KORPORA_PANDO_UD`). Each test skips when its index isn't there.
 final class PandoRealCorpusTests: XCTestCase {
     private func engine() throws -> PandoEngine {
-        guard let path = ProcessInfo.processInfo.environment["KORPORA_PANDO_LIB"] else {
+        guard let path = TestPando.libraryPath else {
             throw XCTSkip("set KORPORA_PANDO_LIB (scripts/pando-spike.sh test does)")
         }
         return PandoEngine(library: try PandoLibrary(path: path), corporaRoot: URL(fileURLWithPath: "/"))

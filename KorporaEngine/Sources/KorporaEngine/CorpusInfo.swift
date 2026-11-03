@@ -29,3 +29,12 @@ public struct CorpusInfo: Sendable {
         self.structures = structures
     }
 }
+
+extension CorpusInfo {
+    /// The attribute that holds a token's text: `form` for pando corpora
+    /// (CoNLL-U), `word` for older ones, else the first attribute.
+    public var defaultAttribute: String {
+        for candidate in ["form", "word"] where attributes.contains(candidate) { return candidate }
+        return attributes.first ?? "form"
+    }
+}

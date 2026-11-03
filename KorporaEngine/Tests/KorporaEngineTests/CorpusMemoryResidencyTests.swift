@@ -1,6 +1,6 @@
 import XCTest
 
-@testable import ManateeKit
+@testable import KorporaEngine
 
 final class CorpusMemoryResidencyTests: XCTestCase {
     func testCanKeepResidentRequiresThresholdAfterSubtraction() {

@@ -1,6 +1,7 @@
-import CorpusEngine
+
 import Foundation
-import PandoKit
+@testable import KorporaEngine
+
 import XCTest
 
 /// pando through the engine protocols. Needs a pando build: set
@@ -29,7 +30,7 @@ final class PandoEngineTests: XCTestCase {
 
     override class func setUp() {
         super.setUp()
-        guard let path = ProcessInfo.processInfo.environment["KORPORA_PANDO_LIB"],
+        guard let path = TestPando.libraryPath,
               let library = try? PandoLibrary(path: path) else { return }
         let tool = URL(fileURLWithPath: path).deletingLastPathComponent().appendingPathComponent("pando-index")
         guard FileManager.default.isExecutableFile(atPath: tool.path) else { return }

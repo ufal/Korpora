@@ -1,4 +1,4 @@
-import CorpusEngine
+
 import Foundation
 
 public enum PandoError: Error, CustomStringConvertible {
@@ -81,6 +81,18 @@ public final class PandoLibrary: @unchecked Sendable {
             do { return try PandoLibrary(path: path) } catch { tried.append("\(path): \(error)") }
         }
         throw PandoError.libraryUnavailable(tried.joined(separator: "; "))
+    }
+
+    /// `pando-index`, which builds corpora: `$KORPORA_PANDO_INDEX`, the app's
+    /// `Contents/Helpers`, or beside the library.
+    public var indexTool: URL? {
+        var candidates: [URL] = []
+        if let explicit = ProcessInfo.processInfo.environment["KORPORA_PANDO_INDEX"], !explicit.isEmpty {
+            candidates.append(URL(fileURLWithPath: explicit))
+        }
+        candidates.append(Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/pando-index"))
+        candidates.append(URL(fileURLWithPath: path).deletingLastPathComponent().appendingPathComponent("pando-index"))
+        return candidates.first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 
     // MARK: Calls
