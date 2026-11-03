@@ -172,7 +172,7 @@ import Testing
     }
 
     @Test func toolbarOffersTheDispersionButton() throws {
-        let identifiers = ConcordanceWindowController().toolbarDefaultItemIdentifiers(NSToolbar())
-        #expect(identifiers.contains(ConcordanceWindowController.ItemID.dispersion))
+        let leaves = ConcordanceWindowController.groups.flatMap(\.items)
+        #expect(leaves.contains(ConcordanceWindowController.ItemID.dispersion))
     }
 }

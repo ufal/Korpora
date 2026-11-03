@@ -15,7 +15,25 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
         static let frequencies = NSToolbarItem.Identifier("frequencies")
         static let dispersion = NSToolbarItem.Identifier("dispersion")
         static let operations = NSToolbarItem.Identifier("operations")
+
+        // Groups: items that belong together share one background (and, with labels shown, stay one
+        // control instead of a row of separate bubbles).
+        static let resultGroup = NSToolbarItem.Identifier("group.result")
+        static let displayGroup = NSToolbarItem.Identifier("group.display")
+        static let analysisGroup = NSToolbarItem.Identifier("group.analysis")
     }
+
+    /// The toolbar's logical groups, by function (the HIG: group items by function and frequency of use,
+    /// at most three groups, fixed space between them):
+    /// - what is done to the result (sort, shuffle, sample),
+    /// - how it is shown (context, attributes),
+    /// - what is learned from it (collocations, frequencies, dispersion).
+    /// History (the query) and Operations (what has been applied) stand on their own at the two ends.
+    static let groups: [(id: NSToolbarItem.Identifier, title: String, items: [NSToolbarItem.Identifier])] = [
+        (ItemID.resultGroup, "Result", [ItemID.sort, ItemID.shuffle, ItemID.sample]),
+        (ItemID.displayGroup, "Display", [ItemID.context, ItemID.attributes]),
+        (ItemID.analysisGroup, "Analysis", [ItemID.collocations, ItemID.frequencies, ItemID.dispersion]),
+    ]
 
     private var sortButton: NSButton?
     private var shuffleButton: NSButton?
@@ -45,9 +63,8 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ItemID.history, ItemID.sort, ItemID.shuffle, ItemID.sample, ItemID.context,
-         ItemID.attributes, ItemID.collocations, ItemID.frequencies, ItemID.dispersion, .flexibleSpace,
-         ItemID.operations]
+        [ItemID.history, .space, ItemID.resultGroup, .space, ItemID.displayGroup, .space, ItemID.analysisGroup,
+         .flexibleSpace, ItemID.operations]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -56,6 +73,19 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
 
     func toolbar(_ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
                  willBeInsertedIntoToolbar flag: Bool) -> NSToolbarItem? {
+        if let group = Self.groups.first(where: { $0.id == identifier }) {
+            let item = NSToolbarItemGroup(itemIdentifier: identifier)
+            // The items keep their own labels (none on the group), and stay one expanded control.
+            item.subitems = group.items.compactMap { makeLeafItem($0) }
+            item.selectionMode = .momentary
+            item.controlRepresentation = .expanded
+            item.paletteLabel = group.title
+            return item
+        }
+        return makeLeafItem(identifier)
+    }
+
+    private func makeLeafItem(_ identifier: NSToolbarItem.Identifier) -> NSToolbarItem? {
         guard let viewController = window?.contentViewController as? ConcordanceViewController else { return nil }
         switch identifier {
         case ItemID.history:
