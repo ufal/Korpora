@@ -1,5 +1,13 @@
 # Korpora: native AppKit corpus concordancer — status & handoff
 
+> **Status 2026-11-03: Korpora now runs on pando, not Manatee.** Everything below that talks about
+> `ManateeKit`, `manatee-open`, registry files, `encodevert`, `.subc` subcorpora, CQL completion of
+> Manatee's grammar or the compiled-corpora directory describes the Manatee era (releases 0.1-0.3) and is
+> kept as history. The current design is in `docs/pando-analysis.md` (why, with measurements) and
+> `docs/pando-gui-plan.md` (how); this file's goals and phase list will be rewritten once the pando
+> version has been used for a while.
+
+
 This is the living status/handoff document for this project. It lives at
 `docs/project-plan.md` in the repo (not `~/.claude/plans/` or anywhere
 outside the checkout) so any session — Terminal or Xcode — can read and

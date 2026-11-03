@@ -42,3 +42,39 @@ positions; warn when CoNLL-U metadata values with spaces are dropped (`# text_X`
    document format v3, hard-coded `word` removed; delete the Manatee-only UI (filter sheet, registry settings).
 4. **Remove Manatee**: C bridge, manatee-open, scripts, project.yml helper phases, tests; CLAUDE.md and plan docs.
 5. **Packaging**: bundle libpando and pando-index in the app, sign, release script, smoke test on the macOS 15 VM.
+
+## Status (2026-11-03): phases 1-5 done on `spike/pando-engine`
+
+- **Engine** (`KorporaEngine`, 70 tests): protocols, `PandoEngine`/`PandoConcordance` (loads up to a limit of hits, in-memory
+  sort, shuffle, sample, line groups, histogram; region attributes and wide context by `tabulate` and a re-fetch),
+  `CorpusLibrary` (built and linked corpora), `CorpusImporter` (`pando-index` with progress, cancel, atomic rename),
+  `Subcorpus`/`SubcorpusRestriction` (saved restrictions applied as region filters), `CorpusMemoryResidency`.
+- **App** (173 tests): library in Settings (Tokens column, import from CoNLL-U/folders, add/remove, Keep in Memory),
+  New Concordance sheet, subcorpus picker (values with document counts), sort popover, load limit in Settings, document
+  format 3, pando-CQL colouring and completion. Removed: the filter sheet and "Filter to Selection", the sentence view
+  (KWIC only), the CQL-expression mode of subcorpora, registry settings, the vertical import sheet.
+- **Release plumbing**: `build-release-deps.sh` builds pando at the macOS 15 floor; `make-release.sh --skip-notarize` makes a
+  signed app with `libpando.dylib` and `pando-index` bundled (6.9 MB; the DMG 4.3 MB). Not yet: a notarized release, and the VM
+  smoke test (updated for pando, not run).
+- **Checked by launching the real app** (Release config, Debug build) on the UD, SYN2025 and sample corpora: the New Concordance
+  sheet, and a saved document running `[lemma="ruka"]` on SYN2025 with the document-title column and a left-word sort.
+  Not clicked through: the import sheet, Settings, the subcorpus popover, collocations/frequency/dispersion windows,
+  Extended Context, print. Their logic is covered by tests.
+
+### Differences users will notice
+- Searches load the first 10,000 hits (Settings > Concordance); the status line says "10,000 of 3,978,146 hits (the first
+  ones)". Sorting, sampling and line groups work on the loaded hits.
+- Words around a hit show their spelling only (no lemma/tag under context words; sorting by left/right words is by spelling).
+- No positive/negative filter, no sentence view mode, no `.subc`-style typed subcorpus expressions.
+- Subcorpora are picks of document properties, saved per corpus; they restrict every search in them.
+- Frequencies by a document property show counts but no per-million "Norm".
+- Old `.corpconc` documents (format 1-2) don't open: a message says why. Old Manatee corpora are not read.
+
+### Asks for pando (Maarten)
+Attributes on context tokens; sentence-bounded context through the C API; a hit-position histogram; relative frequencies for
+region attributes without a named token; a warning when CoNLL-U metadata values with spaces are dropped (`# text_X` vs
+`# meta::X`); a licence.
+
+### Next
+Click-through of the whole UI; the workshop (plain text and documents to corpus through Flexiconv and Flexipipe in a
+downloaded Python environment); pagination beyond the load limit (6.11); UD-aware word profiles.
