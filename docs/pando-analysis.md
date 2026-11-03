@@ -460,6 +460,52 @@ size and speed on the same real corpus; (2) unified corpus library UI and pando 
 (3) the workshop (import, convert, annotate, build) and a simplified UX vocabulary; (4) make pando the default, mark Manatee
 deprecated; (5) remove Manatee code and its build in a later release.
 
+## SYN2025 head-to-head, Manatee vs pando (measured 2026-11-03)
+
+The decisive test for the full-switch direction: the same real corpus in both engines. SYN2025 (122,251,447 tokens, Czech, parsed;
+29 positional attributes and 22 document attributes in the Manatee index) was regenerated from the compiled Manatee index with a
+throwaway converter (our ManateeKit to CoNLL-U: word, lemma, tag as XPOS, pos as UPOS, `afun` as DEPREL, relative `parent` offset to
+absolute HEAD, enhanced parent as DEPS, the rest as FEATS; 3,943 documents with all 22 attributes; 7,743,026 sentences) and indexed
+with pando v0.4.1. Same Mac (M-series, 512 GB RAM, macOS 27), warm caches, pando via its CLI (so its numbers include ~0.1 s of
+process start), Manatee in-process through ManateeKit.
+
+| | Manatee | pando |
+|---|---|---|
+| Tokens in the index | 122,251,447 | 122,251,447 |
+| Index size on disk | 7.0 GB (29 attributes) | **11 GB** (6 attributes + dependency/head postings, 22 document attributes) |
+| Build | (original import took far longer; not re-measured) | **147 s**, 6.4 GB peak RSS (2.8 GB footprint), from 12 GB of CoNLL-U |
+| Conversion from the Manatee index to CoNLL-U | n/a | 30 min (our throwaway tool, single-threaded) |
+
+Query hit counts: **identical in all 8 comparisons** (frequent lemma 3,978,146; mid 86,892; rare 2,088; two-token sequence 98;
+regex 70,701; lemma plus tag 19,665; noun-verb 3,977,043; restricted to a document type 54,597).
+
+| Query | Manatee | pando |
+|---|---|---|
+| frequent lemma (4.0M hits) | 0.81 s | 0.11 s |
+| mid / rare lemma, sequence, regex, tag filter | 0.02-0.05 s | 0.11-0.19 s (process start included) |
+| noun followed by verb (4.0M hits) | 1.21 s | 0.12 s |
+| restricted to a document type | 0.02 s | 0.11-0.20 s |
+| collocations, lemma "ruka" | 0.42 s | 0.22 s |
+| frequency by tag / by document type | 0.07 s / 0.01 s | 0.12 s / 0.12 s |
+| all 86,892 KWIC lines | 0.97 s | 0.25 s |
+| verb with subject and object children (2.6M hits) | not expressible | 0.27 s |
+| dependency collocates of "ruka" | not expressible | 0.21 s |
+
+Reading: for small result sets the engines are indistinguishable in practice (pando's 0.1 s is mostly process start); for large
+ones pando is faster, up to 10x; dependency queries come at no extra cost. The disk size is the one regression (+57%), and it would grow
+with more attributes; not a problem for the target use (a laptop with a few corpora), worth stating to users.
+
+Document metadata: all 22 attributes arrive as `doc_*` region attributes and are queryable (`:: match.doc_txtype = "..."`, `count
+by a.doc_txtype`) **only** when written with `# newdoc id = ...` plus `# meta::KEY = value`. The CoNLL-U `# text_KEY = value` route
+silently drops every value that contains a space (found in `is_simple_region_value`, `src/corpus/builder.cpp`): author, title, biblio and
+most of the others vanished in my first attempt. To report upstream: warn instead of dropping; document `meta::`.
+Other data notes: pando warns about 72,388 tokens whose head lies outside their sentence (stored as roots) and marks the
+head relation "not a tree" for the 7.2M sentences with several roots (this corpus' annotation attaches fragments and final
+punctuation to the root); queries on it work. Structures `block`, `g`, `hi` were not carried over.
+
+Verdict: the "scale and fidelity" risk to a full switch is retired for this corpus size: same answers, faster, bigger on disk. Still
+untested: billion-token real corpora, cold caches, and the GUI-parity items listed earlier.
+
 ## Recommendation
 
 Do **not** replace Manatee. Run Phase A now (a few days of work, no risk), decide from its numbers.
