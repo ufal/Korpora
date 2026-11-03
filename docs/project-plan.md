@@ -4481,3 +4481,23 @@ hardware.
   yet a PR)
 - `Corpora/` — the Xcode project and all AppKit sources; `project.yml` for
   xcodegen; `scripts/build-dev-corpus.sh` for the dev-only test corpus
+
+### Release 0.4 - build and test record (2026-11-03) - built, not yet published
+
+`Korpora 0.4 (4)`: the first pando-only release, built with `scripts/make-release.sh` (full, notarized)
+from `main` at the commit that fixed the toolbar's line-group dimming on a first launch. Pando v0.4.1
+built at the macOS 15 floor by `scripts/build-release-deps.sh`; `libpando.dylib` and `pando-index`
+bundled and signed. Notarization submissions `64552746-...` (app) and `26238fd3-...` (DMG), both accepted
+and stapled; Gatekeeper accepts a quarantined copy. `Korpora-0.4.dmg` SHA-256 `5572cd30...b8860d78`.
+Smoke test on a fresh clone of the Cirrus macOS 15.7.7 image (`korpora-smoke-04`, Gatekeeper on, no earlier
+install): scripted install checks 9/9, exec checks 6/6 (bundled `pando-index` builds a corpus, `libpando`
+loads and answers a query, no dyld errors, migration marker set). The user did the first launch from
+Finder, imported `smoke.conllu`, made a subcorpus, searched, defined a line group (Sort, Shuffle and Sample
+dimmed at once) and relaunched: all fine.
+
+The first 0.4 DMG built that day failed the VM's signature check only because the smoke script merged
+the new app into the VM's old 0.3 install (stale helpers); `release-smoke-vm.sh` now removes the old app
+first. Another first-DMG finding fixed before this one: Sort, Shuffle and Sample did not dim on a first
+launch (state was kept on item copies the toolbar had discarded).
+
+Open before publishing: the pando licence (redistribution), and the version tag / GitHub release itself.
