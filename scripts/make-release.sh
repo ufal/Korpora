@@ -1,14 +1,14 @@
 #!/bin/bash
 # Builds the distributable Korpora.dmg: Release build (Developer ID signed,
-# hardened runtime, bundled + signed import tools - project.yml's Release
+# hardened runtime, bundled + signed pando - project.yml's Release
 # config) -> signature checks -> app notarized + stapled -> DMG (with an
 # Applications link) around the stapled app -> DMG signed, notarized +
 # stapled -> Gatekeeper checks on a quarantined copy. See docs/project-plan.md,
 # "Goal - Ship a signed GitHub release", step 5.
 #
 # Prerequisites:
-#   - scripts/build-release-deps.sh has been run (static pcre2 + release
-#     manatee-open worktree in .release-deps/).
+#   - scripts/build-release-deps.sh has been run (pando built at the release
+#     floor in .release-deps/).
 #   - A "Developer ID Application" identity for team 8YW3ZU8MFU in the
 #     keychain.
 #   - Notary credentials stored once under a keychain profile:
@@ -55,8 +55,8 @@ retry3() {
 }
 
 # ------------------------------------------------------- preconditions ----
-[ -f "$DEP/pcre2/.build-ok" ] || die "release deps missing - run scripts/build-release-deps.sh first"
-[ -x "$DEP/manatee/src/encodevert" ] || die "release manatee-open tools missing - run scripts/build-release-deps.sh first"
+[ -f "$DEP/pando/.build-ok" ] || die "release deps missing - run scripts/build-release-deps.sh first"
+[ -x "$DEP/pando/build/pando-index" ] || die "release pando tools missing - run scripts/build-release-deps.sh first"
 security find-identity -v -p codesigning | grep -q "\"$SIGN_IDENTITY: .*($TEAM_ID)\"" \
     || die "no valid '$SIGN_IDENTITY' identity for team $TEAM_ID in the keychain"
 if [ "$NOTARIZE" = yes ]; then
@@ -69,9 +69,7 @@ fi
 
 # ------------------------------------------------------------- build ----
 echo "==> Building Release (clean)"
-export KORPORA_MANATEE_ROOT="$DEP/manatee"
-export PKG_CONFIG_PATH="$DEP/pcre2/lib/pkgconfig"
-export MANATEE_TOOLS_DIR="$DEP/manatee/src"
+export PANDO_BUILD_DIR="$DEP/pando/build"
 mkdir -p "$OUT"
 BUILD_LOG="$OUT/build.log"
 xcodebuild -project "$ROOT/Korpora/Korpora.xcodeproj" -scheme Korpora \
@@ -87,7 +85,7 @@ echo "    Korpora $VERSION ($BUILD)"
 
 # -------------------------------------------------- signature checks ----
 echo "==> Checking signatures"
-for bin in "$APP" "$APP/Contents/Helpers/encodevert" "$APP/Contents/Helpers/mkregexattr"; do
+for bin in "$APP" "$APP/Contents/Helpers/pando-index" "$APP/Contents/Frameworks/libpando.dylib"; do
     info="$(codesign -dvv "$bin" 2>&1)" || die "not signed: $bin"
     grep -q "^Authority=Developer ID Application: .*($TEAM_ID)" <<<"$info" \
         || die "not signed with Developer ID ($TEAM_ID): $bin"
@@ -101,7 +99,7 @@ codesign --verify --deep --strict "$APP" || die "codesign --verify --deep --stri
 if codesign -d --entitlements - "$APP" 2>/dev/null | grep -q get-task-allow; then
     die "app is signed with com.apple.security.get-task-allow (CODE_SIGN_INJECT_BASE_ENTITLEMENTS must be NO for Release)"
 fi
-if otool -L "$APP/Contents/MacOS/Korpora" "$APP/Contents/Helpers/"* | grep -q /opt/homebrew; then
+if otool -L "$APP/Contents/MacOS/Korpora" "$APP/Contents/Helpers/"* "$APP/Contents/Frameworks/"* | grep -q /opt/homebrew; then
     die "a binary still links a /opt/homebrew library"
 fi
 

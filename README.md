@@ -1,4 +1,4 @@
-Native MacOS corpus manager built on top of [manatee-open](https://github.com/czcorpus/manatee-open). Aiming at similar feature set as [Kontext](https://github.com/czcorpus/kontext), but all in native Mac app, following Macintosh Human Interface Guidelines.
+Native macOS corpus workshop and concordancer, built on [pando](https://github.com/ufal/pando), UFAL's corpus query engine with dependency-tree search. Index annotated text (CoNLL-U, such as the whole Universal Dependencies release), search it with KWIC concordances, collocations, frequencies and dispersion plots, and restrict searches by document properties. A native Mac app, following the Macintosh Human Interface Guidelines. (Releases up to 0.3 used Manatee, the engine behind KonText; later versions use pando.)
 
 **[Download the latest release](https://github.com/stranak/Korpora/releases/latest)**: a signed and notarized `.dmg`. Requires macOS 15 or later on Apple Silicon.
 

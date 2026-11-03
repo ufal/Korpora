@@ -1,0 +1,14 @@
+# newdoc id = smoke1
+# meta::genre = fiction
+# sent_id = s1
+1	the	the	DET	_	_	3	det	_	_
+2	quick	quick	ADJ	_	_	3	amod	_	_
+3	fox	fox	NOUN	_	_	4	nsubj	_	_
+4	jumps	jump	VERB	_	_	0	root	_	_
+
+# sent_id = s2
+1	a	a	DET	_	_	3	det	_	_
+2	lazy	lazy	ADJ	_	_	3	amod	_	_
+3	dog	dog	NOUN	_	_	4	nsubj	_	_
+4	sleeps	sleep	VERB	_	_	0	root	_	_
+

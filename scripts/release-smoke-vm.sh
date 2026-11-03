@@ -2,7 +2,7 @@
 # Release smoke test, the scripted half of docs/project-plan.md's "Goal -
 # Ship a signed GitHub release" step 6. Runs INSIDE a clean macOS VM at the
 # release floor, over SSH, with ~/smoke/ holding Korpora-<version>.dmg,
-# test.vert (Korpora/DevCorpus/vert/test.vert) and this script.
+# smoke.conllu (scripts/smoke/smoke.conllu) and this script.
 #
 # How it was run for 0.1 (host side, see the plan for details):
 #   tart clone ghcr.io/cirruslabs/macos-sequoia-vanilla:latest korpora-smoke-15
@@ -13,9 +13,9 @@
 #
 #   bash ~/smoke/release-smoke-vm.sh install   # Gatekeeper checks + install
 #   ... manual: first launch from Finder (expect only the "downloaded from
-#       the Internet" prompt), import test.vert via the UI, run a query,
+#       the Internet" prompt), import smoke.conllu via the UI, run a query,
 #       check completion, change a setting, quit + relaunch ...
-#   bash ~/smoke/release-smoke-vm.sh exec      # bundled tools + relaunch
+#   bash ~/smoke/release-smoke-vm.sh exec      # bundled pando + relaunch
 #
 # The install phase must run before anything executes the app: running the
 # quarantined binary or its helpers first could clear the first-launch
@@ -65,35 +65,30 @@ codesign --verify --deep --strict "$APP" && ok "codesign strict verify" || bad "
 
 else
 APP=/Applications/Korpora.app
-echo "== Bundled import tools, run from the installed app"
+echo "== Bundled pando, run from the installed app"
 H="$APP/Contents/Helpers"
-W=$(mktemp -d); mkdir -p "$W/data" "$W/registry"
-cat > "$W/registry/smoke" <<REG
-NAME "Smoke"
-PATH "$W/data"
-VERTICAL "$HOME/smoke/test.vert"
-ENCODING "utf-8"
-ATTRIBUTE word
-ATTRIBUTE lemma {
-}
-ATTRIBUTE tag {
-}
-STRUCTURE doc {
-    ATTRIBUTE id
-    ATTRIBUTE author
-    ATTRIBUTE genre
-    ATTRIBUTE year
-}
-STRUCTURE s {
-}
-REG
-( export MANATEE_REGISTRY="$W/registry" PATH="$H:/usr/bin:/bin"; "$H/encodevert" -v -c smoke ) > /tmp/enc.log 2>&1
+W=$(mktemp -d)
+"$H/pando-index" "$HOME/smoke/smoke.conllu" "$W/idx" > /tmp/idx.log 2>&1
 st=$?
-tail -5 /tmp/enc.log
-grep -qi "dyld\|Library not loaded" /tmp/enc.log && bad "dyld error in encodevert"
-[ $st -eq 0 ] && ok "encodevert exit 0" || bad "encodevert exit $st"
-grep -qi "failed to create regular expression" /tmp/enc.log && bad "mkregexattr not found via PATH" || ok "mkregexattr ran (no regexopt errors)"
-ls "$W/data" | grep -q "word.lex" && ok "corpus data written ($(ls "$W/data" | wc -l | tr -d ' ') files)" || bad "no corpus data"
+tail -3 /tmp/idx.log
+grep -qi "dyld\|Library not loaded" /tmp/idx.log && bad "dyld error in pando-index"
+[ $st -eq 0 ] && ok "pando-index exit 0" || bad "pando-index exit $st"
+grep -q "^size=8" "$W/idx/corpus.info" && ok "corpus written (8 tokens)" || bad "no corpus data"
+# The engine library, loaded the way the app loads it, and asked a question.
+python3 - "$APP/Contents/Frameworks/libpando.dylib" "$W/idx" <<'PY' > /tmp/lib.log 2>&1
+import ctypes, json, sys
+lib = ctypes.CDLL(sys.argv[1])
+lib.pando_open.restype = ctypes.c_void_p
+lib.pando_open.argtypes = [ctypes.c_char_p, ctypes.c_int]
+lib.pando_query.restype = ctypes.c_void_p
+lib.pando_query.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
+h = lib.pando_open(sys.argv[2].encode(), 0)
+assert h, "pando_open failed"
+r = lib.pando_query(h, b'[upos="NOUN"]', b'{"total":true,"limit":5}')
+page = json.loads(ctypes.string_at(r))["result"]["page"]
+print("hits", page["total"])
+PY
+grep -q "^hits 2" /tmp/lib.log && ok "libpando loads and answers a query" || { cat /tmp/lib.log; bad "libpando did not answer"; }
 
 echo "== App relaunch in the GUI session (after the manual first launch)"
 sudo launchctl asuser "$(id -u)" sudo -u "$(id -un)" open -a "$APP"

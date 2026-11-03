@@ -1,11 +1,11 @@
 #!/bin/bash
-# Builds pando, indexes a sample corpus and runs Korpora's pando tests against it.
+# Builds pando, indexes test corpora and runs Korpora's tests against it.
 # Everything lands in one work directory (default ~/Developer/pando-work), outside this repo.
 #
 #   scripts/pando-spike.sh build      # clone/update ufal/pando, build pando + libpando
 #   scripts/pando-spike.sh sample     # index pando's built-in test/data/sample.conllu
 #   scripts/pando-spike.sh ud         # download the full UD release and index it (large: GBs, takes a while)
-#   scripts/pando-spike.sh test       # run the ManateeKit and app tests with the pando library loaded
+#   scripts/pando-spike.sh test       # run the engine and app tests with the pando library loaded
 #   scripts/pando-spike.sh all        # build, sample, test
 #   scripts/pando-spike.sh query IDX 'CQL'   # run a query with the pando CLI
 #
@@ -59,8 +59,8 @@ tests() {
   [ -f "$KORPORA_PANDO_LIB" ] || { echo "no $KORPORA_PANDO_LIB: run '$0 build' first" >&2; exit 1; }
   [ -d "$WORK/sample-idx" ] && export KORPORA_PANDO_SAMPLE="$WORK/sample-idx"
   [ -d "$WORK/ud-idx" ] && export KORPORA_PANDO_UD="$WORK/ud-idx"
-  echo "== ManateeKit (PandoKit tests)"
-  (cd "$ROOT/ManateeKit" && swift test --filter PandoKitTests 2>&1 | grep -E "error:|Executed|skipped" | tail -3)
+  echo "== KorporaEngine tests"
+  (cd "$ROOT/KorporaEngine" && swift test 2>&1 | grep -E "error:|Executed .* tests" | tail -2)
   echo "== App (document tests against pando)"
   (cd "$ROOT/Korpora" && TEST_RUNNER_KORPORA_PANDO_LIB="$KORPORA_PANDO_LIB" \
      TEST_RUNNER_KORPORA_PANDO_SAMPLE="${KORPORA_PANDO_SAMPLE:-}" TEST_RUNNER_KORPORA_PANDO_UD="${KORPORA_PANDO_UD:-}" \

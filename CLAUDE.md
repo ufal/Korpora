@@ -1,20 +1,24 @@
 # Korpora
 
-`ManateeKit` wraps `manatee-open` (the corpus-query engine behind KonText).
-`Korpora` is the native AppKit macOS app built on top of it. It was renamed
+`Korpora` is the native AppKit macOS app: a corpus workshop and concordancer on top of
+[pando](https://github.com/ufal/pando) (the corpus query engine from UFAL), which it loads at run time
+(`dlopen`) through its C API. `KorporaEngine` is the engine layer: the protocols the app talks to
+(`CorpusEngine`, `CorpusHandle`, `ConcordanceHandle`), the pando implementation, the corpus library,
+import (`pando-index`), and subcorpora. The app used to sit on Manatee (the engine behind KonText);
+that integration is gone (docs/pando-gui-plan.md). It was renamed
 from Corpora to Korpora, directories included, so the project lives at
 `Korpora/Korpora.xcodeproj` with sources in `Korpora/Korpora/` and tests in
 `Korpora/KorporaTests/`. Every "Corpora" that meant *the app* is gone;
 "Corpora" as the plural of *corpus* — the Settings tab,
-`CorporaSettingsViewController`, `compiledCorporaDirectory` — is correct
-and should stay.
+`CorporaSettingsViewController` — is correct and should stay.
 
 ## Project plan
 
 `docs/project-plan.md` is the living status/handoff document for this
 project — read it before starting non-trivial work, and update it as part
-of the work rather than after. It covers `ManateeKit`, `Korpora`, and the
-`manatee-open` fork.
+of the work rather than after. It was written in the Manatee era and is being brought up to date;
+`docs/pando-analysis.md` (why pando, with the measurements) and `docs/pando-gui-plan.md` (how the app
+moved to it) are the current design notes.
 
 Project plans and design notes belong in `docs/` inside this repo. Never
 write them to `~/.claude/plans/` or another location outside the checkout —
@@ -23,17 +27,16 @@ them by repo-relative path.
 
 ## Division of labor
 
-- **Terminal Claude Code sessions**: engine-layer work (`ManateeKit`/
-  `CManatee`/`manatee-open`), tests, AppKit *code* changes, git/PR work,
-  planning.
+- **Terminal Claude Code sessions**: engine-layer work (`KorporaEngine`),
+  tests, AppKit *code* changes, git/PR work, planning.
 - **Xcode's built-in Claude agent**: building/running `Korpora.app`,
   visual inspection, interactive click-through testing, iterating on
   layout/visual polish — via its `BuildProject`/`RunAllTests`/
   `DeviceInteraction*` tools.
 
-## Repos
+## Repos and setup
 
-- `ManateeKit/`, `Korpora/`, `scripts/` — this repo
+- `KorporaEngine/`, `Korpora/`, `scripts/` — this repo
   (`github.com/stranak/Korpora`, renamed from `mac-corpora` along with the
   app). The local checkout directory is `korpora/`.
   - **The bundle identifier is `cz.cuni.mff.ufal.korpora`** (since the
@@ -43,7 +46,9 @@ them by repo-relative path.
     Gatekeeper's view of the app. Settings from the old id are carried
     over once at launch by `LegacyDefaultsMigration` (called first in
     `main.swift`); keep that in place so older installs don't reset.
-- `manatee-open/` — a separate git checkout, sibling to this repo, not
-  nested/submoduled. Must be `stranak/manatee-open`'s
-  `macos-arm64-portability` branch, not upstream `czcorpus/manatee-open` —
-  see `docs/project-plan.md`'s "Repository state" section for why.
+- pando is **not** part of this repo: `scripts/pando-spike.sh build` clones and builds
+  `ufal/pando` into `~/Developer/pando-work/` (outside the checkout); `sample` and `ud` index test
+  corpora there; `test` runs the engine and app tests against it. Tests that need pando skip when
+  there is no build. A release bundles its own pando (`scripts/build-release-deps.sh`).
+- `manatee-open/` (an old, untracked checkout inside the working directory) is no longer used and can be
+  deleted.

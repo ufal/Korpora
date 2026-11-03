@@ -1,173 +1,73 @@
 #!/bin/bash
-# Builds the two things a shippable Korpora.app needs that the dev setup
-# does NOT provide (see docs/project-plan.md, "Goal - Ship a signed GitHub
-# release", blockers 1 and 2):
+# Builds what a shippable Korpora.app needs that the dev setup does not provide: pando
+# (`libpando.dylib`, the search engine the app loads at run time, and `pando-index`, which builds
+# corpora), compiled at the release deployment floor ($FLOOR) from a pinned ref. Nothing from the
+# dev build in ~/Developer/pando-work is reused, so the release never depends on a local checkout.
 #
-#   1. pcre2 built --disable-shared from a pinned source tarball. The
-#      dev-time Homebrew pcre2 resolves `-lpcre2-8` to its dylib, baking an
-#      absolute /opt/homebrew path into every linked binary - fatal on a
-#      Mac without Homebrew. With only a .a in the prefix, the *existing*
-#      `-lpcre2-8` flags (manatee-open's configure via pcre2-config, and
-#      ManateeKit's Package.swift via pkg-config) pick it up statically
-#      with zero flag surgery.
-#
-#   2. manatee-open rebuilt in an isolated `git worktree` at the release
-#      deployment floor ($FLOOR) - producing encodevert/mkregexattr with
-#      static pcre2 for bundling into the app, and a libbuiltinmanatee.a
-#      whose objects declare that floor instead of the local OS version.
-#      The dev checkout is never touched.
+# pando has no third-party runtime dependency beyond the system C++ runtime (regular expressions run
+# on the standard library: RE2 is left off, which makes regex queries over a very large vocabulary
+# slower than a build with it; see docs/pando-analysis.md).
 #
 # Usage:
-#   scripts/build-release-deps.sh              # FLOOR=15.0 ARCH=arm64
-#   FLOOR=14.0 ARCH=x86_64 scripts/build-release-deps.sh
+#   scripts/build-release-deps.sh              # PANDO_REF=v0.4.1 FLOOR=15.0 ARCH=arm64
+#   PANDO_REF=<tag-or-commit> scripts/build-release-deps.sh
 #
-# On success it prints the three env vars the app build needs.
+# On success it prints the variable the app build needs (make-release.sh sets it itself).
 set -euo pipefail
 
 FLOOR="${FLOOR:-15.0}"
 ARCH="${ARCH:-arm64}"
-
-PCRE2_VERSION="10.48"   # same version the dev build is validated against
-PCRE2_SHA256="ebcc25aadf2a51fa1fefa9b8bc9e7a79b3dae86870a0f1152a22e42befd46888"
-PCRE2_URL="https://github.com/PCRE2Project/pcre2/releases/download/pcre2-${PCRE2_VERSION}/pcre2-${PCRE2_VERSION}.tar.gz"
-
-# The fork must be the portability branch, not upstream (see CLAUDE.md /
-# project-plan "Repository state"). Override MANATEE_REF=<ref> to build a
-# different one deliberately.
-REQUIRED_BRANCH="macos-arm64-portability"
+PANDO_REF="${PANDO_REF:-v0.4.1}"
+PANDO_URL="${PANDO_URL:-https://github.com/ufal/pando.git}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$SCRIPT_DIR")"
 DEP="$ROOT/.release-deps"
-MANATEE_DEV="$ROOT/manatee-open"
+SRC="$DEP/pando-src"
+BUILD="$DEP/pando/build"
 NCPU="$(sysctl -n hw.ncpu)"
-
-# autoreconf/automake come from Homebrew on Apple Silicon; also makes
-# pkg-config findable if it isn't on PATH for the caller. bison and libtool
-# are keg-only (macOS ships bison 2.3; manatee-open's configure needs
-# >= 3.0.2), so put them first exactly as setup-dev-machine.sh does. These
-# are build-time tools only - nothing from them lands in a shipped binary.
-[ -d /opt/homebrew/bin ] && PATH="/opt/homebrew/bin:$PATH"
-if command -v brew >/dev/null; then
-    PATH="$(brew --prefix bison)/bin:$(brew --prefix libtool)/libexec/gnubin:$PATH"
-fi
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
-[ -d "$MANATEE_DEV/.git" ] || die "manatee-open checkout not found at $MANATEE_DEV"
-MANATEE_BRANCH="$(git -C "$MANATEE_DEV" branch --show-current)"
-if [ -z "${MANATEE_REF:-}" ] && [ "$MANATEE_BRANCH" != "$REQUIRED_BRANCH" ]; then
-    die "manatee-open is on branch '$MANATEE_BRANCH', expected '$REQUIRED_BRANCH'. Switch branch or set MANATEE_REF=<ref>."
-fi
-MANATEE_REF="${MANATEE_REF:-HEAD}"
-# A dirty dev tree is fine (the worktree builds from the *commit*), but say
-# so loudly - silently missing local fixes in a release build is worse.
-if ! git -C "$MANATEE_DEV" diff --quiet HEAD --; then
-    echo "WARNING: manatee-open has uncommitted changes at $MANATEE_REF; release build uses the committed state only." >&2
+# cmake and ninja: installed ones, else a private venv under .release-deps (nothing system-wide).
+mkdir -p "$DEP"
+if ! command -v cmake >/dev/null || ! command -v ninja >/dev/null; then
+    [ -x "$DEP/venv/bin/cmake" ] || { python3 -m venv "$DEP/venv"; "$DEP/venv/bin/pip" install -q cmake ninja; }
+    export PATH="$DEP/venv/bin:$PATH"
 fi
 
-ARCH_FLAGS="-arch $ARCH -mmacosx-version-min=$FLOOR"
-mkdir -p "$DEP/src-cache"
-
-# ---------------------------------------------------------------- pcre2 ----
-PCRE2_PREFIX="$DEP/pcre2"
-if [ -f "$PCRE2_PREFIX/.build-ok" ]; then
-    echo "==> pcre2 $PCRE2_VERSION already built at $PCRE2_PREFIX (delete .build-ok to force rebuild)"
+if [ -d "$SRC/.git" ]; then
+    git -C "$SRC" fetch -q --tags origin
 else
-    echo "==> Fetching and verifying pcre2 $PCRE2_VERSION"
-    TARBALL="$DEP/src-cache/pcre2-$PCRE2_VERSION.tar.gz"
-    if [ ! -f "$TARBALL" ]; then
-        curl -fsSL -o "$TARBALL" "$PCRE2_URL"
-    fi
-    echo "$PCRE2_SHA256  $TARBALL" | shasum -a 256 -c - || die "pcre2 tarball checksum mismatch"
-
-    echo "==> Building pcre2 static-only ($ARCH, floor $FLOOR)"
-    # No recursive cleanup anywhere in this script: `.release-deps` is a
-    # throwaway gitignored tree, `tar` overwrites the source tree and
-    # `make install` overwrites the prefix in place, and a rebuild is
-    # reached only by deleting the `.build-ok` marker below - so nothing
-    # stale needs clearing. (Recursive-force deletion in a script body also
-    # sends Claude Code's Bash permission classifier down a slow path that
-    # times out and blocks every command referencing the file - avoidable
-    # here anyway, so doubly not worth it.)
-    tar -xzf "$TARBALL" -C "$DEP"
-    (
-        cd "$DEP/pcre2-$PCRE2_VERSION"
-        # Widths manatee/Package.swift never reference (only -lpcre2-8),
-        # and the libedit/zlib/bz2 knobs off so the tool binaries build
-        # with no dependencies beyond what a bare macOS has.
-        CFLAGS="-O2 $ARCH_FLAGS" \
-        ./configure --prefix="$PCRE2_PREFIX" \
-            --disable-shared \
-            --disable-pcre2-16 --disable-pcre2-32 \
-            --disable-pcre2test-libedit --disable-pcre2grep-libz --disable-pcre2grep-libbz2 \
-            >/dev/null
-        make -j"$NCPU" >/dev/null
-        make install >/dev/null
-    )
-    # Drop the libtool archives (as Homebrew does). With libpcre2-8.la
-    # present, libtool resolves manatee's `-lpcre2-8` to that static-only
-    # .la and silently omits it from the finlib convenience library's
-    # dependency_libs - every tool link then fails with undefined
-    # _pcre2_* symbols. Without the .la it's a plain linker flag, which ld
-    # resolves to the prefix's lone libpcre2-8.a.
-    rm -f "$PCRE2_PREFIX/lib/libpcre2-8.la" "$PCRE2_PREFIX/lib/libpcre2-posix.la"
-    touch "$PCRE2_PREFIX/.build-ok"
+    git clone -q "$PANDO_URL" "$SRC"
 fi
-[ -x "$PCRE2_PREFIX/bin/pcre2-config" ] || die "pcre2-config missing from $PCRE2_PREFIX/bin"
-[ "$( "$PCRE2_PREFIX/bin/pcre2-config" --version )" = "$PCRE2_VERSION" ] \
-    || die "pcre2-config version mismatch"
-ls "$PCRE2_PREFIX/lib"/libpcre2-8.a >/dev/null || die "static libpcre2-8.a missing"
-if ls "$PCRE2_PREFIX/lib"/libpcre2-8*.dylib >/dev/null 2>&1; then
-    die "shared libpcre2 present in prefix - -lpcre2-8 would resolve to the dylib again"
-fi
+git -C "$SRC" checkout -q "$PANDO_REF"
+COMMIT="$(git -C "$SRC" rev-parse --short HEAD)"
+echo "==> pando $PANDO_REF ($COMMIT), deployment target $FLOOR, $ARCH"
 
-# ------------------------------------------------------------ manatee ------
-MANATEE_WT="$DEP/manatee"
-echo "==> Rebuilding manatee-open in worktree at $FLOOR/$ARCH (dev checkout untouched)"
-# Reuse the worktree if it already exists (re-syncing it to $MANATEE_REF)
-# rather than force-removing and re-adding it - no recursive delete, and
-# autoreconf + configure + make below regenerate every artifact anyway.
-if git -C "$MANATEE_DEV" worktree list --porcelain | grep -qxF "worktree $MANATEE_WT"; then
-    echo "    reusing existing worktree, syncing to $MANATEE_REF"
-    git -C "$MANATEE_WT" checkout --detach "$MANATEE_REF"
-else
-    git -C "$MANATEE_DEV" worktree add --detach "$MANATEE_WT" "$MANATEE_REF"
-fi
-(
-    cd "$MANATEE_WT"
-    autoreconf --install >/dev/null
-    # PATH puts the static-only pcre2-config first, so configure bakes the
-    # prefix (with only .a in libdir) into encodevert/mkregexattr.
-    PATH="$PCRE2_PREFIX/bin:$PATH" \
-    CFLAGS="-O2 $ARCH_FLAGS" \
-    CXXFLAGS="-O2 $ARCH_FLAGS" \
-    LDFLAGS="$ARCH_FLAGS" \
-    ./configure --with-pcre2 --disable-python >/dev/null
-    make -j"$NCPU" >/dev/null
-)
+rm -rf "$BUILD"
+cmake -S "$SRC" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DPANDO_BUILD_SHARED=ON -DPANDO_USE_RE2=OFF \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET="$FLOOR" -DCMAKE_OSX_ARCHITECTURES="$ARCH" > "$DEP/pando-cmake.log" 2>&1 \
+    || { tail -20 "$DEP/pando-cmake.log" >&2; die "cmake failed - log: $DEP/pando-cmake.log"; }
+cmake --build "$BUILD" -j "$NCPU" > "$DEP/pando-build.log" 2>&1 \
+    || { tail -20 "$DEP/pando-build.log" >&2; die "build failed - log: $DEP/pando-build.log"; }
 
-# ------------------------------------------------------- verification ------
-echo "==> Verifying no Homebrew dylib leaked into the release tools"
-for tool in encodevert mkregexattr; do
-    [ -x "$MANATEE_WT/src/$tool" ] || die "$tool missing from $MANATEE_WT/src"
-    if otool -L "$MANATEE_WT/src/$tool" | grep -q '/opt/homebrew'; then
-        echo "--- otool -L $tool ---" >&2
-        otool -L "$MANATEE_WT/src/$tool" >&2
-        die "$tool still links a /opt/homebrew library"
-    fi
-    echo "    $tool: clean"
+# What was built must be what the app expects.
+[ -x "$BUILD/pando-index" ] || die "pando-index missing after the build"
+[ -f "$BUILD/libpando.dylib" ] || die "libpando.dylib missing after the build"
+for symbol in pando_open pando_last_error pando_cancel pando_query pando_run pando_info pando_free_string pando_close; do
+    nm -gU "$BUILD/libpando.dylib" | grep -q "_$symbol\$" || die "libpando.dylib lacks $symbol"
 done
-otool -L "$MANATEE_WT/src/encodevert" | grep -q 'pcre2' \
-    && die "encodevert still has a pcre2 dylib load command (static link expected: none)" \
-    || true
+for binary in "$BUILD/pando-index" "$BUILD/libpando.dylib"; do
+    minos="$(vtool -show-build "$binary" | awk '/minos/ {print $2}' | head -1)"
+    [ "$minos" = "$FLOOR" ] || die "$(basename "$binary") has minos $minos, expected $FLOOR"
+    if otool -L "$binary" | grep -E "/opt/homebrew|/usr/local" >/dev/null; then
+        die "$(basename "$binary") links a library outside the system"
+    fi
+done
+echo "$COMMIT" > "$DEP/pando/.built-from"
+touch "$DEP/pando/.build-ok"
 
 echo
-echo "Release dependencies ready. For the app build (Release config):"
-cat <<EOF
-  export KORPORA_MANATEE_ROOT="$MANATEE_WT"
-  export PKG_CONFIG_PATH="$PCRE2_PREFIX/lib/pkgconfig"
-  export MANATEE_TOOLS_DIR="$MANATEE_WT/src"
-  xcodebuild -project Korpora.xcodeproj -scheme Korpora -configuration Release \\
-      MACOSX_DEPLOYMENT_TARGET=$FLOOR ...
-EOF
+echo "pando is built. make-release.sh uses it; to bundle it by hand, export:"
+echo "  PANDO_BUILD_DIR=$BUILD"
