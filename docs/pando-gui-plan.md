@@ -67,12 +67,12 @@ positions; warn when CoNLL-U metadata values with spaces are dropped (`# text_X`
 - Words around a hit show their spelling only (no lemma/tag under context words; sorting by left/right words is by spelling).
 - No positive/negative filter, no sentence view mode, no `.subc`-style typed subcorpus expressions.
 - Subcorpora are picks of document properties, saved per corpus; they restrict every search in them.
-- Frequencies by a document property show counts but no per-million "Norm".
+- Frequencies have a "Per million" column and chart measure (pando's `freq`: relative to the tokens of the value's documents
+  for a document property, to the whole corpus otherwise - the same as Manatee's "norm"-based figure, plus the latter).
 - Old `.corpconc` documents (format 1-2) don't open: a message says why. Old Manatee corpora are not read.
 
 ### Asks for pando (Maarten)
-Attributes on context tokens; sentence-bounded context through the C API; a hit-position histogram; relative frequencies for
-region attributes without a named token; a warning when CoNLL-U metadata values with spaces are dropped (`# text_X` vs
+Attributes on context tokens; sentence-bounded context through the C API; a hit-position histogram; a warning when CoNLL-U metadata values with spaces are dropped (`# text_X` vs
 `# meta::X`); a licence.
 
 ### Next
