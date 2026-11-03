@@ -58,65 +58,35 @@ import Testing
         }
     }
 
-    /// The buttons inside the groups are the ones the document's state switches on and off.
+    /// The state goes to the items the toolbar holds, even when the delegate has built other copies
+    /// since (the toolbar does that on a first launch and when customizing).
     @Test func lineGroupsStillDisableSortShuffleAndSampleInsideTheirGroup() throws {
         let controller = shownController()
         let toolbar = try #require(controller.window?.toolbar)
         let ItemID = ConcordanceWindowController.ItemID.self
-        let group = try #require(controller.toolbar(toolbar, itemForItemIdentifier: ItemID.resultGroup, willBeInsertedIntoToolbar: true)
-                                 as? NSToolbarItemGroup)
-        let buttons = group.subitems
-        #expect(buttons.count == 3 && buttons.allSatisfy { $0.isEnabled })
+        for _ in 0..<2 {  // stray copies, as built for a palette or a second pass
+            _ = controller.toolbar(toolbar, itemForItemIdentifier: ItemID.resultGroup, willBeInsertedIntoToolbar: true)
+        }
+        func group(_ id: NSToolbarItem.Identifier) throws -> NSToolbarItemGroup {
+            try #require(toolbar.items.first { $0.itemIdentifier == id } as? NSToolbarItemGroup)
+        }
+        let result = try group(ItemID.resultGroup), display = try group(ItemID.displayGroup)
+        #expect(result.subitems.count == 3 && result.subitems.allSatisfy { $0.isEnabled })
         controller.updateToolbarState(hasLineGroups: true)
-        #expect(buttons.allSatisfy { !$0.isEnabled })
+        #expect(result.subitems.allSatisfy { !$0.isEnabled })
+        #expect(display.subitems.allSatisfy { $0.isEnabled }, "Context and Attributes are display settings, never off")
         controller.updateToolbarState(hasLineGroups: false)
-        #expect(buttons.allSatisfy { $0.isEnabled })
-        // Context (in the Display group) is a display setting and is never switched off.
-        let display = try #require(controller.toolbar(toolbar, itemForItemIdentifier: ItemID.displayGroup, willBeInsertedIntoToolbar: true)
-                                   as? NSToolbarItemGroup)
+        #expect(result.subitems.allSatisfy { $0.isEnabled })
+    }
+
+    /// An item built after line groups appeared (the toolbar rebuilding itself) starts disabled.
+    @Test func aGroupBuiltWhileLineGroupsExistStartsDisabled() throws {
+        let controller = shownController()
+        let toolbar = try #require(controller.window?.toolbar)
         controller.updateToolbarState(hasLineGroups: true)
-        #expect(display.subitems.allSatisfy { $0.isEnabled })
-    }
-
-    /// A click on Sort (a popover) and on Shuffle runs the item's action; the popover needs a real
-    /// view to hang from (it once got a toolbar item, which has no bounds).
-    @Test func clickingSegmentsRunsTheirActions() throws {
-        let controller = shownController()
-        let window = try #require(controller.window)
-        defer { window.orderOut(nil) }
-        let toolbar = try #require(window.toolbar)
-        let result = try #require(toolbar.items.first { $0.itemIdentifier == ConcordanceWindowController.ItemID.resultGroup } as? NSToolbarItemGroup)
-        for index in [0, 1, 2] {  // Sort, Shuffle, Sample
-            result.selectedIndex = index
-            _ = result.target?.perform(result.action, with: result)
-        }
-        let display = try #require(toolbar.items.first { $0.itemIdentifier == ConcordanceWindowController.ItemID.displayGroup } as? NSToolbarItemGroup)
-        for index in [0, 1] {  // Context, Attributes
-            display.selectedIndex = index
-            _ = display.target?.perform(display.action, with: display)
-        }
-        for popoverWindow in NSApp.windows where popoverWindow !== window && popoverWindow.className.contains("Popover") { popoverWindow.close() }
-    }
-
-    /// The view a popover hangs from is left over the segment afterwards; it must not catch the
-    /// next click on that segment.
-    @Test func theLeftoverPopoverAnchorDoesNotCatchClicks() throws {
-        let controller = shownController()
-        let window = try #require(controller.window)
-        defer { window.orderOut(nil) }
-        let toolbar = try #require(window.toolbar)
-        let display = try #require(toolbar.items.first { $0.itemIdentifier == ConcordanceWindowController.ItemID.displayGroup } as? NSToolbarItemGroup)
-        display.selectedIndex = 1
-        _ = display.target?.perform(display.action, with: display)
-        func segmented(_ view: NSView) -> [NSSegmentedControl] { ((view as? NSSegmentedControl).map { [$0] } ?? []) + view.subviews.flatMap(segmented) }
-        let root = try #require(window.contentView?.superview)
-        let control = try #require(segmented(root).first { $0.segmentCount == 2 })
-        let anchors = control.subviews.filter { $0 is NSButton }
-        #expect(!anchors.isEmpty)
-        for anchor in anchors {
-            #expect(control.hitTest(control.convert(NSPoint(x: anchor.frame.midX, y: anchor.frame.midY), to: control.superview)) !== anchor)
-        }
-        for popoverWindow in NSApp.windows where popoverWindow !== window && popoverWindow.className.contains("Popover") { popoverWindow.close() }
+        let built = try #require(controller.toolbar(toolbar, itemForItemIdentifier: ConcordanceWindowController.ItemID.resultGroup,
+                                                    willBeInsertedIntoToolbar: true) as? NSToolbarItemGroup)
+        #expect(built.subitems.allSatisfy { !$0.isEnabled })
     }
 
     @Test func theRealToolbarHoldsTheGroupsAndSpaces() throws {

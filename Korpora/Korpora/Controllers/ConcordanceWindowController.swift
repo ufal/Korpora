@@ -37,9 +37,11 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
 
     static func label(for id: NSToolbarItem.Identifier) -> String { String(id.rawValue.split(separator: ".").last ?? "").capitalized }
 
-    private var sortItem: NSToolbarItem?
-    private var shuffleItem: NSToolbarItem?
-    private var sampleItem: NSToolbarItem?
+    /// Whether the concordance has line groups, which switch off Sort, Shuffle and Sample. Kept here
+    /// because the toolbar may build its items more than once (first launch, customizing), so state
+    /// is applied to the items the toolbar actually holds, never to ones remembered from creation.
+    private var lineGroupsActive = false
+    private static let operationItems: Set<NSToolbarItem.Identifier> = [ItemID.sort, ItemID.shuffle, ItemID.sample]
 
     convenience init(document: ConcordanceDocument) {
         let viewController = ConcordanceViewController(document: document)
@@ -94,13 +96,7 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
                 sub.toolTip = (leaf.view as? NSButton)?.toolTip
                 sub.paletteLabel = leaf.label
                 sub.autovalidates = false
-                guard flag else { continue }  // palette copies are not the toolbar's items
-                switch leaf.itemIdentifier {
-                case ItemID.sort: sortItem = sub
-                case ItemID.shuffle: shuffleItem = sub
-                case ItemID.sample: sampleItem = sub
-                default: break
-                }
+                if Self.operationItems.contains(leaf.itemIdentifier) { sub.isEnabled = !lineGroupsActive }
             }
             return item
         }
@@ -126,7 +122,6 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
                 tooltip: "Sort concordance lines", target: viewController,
                 action: #selector(ConcordanceViewController.sortTapped(_:)))
             let item = makeItem(identifier, label: "Sort", view: button)
-            sortItem = item
             return item
         case ItemID.shuffle:
             let button = makeButton(
@@ -134,7 +129,6 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
                 tooltip: "Randomize line order", target: viewController,
                 action: #selector(ConcordanceViewController.shuffleTapped(_:)))
             let item = makeItem(identifier, label: "Shuffle", view: button)
-            shuffleItem = item
             return item
         case ItemID.sample:
             let button = makeButton(
@@ -142,7 +136,6 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
                 tooltip: "Reduce to a random sample of lines", target: viewController,
                 action: #selector(ConcordanceViewController.sampleTapped(_:)))
             let item = makeItem(identifier, label: "Sample", view: button)
-            sampleItem = item
             return item
         case ItemID.context:
             // Not tracked in `updateToolbarState`: unlike sort/shuffle/sample, widening
@@ -278,12 +271,13 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
     /// conflict with an active line-group view the way starting a *new*
     /// sort/filter/shuffle/sample would.
     func updateToolbarState(hasLineGroups: Bool) {
-        sortItem?.isEnabled = !hasLineGroups
-        (sortItem?.view as? NSButton)?.isEnabled = !hasLineGroups
-        shuffleItem?.isEnabled = !hasLineGroups
-        (shuffleItem?.view as? NSButton)?.isEnabled = !hasLineGroups
-        sampleItem?.isEnabled = !hasLineGroups
-        (sampleItem?.view as? NSButton)?.isEnabled = !hasLineGroups
+        lineGroupsActive = hasLineGroups
+        for case let item as NSToolbarItemGroup in window?.toolbar?.items ?? [] {
+            guard let group = Self.groups.first(where: { $0.id == item.itemIdentifier }) else { continue }
+            for (sub, id) in zip(item.subitems, group.items) where Self.operationItems.contains(id) {
+                sub.isEnabled = !hasLineGroups
+            }
+        }
     }
 }
 
