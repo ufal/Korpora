@@ -58,6 +58,7 @@ public enum CorpusLibrary {
     public enum LibraryError: Error, CustomStringConvertible, Equatable {
         case nameTaken(String)
         case notACorpus(URL)
+        case invalidName(String)
 
         public var description: String {
             switch self {
@@ -65,6 +66,8 @@ public enum CorpusLibrary {
                 return "A corpus named \u{201C}\(name)\u{201D} is already in Korpora."
             case .notACorpus(let url):
                 return "\u{201C}\(url.lastPathComponent)\u{201D} isn\u{2019}t an indexed corpus (it has no corpus.info)."
+            case .invalidName(let reason):
+                return reason
             }
         }
     }
@@ -120,13 +123,14 @@ public enum CorpusLibrary {
 
     // MARK: Adding
 
-    /// Links an index folder that lives elsewhere. The name is the folder name.
+    /// Links an index folder that lives elsewhere, under `name` (else `suggestedName(forIndex:)`).
+    /// The folder itself is not renamed or touched.
     /// - Parameter taken: names already in use, refused as `nameTaken`.
     @discardableResult
-    public static func link(indexDirectory: URL, taken: Set<String>) throws -> Entry {
+    public static func link(indexDirectory: URL, name chosen: String? = nil, taken: Set<String>) throws -> Entry {
         let target = indexDirectory.resolvingSymlinksInPath()
         guard isCorpus(target) else { throw LibraryError.notACorpus(target) }
-        let name = target.lastPathComponent
+        let name = try validName(chosen ?? suggestedName(forIndex: target))
         guard !taken.contains(name) else { throw LibraryError.nameTaken(name) }
         try FileManager.default.createDirectory(at: linkedDirectory, withIntermediateDirectories: true)
         let link = linkedDirectory.appendingPathComponent(name, isDirectory: true)
@@ -187,6 +191,59 @@ public enum CorpusLibrary {
             try fm.moveItem(at: entry.directory, to: destination)
             return destination
         }
+    }
+
+    // MARK: Naming
+
+    /// Index folders are often called something generic (`idx`, `index`), which says nothing in a list of
+    /// corpora; then the folder that holds it is the better name (`~/syn2025/idx` is "syn2025").
+    public static func suggestedName(forIndex directory: URL) -> String {
+        let folder = directory.resolvingSymlinksInPath()
+        let own = folder.lastPathComponent
+        let generic: Set<String> = ["idx", "index", "pando", "pando_idx", "pando-idx", "pando_index", "data", "corpus", "build", "output", "out"]
+        guard generic.contains(own.lowercased()) else { return own }
+        let parent = folder.deletingLastPathComponent().lastPathComponent
+        return parent.isEmpty || parent == "/" ? own : parent
+    }
+
+    /// `name` trimmed, or why it can't be a corpus name: a name is a file name here.
+    public static func validName(_ name: String) throws -> String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { throw LibraryError.invalidName("A corpus needs a name.") }
+        if trimmed.contains("/") || trimmed.contains(":") {
+            throw LibraryError.invalidName("A corpus name can\u{2019}t contain \u{201C}/\u{201D} or \u{201C}:\u{201D}.")
+        }
+        if trimmed.hasPrefix(".") {
+            throw LibraryError.invalidName("A corpus name can\u{2019}t start with a dot.")
+        }
+        return trimmed
+    }
+
+    /// Gives a corpus another name. Only Korpora's own handle changes: a built corpus's folder is renamed, a
+    /// linked corpus's link is (the folder it leads to is never touched). Names a corpus keeps elsewhere
+    /// (saved subcorpora) are moved by `SubcorpusLibrary.rename`; the caller moves the rest (settings).
+    /// - Parameter taken: the names in use; a name equal to the corpus's own except for capitals is fine.
+    @discardableResult
+    public static func rename(_ entry: Entry, to newName: String, taken: Set<String>) throws -> Entry {
+        let name = try validName(newName)
+        if name == entry.name { return entry }
+        let caseOnly = name.compare(entry.name, options: .caseInsensitive) == .orderedSame
+        guard caseOnly || !taken.contains(name) else { throw LibraryError.nameTaken(name) }
+        let fm = FileManager.default
+        let parent = entry.directory.deletingLastPathComponent()
+        let destination = parent.appendingPathComponent(name, isDirectory: true)
+        // The file system ignores case, so a change of capitals goes through a temporary name.
+        if caseOnly {
+            let hop = parent.appendingPathComponent(".renaming-\(UUID().uuidString)", isDirectory: true)
+            try fm.moveItem(at: entry.directory, to: hop)
+            try fm.moveItem(at: hop, to: destination)
+        } else {
+            try fm.moveItem(at: entry.directory, to: destination)
+        }
+        var renamed = entry
+        renamed.name = name
+        renamed.directory = destination
+        return renamed
     }
 
     /// A name for a new corpus that isn't taken: `base`, else `base 2`, ...

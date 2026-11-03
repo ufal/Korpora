@@ -53,6 +53,14 @@ final class AppSettings {
         keepResidentCorpora.contains(name)
     }
 
+    /// A corpus was renamed: its "Keep in Memory" choice follows it.
+    func renameKeepResident(from old: String, to new: String) {
+        var names = keepResidentCorpora
+        guard names.remove(old) != nil else { return }
+        names.insert(new)
+        keepResidentCorpora = names
+    }
+
     func setKeepResident(_ keep: Bool, for name: String) {
         var names = keepResidentCorpora
         if keep { names.insert(name) } else { names.remove(name) }

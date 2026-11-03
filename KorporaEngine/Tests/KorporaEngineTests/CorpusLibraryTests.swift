@@ -113,4 +113,102 @@ final class CorpusLibraryTests: XCTestCase {
         XCTAssertEqual(CorpusLibrary.entries().first?.tokens, nil)
         XCTAssertEqual(CorpusLibrary.names(), ["odd"])
     }
+
+    // MARK: Naming and renaming
+
+    func testAGenericIndexFolderIsNamedAfterTheFolderThatHoldsIt() {
+        func suggestion(_ path: String) -> String { CorpusLibrary.suggestedName(forIndex: URL(fileURLWithPath: path)) }
+        XCTAssertEqual(suggestion("/data/syn2025/idx"), "syn2025")
+        XCTAssertEqual(suggestion("/data/syn2025/IDX"), "syn2025")
+        XCTAssertEqual(suggestion("/home/ud/pando_idx"), "ud")
+        XCTAssertEqual(suggestion("/data/Czech National Corpus"), "Czech National Corpus", "a meaningful name is kept")
+        XCTAssertEqual(suggestion("/idx"), "idx", "nothing better to use")
+    }
+
+    func testLinkingUnderAChosenName() throws {
+        let box = try TestPando.Sandbox()
+        let target = try box.fakeIndex(named: "idx", in: box.elsewhere.appendingPathComponent("syn2025"), tokens: 9)
+        let entry = try CorpusLibrary.link(indexDirectory: target, name: "  SYN2025  ", taken: [])
+        XCTAssertEqual(entry.name, "SYN2025", "trimmed")
+        XCTAssertEqual(CorpusLibrary.names(), ["SYN2025"])
+        XCTAssertEqual(CorpusLibrary.entries().first?.tokens, 9)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: target.path), "the folder is not renamed")
+        // Without a name it uses the suggestion.
+        let second = try box.fakeIndex(named: "idx", in: box.elsewhere.appendingPathComponent("ud"))
+        XCTAssertEqual(try CorpusLibrary.link(indexDirectory: second, taken: []).name, "ud")
+    }
+
+    func testLinkingRefusesBadOrTakenNames() throws {
+        let box = try TestPando.Sandbox()
+        let target = try box.fakeIndex(named: "idx", in: box.elsewhere)
+        for bad in ["", "   ", "a/b", "a:b", ".hidden"] {
+            XCTAssertThrowsError(try CorpusLibrary.link(indexDirectory: target, name: bad, taken: []), bad) {
+                guard case .invalidName = $0 as? CorpusLibrary.LibraryError else { return XCTFail("\($0)") }
+            }
+        }
+        XCTAssertThrowsError(try CorpusLibrary.link(indexDirectory: target, name: "Taken", taken: ["Taken"])) {
+            XCTAssertEqual($0 as? CorpusLibrary.LibraryError, .nameTaken("Taken"))
+        }
+        XCTAssertTrue(CorpusLibrary.names().isEmpty, "nothing was linked")
+    }
+
+    func testRenamingABuiltCorpusRenamesItsFolder() throws {
+        let box = try TestPando.Sandbox()
+        try box.fakeIndex(named: "idx", in: box.corpora, tokens: 77)
+        let entry = try XCTUnwrap(CorpusLibrary.entries().first)
+        let renamed = try CorpusLibrary.rename(entry, to: " Syn2025 ", taken: ["idx"])
+        XCTAssertEqual(renamed.name, "Syn2025")
+        XCTAssertEqual(CorpusLibrary.names(), ["Syn2025"])
+        XCTAssertEqual(CorpusLibrary.entries().first?.tokens, 77)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: entry.directory.path))
+        XCTAssertEqual(CorpusLibrary.directory(forName: "Syn2025")?.lastPathComponent, "Syn2025")
+    }
+
+    func testRenamingALinkedCorpusRenamesOnlyTheLink() throws {
+        let box = try TestPando.Sandbox()
+        let target = try box.fakeIndex(named: "idx", in: box.elsewhere.appendingPathComponent("syn2025"), tokens: 5)
+        let entry = try CorpusLibrary.link(indexDirectory: target, name: "idx", taken: [])
+        let renamed = try CorpusLibrary.rename(entry, to: "Syn2025", taken: ["idx"])
+        XCTAssertEqual(CorpusLibrary.names(), ["Syn2025"])
+        XCTAssertEqual(renamed.origin, .linked(target: target.resolvingSymlinksInPath()))
+        XCTAssertTrue(CorpusLibrary.isCorpus(target), "the real folder keeps its name and content")
+        XCTAssertEqual(target.lastPathComponent, "idx")
+        XCTAssertEqual(CorpusLibrary.entries().first?.tokens, 5, "still readable through the new link")
+    }
+
+    func testRenamingRefusesClashesAndBadNamesAndChangesNothing() throws {
+        let box = try TestPando.Sandbox()
+        try box.fakeIndex(named: "one", in: box.corpora)
+        try box.fakeIndex(named: "two", in: box.corpora)
+        let one = try XCTUnwrap(CorpusLibrary.entries().first { $0.name == "one" })
+        XCTAssertThrowsError(try CorpusLibrary.rename(one, to: "two", taken: ["one", "two"])) {
+            XCTAssertEqual($0 as? CorpusLibrary.LibraryError, .nameTaken("two"))
+        }
+        for bad in ["", "x/y", ".dot"] {
+            XCTAssertThrowsError(try CorpusLibrary.rename(one, to: bad, taken: ["one", "two"]), bad)
+        }
+        XCTAssertEqual(CorpusLibrary.names(), ["one", "two"])
+        // The same name (or the same after trimming) is not an error and does nothing.
+        XCTAssertEqual(try CorpusLibrary.rename(one, to: " one ", taken: ["one", "two"]).name, "one")
+    }
+
+    func testChangingOnlyTheCapitalsWorksOnACaseInsensitiveDisk() throws {
+        let box = try TestPando.Sandbox()
+        try box.fakeIndex(named: "syn", in: box.corpora, tokens: 3)
+        let entry = try XCTUnwrap(CorpusLibrary.entries().first)
+        let renamed = try CorpusLibrary.rename(entry, to: "SYN", taken: ["syn"])
+        XCTAssertEqual(renamed.name, "SYN")
+        let listed = try FileManager.default.contentsOfDirectory(atPath: box.corpora.path)
+        XCTAssertEqual(listed, ["SYN"], "the folder really has the new spelling")
+        XCTAssertEqual(CorpusLibrary.entries().first?.tokens, 3)
+    }
+
+    func testRenamingMovesTheSavedSubcorporaAlong() throws {
+        let box = try TestPando.Sandbox()
+        try SubcorpusLibrary.save(Subcorpus(name: "Fiction", restriction: SubcorpusRestriction()), in: "idx")
+        SubcorpusLibrary.rename(corpus: "idx", to: "Syn2025")
+        XCTAssertEqual(SubcorpusLibrary.subcorpora(of: "Syn2025").map(\.name), ["Fiction"])
+        XCTAssertEqual(SubcorpusLibrary.subcorpora(of: "idx"), [])
+        _ = box
+    }
 }

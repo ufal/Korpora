@@ -64,6 +64,16 @@ enum QueryHistoryStore {
         NotificationCenter.default.post(name: didChangeNotification, object: nil)
     }
 
+    /// A corpus was renamed: its history entries follow it.
+    static func renameCorpus(from old: String, to new: String, defaults: UserDefaults = .standard) {
+        var entries = recentEntries(defaults: defaults)
+        guard entries.contains(where: { $0.corpusName == old }) else { return }
+        for index in entries.indices where entries[index].corpusName == old { entries[index].corpusName = new }
+        guard let data = try? JSONEncoder().encode(entries) else { return }
+        defaults.set(data, forKey: key)
+        NotificationCenter.default.post(name: didChangeNotification, object: nil)
+    }
+
     static func clear(defaults: UserDefaults = .standard) {
         defaults.removeObject(forKey: key)
         NotificationCenter.default.post(name: didChangeNotification, object: nil)

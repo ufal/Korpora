@@ -61,6 +61,13 @@ positions; warn when CoNLL-U metadata values with spaces are dropped (`# text_X`
   Not clicked through: the import sheet, Settings, the subcorpus popover, collocations/frequency/dispersion windows,
   Extended Context, print. Their logic is covered by tests.
 
+### Naming
+A corpus's name is Korpora's own handle, not the index folder's: adding one index folder asks for a name (default: the
+folder's, or its parent's when the folder is called `idx`/`index`/...); importing asks for one; and any name can be changed
+by clicking it in Settings > Corpora. A built corpus's folder is renamed, a linked corpus's link is (the folder is never
+touched); Keep in Memory, saved subcorpora and search history follow the new name. Saved concordance documents still name
+the old corpus and won't find it after a rename.
+
 ### Differences users will notice
 - Searches load the first 10,000 hits (Settings > Concordance); the status line says "10,000 of 3,978,146 hits (the first
   ones)". Sorting, sampling and line groups work on the loaded hits.

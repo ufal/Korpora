@@ -134,6 +134,13 @@ public enum SubcorpusLibrary {
         try write(subcorpora(of: corpus).filter { $0.name != name }, for: corpus)
     }
 
+    /// Moves a corpus's saved subcorpora to its new name (it was renamed).
+    public static func rename(corpus old: String, to new: String) {
+        guard old != new, FileManager.default.fileExists(atPath: file(for: old).path) else { return }
+        try? FileManager.default.removeItem(at: file(for: new))
+        try? FileManager.default.moveItem(at: file(for: old), to: file(for: new))
+    }
+
     /// Forgets all subcorpora of a corpus (when the corpus is removed).
     public static func deleteAll(of corpus: String) {
         try? FileManager.default.removeItem(at: file(for: corpus))

@@ -135,7 +135,7 @@ final class CorporaSettingsViewController: NSViewController {
         removeButton.action = #selector(removeSelectedCorpus)
         removeButton.isEnabled = false
         let addHint = NSTextField(labelWithString:
-            "+ imports annotated text (CoNLL-U), or adds an index folder built elsewhere.")
+            "+ imports annotated text (CoNLL-U) or adds an index folder. Click a name to rename it.")
         addHint.font = .systemFont(ofSize: 11)
         addHint.textColor = .secondaryLabelColor
 
@@ -333,6 +333,11 @@ final class CorporaSettingsViewController: NSViewController {
     }
 
     private func addCorpora(at urls: [URL]) {
+        // One index folder: ask what to call it. (Several at once take their folder names; rename them in the list.)
+        if urls.count == 1, CorpusLibrary.isCorpus(urls[0]) {
+            linkAskingForName(urls[0]) { [weak self] _ in self?.reloadCorpora() }
+            return
+        }
         var taken = Set(AppSettings.shared.corpusLibraryEntries().map(\.name))
         var problems: [String] = []
         for url in urls {
@@ -358,6 +363,78 @@ final class CorporaSettingsViewController: NSViewController {
             alert.informativeText = problems.joined(separator: "\n")
             alert.beginSheetModal(for: window)
         }
+    }
+
+    // MARK: Naming
+
+    /// Gives the corpus called `old` the name `new`, and moves everything kept under the old name along
+    /// (Keep in Memory, saved subcorpora, search history). Throws without changing anything if the name
+    /// is empty, unusable, or taken.
+    @discardableResult
+    func renameCorpus(named old: String, to new: String) throws -> CorpusLibrary.Entry {
+        guard let entry = rows.first(where: { $0.name == old })?.entry
+            ?? AppSettings.shared.corpusLibraryEntries().first(where: { $0.name == old }) else {
+            throw CorpusLibrary.LibraryError.invalidName("There is no corpus called \u{201C}\(old)\u{201D}.")
+        }
+        let taken = Set(AppSettings.shared.corpusLibraryEntries().map(\.name))
+        let renamed = try CorpusLibrary.rename(entry, to: new, taken: taken)
+        guard renamed.name != old else { return renamed }
+        let wasResident = AppSettings.shared.isKeepResident(old)
+        AppSettings.shared.renameKeepResident(from: old, to: renamed.name)
+        SubcorpusLibrary.rename(corpus: old, to: renamed.name)
+        QueryHistoryStore.renameCorpus(from: old, to: renamed.name)
+        reloadCorpora()
+        if wasResident {
+            // A built corpus's folder moved: read it into memory again from where it is now.
+            let directory = renamed.directory.resolvingSymlinksInPath()
+            Task.detached(priority: .utility) { try? await CorpusMemoryResidency.warm(directory: directory) }
+        }
+        return renamed
+    }
+
+    /// A name typed into the list was committed: rename, or say why not and put the old name back.
+    func controlTextDidEndEditing(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField, rows.indices.contains(field.tag) else { return }
+        let old = rows[field.tag].name
+        do {
+            try renameCorpus(named: old, to: field.stringValue)
+        } catch {
+            field.stringValue = old
+            if let window = view.window {
+                let alert = NSAlert()
+                alert.messageText = "\u{201C}\(old)\u{201D} couldn\u{2019}t be renamed"
+                alert.informativeText = "\(error)"
+                alert.beginSheetModal(for: window)
+            }
+        }
+    }
+
+    /// Links one index folder, first asking what to call it: the folder is often named `idx`, which says
+    /// nothing in a list of corpora. Asks again (with the reason) if the name can't be used.
+    private func linkAskingForName(_ url: URL, suggestion: String? = nil, problem: String? = nil,
+                                   then done: @escaping (Error?) -> Void) {
+        guard let window = view.window else { done(nil); return }
+        let alert = NSAlert()
+        alert.messageText = "Name this corpus"
+        alert.informativeText = (problem.map { $0 + "\n\n" } ?? "")
+            + "The name appears in Korpora\u{2019}s lists. The folder \u{201C}\(url.lastPathComponent)\u{201D} keeps its own name."
+        let field = NSTextField(string: suggestion ?? CorpusLibrary.suggestedName(forIndex: url))
+        field.frame = NSRect(x: 0, y: 0, width: 280, height: 24)
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Add")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn else { done(nil); return }
+            let taken = Set(AppSettings.shared.corpusLibraryEntries().map(\.name))
+            do {
+                try CorpusLibrary.link(indexDirectory: url, name: field.stringValue, taken: taken)
+                done(nil)
+            } catch {
+                self.linkAskingForName(url, suggestion: field.stringValue, problem: "\(error)", then: done)
+            }
+        }
+        alert.window.makeFirstResponder(field)
+        field.selectText(nil)
     }
 
     private func updateRemoveButton() {
@@ -450,7 +527,7 @@ final class CorporaSettingsViewController: NSViewController {
     }
 }
 
-extension CorporaSettingsViewController: NSTableViewDataSource, NSTableViewDelegate {
+extension CorporaSettingsViewController: NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
@@ -476,8 +553,16 @@ extension CorporaSettingsViewController: NSTableViewDataSource, NSTableViewDeleg
         let corpus = rows[row]
         switch identifier {
         case .name:
-            let field = NSTextField(labelWithString: corpus.name)
+            // Editable in place, as in Finder: select the row, then click the name (or double-click it).
+            let field = NSTextField(string: corpus.name)
+            field.isEditable = true
+            field.isBordered = false
+            field.drawsBackground = false
             field.font = .systemFont(ofSize: 12)
+            field.lineBreakMode = .byTruncatingTail
+            field.delegate = self
+            field.tag = row
+            field.toolTip = "Click the name of a selected corpus, or double-click it, to rename it"
             return field
         case .source:
             let field = NSTextField(labelWithString: Self.sourceTitle(corpus.entry.origin))
