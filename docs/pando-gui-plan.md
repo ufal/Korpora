@@ -116,7 +116,13 @@ In: the pando-only concordancer as it is, with menu commands for every toolbar a
 customizable toolbar (done); still to do: exercise the release path (notarized build, clean-VM smoke
 test), settle pando's licence for redistribution, and paging beyond the 10,000-hit load cap (6.11).
 
-Out, for 2.0: importing more formats and plain text (the corpus workshop, via Flexiconv/Flexipipe), the
-CWB-vertical/Manatee converter, a remote FQS backend. The pando limits (attributes on context tokens,
+Out, for 2.0: importing more formats and plain text (the corpus workshop, via Flexiconv/Flexipipe), a
+remote FQS backend, and importing CWB-vertical (`.vrt`/`.vert`) corpora, both from the Import button and by
+dragging them on the app icon. `pando-index --format vertical` already reads them without a registry file:
+structures and region attributes come from the file's tags, column names from an optional
+`<!-- positional-attributes: word lemma tag -->` first line; without it three columns are guessed as
+`form,lemma,upos`. So the Manatee-era sheet that names the columns comes back for files without that line.
+Corpora are positioned as having syntax, so a vertical corpus without it comes with an offer to parse it.
+For 0.4/1.0 dragging a CoNLL-U file on the app icon opens the existing import sheet; no temporary corpora. The pando limits (attributes on context tokens,
 sentence context through the C API, hit-position histogram) are not tied to a release: support is
 added when a feature needs it.
