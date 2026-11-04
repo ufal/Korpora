@@ -211,4 +211,97 @@ final class CorpusLibraryTests: XCTestCase {
         XCTAssertEqual(SubcorpusLibrary.subcorpora(of: "idx"), [])
         _ = box
     }
+
+    // MARK: Missing, relinking, bringing in
+
+    func testALinkWhoseFolderMovedIsListedAsMissingOnlyWhenAsked() throws {
+        let box = try TestPando.Sandbox()
+        let target = try box.fakeIndex(named: "far", in: box.elsewhere, tokens: 7)
+        try CorpusLibrary.link(indexDirectory: target, taken: [])
+        try FileManager.default.moveItem(at: target, to: box.elsewhere.appendingPathComponent("moved"))
+
+        XCTAssertTrue(CorpusLibrary.entries().isEmpty, "not searchable")
+        let all = CorpusLibrary.entries(includingMissing: true)
+        XCTAssertEqual(all.map(\.name), ["far"])
+        XCTAssertTrue(all[0].isMissing)
+        XCTAssertNil(all[0].tokens)
+        if case .linked(let leads) = all[0].origin {
+            XCTAssertEqual(leads.path, target.resolvingSymlinksInPath().path, "where the link used to lead")
+        } else {
+            XCTFail("a link")
+        }
+        XCTAssertEqual(CorpusLibrary.names(includingMissing: true), ["far"])
+        XCTAssertTrue(CorpusLibrary.names().isEmpty)
+    }
+
+    func testRelinkingPointsTheSameNameAtTheMovedFolder() throws {
+        let box = try TestPando.Sandbox()
+        let target = try box.fakeIndex(named: "far", in: box.elsewhere, tokens: 7)
+        try CorpusLibrary.link(indexDirectory: target, taken: [])
+        let moved = box.elsewhere.appendingPathComponent("moved")
+        try FileManager.default.moveItem(at: target, to: moved)
+        let broken = try XCTUnwrap(CorpusLibrary.entries(includingMissing: true).first)
+
+        let fixed = try CorpusLibrary.relink(broken, to: moved)
+        XCTAssertEqual(fixed.name, "far")
+        XCTAssertFalse(fixed.isMissing)
+        XCTAssertEqual(fixed.tokens, 7)
+        let entries = CorpusLibrary.entries(includingMissing: true)
+        XCTAssertEqual(entries.map(\.name), ["far"])
+        XCTAssertFalse(entries[0].isMissing)
+    }
+
+    func testRelinkingToSomethingThatIsNotAnIndexChangesNothing() throws {
+        let box = try TestPando.Sandbox()
+        let target = try box.fakeIndex(named: "far", in: box.elsewhere)
+        let entry = try CorpusLibrary.link(indexDirectory: target, taken: [])
+        let empty = box.elsewhere.appendingPathComponent("empty")
+        try FileManager.default.createDirectory(at: empty, withIntermediateDirectories: true)
+        XCTAssertThrowsError(try CorpusLibrary.relink(entry, to: empty))
+        XCTAssertEqual(CorpusLibrary.entries().first?.origin, .linked(target: target.resolvingSymlinksInPath()))
+    }
+
+    func testBuiltCorporaCannotBeRelinked() throws {
+        let box = try TestPando.Sandbox()
+        try box.fakeIndex(named: "mine", in: box.corpora)
+        let entry = try XCTUnwrap(CorpusLibrary.entries().first)
+        XCTAssertThrowsError(try CorpusLibrary.relink(entry, to: box.corpora.appendingPathComponent("mine")))
+    }
+
+    func testBringingInACopyLeavesTheOriginalAndMakesTheCorpusBuilt() throws {
+        let box = try TestPando.Sandbox()
+        let target = try box.fakeIndex(named: "far", in: box.elsewhere, tokens: 9)
+        let entry = try CorpusLibrary.link(indexDirectory: target, taken: [])
+
+        let built = try CorpusLibrary.bringIn(entry, copy: true)
+        XCTAssertEqual(built.origin, .built)
+        XCTAssertEqual(built.tokens, 9)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: target.appendingPathComponent("corpus.info").path), "original stays")
+        XCTAssertEqual(CorpusLibrary.entries().map(\.isLinked), [false])
+        XCTAssertEqual(CorpusLibrary.entries(includingMissing: true).count, 1, "the link is gone")
+        XCTAssertEqual(CorpusLibrary.directory(forName: "far")?.deletingLastPathComponent().lastPathComponent, "Corpora")
+    }
+
+    func testBringingInByMovingTakesTheFolderAway() throws {
+        let box = try TestPando.Sandbox()
+        let target = try box.fakeIndex(named: "far", in: box.elsewhere, tokens: 9)
+        let entry = try CorpusLibrary.link(indexDirectory: target, taken: [])
+        try CorpusLibrary.bringIn(entry, copy: false)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: target.path), "moved out")
+        XCTAssertEqual(CorpusLibrary.entries().map(\.tokens), [9])
+    }
+
+    func testBringingInRefusesAMissingFolderAndATakenName() throws {
+        let box = try TestPando.Sandbox()
+        let target = try box.fakeIndex(named: "far", in: box.elsewhere)
+        let entry = try CorpusLibrary.link(indexDirectory: target, taken: [])
+        try box.fakeIndex(named: "far", in: box.corpora)  // the same name, built
+        XCTAssertThrowsError(try CorpusLibrary.bringIn(entry, copy: true)) {
+            XCTAssertEqual($0 as? CorpusLibrary.LibraryError, .nameTaken("far"))
+        }
+        try FileManager.default.removeItem(at: target)
+        var broken = entry
+        broken.isMissing = true
+        XCTAssertThrowsError(try CorpusLibrary.bringIn(broken, copy: true))
+    }
 }

@@ -48,6 +48,9 @@ public enum CorpusLibrary {
         public var directory: URL
         /// Tokens in the corpus, from `corpus.info`; nil if unreadable.
         public var tokens: Int?
+        /// A linked corpus whose index folder is no longer where the link leads (moved, renamed, a disk that is
+        /// not there). Only listed with `entries(includingMissing: true)`; it can't be searched until relinked.
+        public var isMissing = false
 
         public var isLinked: Bool {
             if case .linked = origin { return true }
@@ -99,7 +102,9 @@ public enum CorpusLibrary {
     }
 
     /// Every corpus: built first, then linked; a name found twice is listed once (built wins).
-    public static func entries() -> [Entry] {
+    /// - Parameter includingMissing: also list linked corpora whose index folder is gone (`isMissing`), so that
+    ///   they can be shown and relinked; everything that searches leaves them out.
+    public static func entries(includingMissing: Bool = false) -> [Entry] {
         var seen = Set<String>()
         var result: [Entry] = []
         for folder in corpusFolders(in: baseDirectory) where seen.insert(folder.lastPathComponent).inserted {
@@ -111,10 +116,35 @@ public enum CorpusLibrary {
                                 origin: .linked(target: link.resolvingSymlinksInPath()),
                                 directory: link, tokens: tokenCount(of: link)))
         }
+        if includingMissing {
+            for link in brokenLinks() where seen.insert(link.lastPathComponent).inserted {
+                result.append(Entry(name: link.lastPathComponent, origin: .linked(target: linkTarget(link)),
+                                    directory: link, tokens: nil, isMissing: true))
+            }
+            result.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        }
         return result
     }
 
-    public static func names() -> [String] { entries().map(\.name) }
+    /// Where a link leads, whether or not anything is there now.
+    private static func linkTarget(_ link: URL) -> URL {
+        guard let path = try? FileManager.default.destinationOfSymbolicLink(atPath: link.path) else { return link }
+        return URL(fileURLWithPath: path, relativeTo: link.deletingLastPathComponent()).standardizedFileURL
+    }
+
+    /// Links in the linked-corpora folder that lead to no index.
+    private static func brokenLinks() -> [URL] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: linkedDirectory.path)) ?? []
+        return names.filter { !$0.hasPrefix(".") }
+            .map { linkedDirectory.appendingPathComponent($0, isDirectory: true) }
+            .filter { link in
+                (try? FileManager.default.destinationOfSymbolicLink(atPath: link.path)) != nil && !isCorpus(link)
+            }
+    }
+
+    public static func names(includingMissing: Bool = false) -> [String] {
+        entries(includingMissing: includingMissing).map(\.name)
+    }
 
     /// Where the corpus called `name` is; nil if there is none.
     public static func directory(forName name: String) -> URL? {
@@ -157,6 +187,47 @@ public enum CorpusLibrary {
             }
         }
         return (added, skipped)
+    }
+
+    // MARK: Relinking and bringing in
+
+    /// Points a linked corpus at another index folder (it was moved, or the disk came back elsewhere). The name
+    /// stays, so searches, subcorpora and history that refer to it keep working.
+    @discardableResult
+    public static func relink(_ entry: Entry, to indexDirectory: URL) throws -> Entry {
+        guard entry.isLinked else { throw LibraryError.invalidName("\u{201C}\(entry.name)\u{201D} isn\u{2019}t a linked corpus.") }
+        let target = indexDirectory.resolvingSymlinksInPath()
+        guard isCorpus(target) else { throw LibraryError.notACorpus(target) }
+        let fm = FileManager.default
+        try fm.removeItem(at: entry.directory)
+        try fm.createSymbolicLink(at: entry.directory, withDestinationURL: target)
+        return Entry(name: entry.name, origin: .linked(target: target), directory: entry.directory,
+                     tokens: tokenCount(of: target))
+    }
+
+    /// Makes a linked corpus a built one, kept in Korpora's own folder under the same name: the index is copied
+    /// there (the original stays where it was) or moved (it leaves its old place). Names, subcorpora and
+    /// history are unaffected, as the name is the same.
+    @discardableResult
+    public static func bringIn(_ entry: Entry, copy: Bool) throws -> Entry {
+        guard case .linked(let target) = entry.origin, !entry.isMissing, isCorpus(target) else {
+            throw LibraryError.invalidName("\u{201C}\(entry.name)\u{201D} can\u{2019}t be brought in: its index folder isn\u{2019}t there.")
+        }
+        let fm = FileManager.default
+        let destination = baseDirectory.appendingPathComponent(entry.name, isDirectory: true)
+        guard !fm.fileExists(atPath: destination.path) else { throw LibraryError.nameTaken(entry.name) }
+        try fm.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
+        // Built beside the final place and moved in whole, so a stopped copy never leaves half a corpus listed.
+        let partial = baseDirectory.appendingPathComponent(".bringing-in-\(UUID().uuidString)", isDirectory: true)
+        do {
+            if copy { try fm.copyItem(at: target, to: partial) } else { try fm.moveItem(at: target, to: partial) }
+            try fm.moveItem(at: partial, to: destination)
+        } catch {
+            try? fm.removeItem(at: partial)
+            throw error
+        }
+        try fm.removeItem(at: entry.directory)
+        return Entry(name: entry.name, origin: .built, directory: destination, tokens: tokenCount(of: destination))
     }
 
     // MARK: Removing
