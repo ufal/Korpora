@@ -65,6 +65,7 @@
 		C9273B1C6C8F464645CCBFE4 /* TableChartContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC8BD92725D214DE0958CDD0 /* TableChartContainerView.swift */; };
 		CF4A6809B074F7507F882CB0 /* SettingsLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE440FCBF2248C9252300CE /* SettingsLayout.swift */; };
 		D2292F83A25C875C1174CC94 /* ActiveImportTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E43418276694BEE9E6FD9C7 /* ActiveImportTracker.swift */; };
+		D22D378020B22E07B4909732 /* CorpusListLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D82D1E7E21D20C5DE4493C5F /* CorpusListLinkTests.swift */; };
 		D2DB97BA102AA3F70C5066BF /* HistoryPopoverController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 548B42C845A6C7B07CCE870F /* HistoryPopoverController.swift */; };
 		D70E975D7CE75D961FED9942 /* CorpusImportSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73CC906E25B06673D997CBD4 /* CorpusImportSheetController.swift */; };
 		DA2EEF3E76DF1BE3F5518902 /* UnicodeScriptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50429E54926CEE548BDD9820 /* UnicodeScriptTests.swift */; };
@@ -155,6 +156,7 @@
 		D0F115CEAC930466168A9217 /* SortableTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SortableTableView.swift; sourceTree = "<group>"; };
 		D1CEB379EAD1C7D1F10F792C /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
 		D3253FB4AE0CC8DDD22A9B12 /* QueryHistoryStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryHistoryStoreTests.swift; sourceTree = "<group>"; };
+		D82D1E7E21D20C5DE4493C5F /* CorpusListLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusListLinkTests.swift; sourceTree = "<group>"; };
 		DA5BD468A9C191CD0CB9A323 /* ConcordanceOperation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConcordanceOperation.swift; sourceTree = "<group>"; };
 		DA90C45CF4B5BD7C43B5398D /* CQLCompletion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CQLCompletion.swift; sourceTree = "<group>"; };
 		E183D01DF2C206080FF34287 /* KorporaEngine */ = {isa = PBXFileReference; lastKnownFileType = folder; name = KorporaEngine; path = ../KorporaEngine; sourceTree = SOURCE_ROOT; };
@@ -254,6 +256,7 @@
 				5CB085B52C1CC64F2C18D6D2 /* ConcordanceExporterTests.swift */,
 				7F2DB228AD53B0694A7A7C2C /* ConcordanceOperationTests.swift */,
 				2AFEC8D6AECEBADDC1AA8204 /* ConlluDropTests.swift */,
+				D82D1E7E21D20C5DE4493C5F /* CorpusListLinkTests.swift */,
 				580379B16410CA4C2D7CA4D0 /* CorpusListSettingsTests.swift */,
 				2228F90D33D19B13E69ABAC5 /* CQLAutoPairingTests.swift */,
 				7EC95A179DFFA46D1C19AA43 /* CQLCompletionContextTests.swift */,
@@ -458,6 +461,7 @@
 				97CB75829A78ECC1D477B9CE /* ConcordanceExporterTests.swift in Sources */,
 				6A762E1E423B189ABF712D47 /* ConcordanceOperationTests.swift in Sources */,
 				B818723B2057A66196B91F17 /* ConlluDropTests.swift in Sources */,
+				D22D378020B22E07B4909732 /* CorpusListLinkTests.swift in Sources */,
 				A40489B556EC0F24714E0377 /* CorpusListSettingsTests.swift in Sources */,
 				9A58D11670B9CF33508B8FF4 /* DispersionTests.swift in Sources */,
 				A71069EAF5B4FC51B64D1DE8 /* EngineSeamTests.swift in Sources */,

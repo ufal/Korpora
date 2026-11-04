@@ -3,6 +3,19 @@ import KorporaEngine
 
 /// A small horizontal gauge - total vs. currently-available memory - no
 /// charting library needed for something this simple.
+/// The corpus list: Return renames the selected corpus, as in Finder.
+final class CorpusListTableView: NSTableView {
+    var onReturn: (() -> Void)?
+
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 36 || event.keyCode == 76, selectedRow >= 0, let onReturn {
+            onReturn()
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+}
+
 private final class MemoryBarView: NSView {
     private let usedView = NSView()
     private var usedWidthConstraint: NSLayoutConstraint!
@@ -59,17 +72,24 @@ final class CorporaSettingsViewController: NSViewController {
 
     private let directoryPathLabel = NSTextField(labelWithString: "")
     private let engineNoticeLabel = NSTextField(wrappingLabelWithString: "")
-    let tableView = NSTableView()
+    let tableView = CorpusListTableView()
     private let scrollView = NSScrollView()
     private let memoryBar = MemoryBarView()
     private let memoryLabel = NSTextField(labelWithString: "")
     private let minimumFreeField = NSTextField(string: "")
+    private let hintLabel = NSTextField(labelWithString: "")
+    private static let defaultHint =
+        "+ imports annotated text (CoNLL-U) or adds an index folder. Return renames."
     private let removeButton = NSButton(
         image: NSImage(systemSymbolName: "minus", accessibilityDescription: "Remove")!,
         target: nil, action: nil)
 
     private var rows: [Row] = []
     private var refreshTimer: Timer?
+    /// Set by a selection change and cleared by the click that follows: tells a click on a name that selected
+    /// the row from one on a row that already was.
+    private var selectionChangedSinceClick = false
+    private var pendingRename: DispatchWorkItem?
 
     override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 680, height: 440))
@@ -134,6 +154,15 @@ final class CorporaSettingsViewController: NSViewController {
         }
         tableView.dataSource = self
         tableView.delegate = self
+        // Standard list behaviour: a double-click opens the corpus (its folder in Finder, or the dialog to find it
+        // again); a click on the name of a selected row, or Return, renames it; the contextual menu has the rest.
+        tableView.target = self
+        tableView.action = #selector(rowClicked)
+        tableView.doubleAction = #selector(rowDoubleClicked)
+        tableView.onReturn = { [weak self] in self?.beginRenamingSelected() }
+        let contextMenu = NSMenu()
+        contextMenu.delegate = self
+        tableView.menu = contextMenu
         // AppKit's default 17-point gap between columns would take 85 points of a five-column list.
         tableView.intercellSpacing = NSSize(width: 6, height: 2)
         tableView.usesAlternatingRowBackgroundColors = true
@@ -148,8 +177,10 @@ final class CorporaSettingsViewController: NSViewController {
         removeButton.target = self
         removeButton.action = #selector(removeSelectedCorpus)
         removeButton.isEnabled = false
-        let addHint = NSTextField(labelWithString:
-            "+ imports annotated text (CoNLL-U) or adds an index folder. Click a name to rename it.")
+        let addHint = hintLabel
+        addHint.stringValue = Self.defaultHint
+        addHint.lineBreakMode = .byTruncatingTail
+        addHint.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         addHint.font = .systemFont(ofSize: 11)
         addHint.textColor = .secondaryLabelColor
 
@@ -240,6 +271,7 @@ final class CorporaSettingsViewController: NSViewController {
 
     override func viewWillAppear() {
         super.viewWillAppear()
+        reloadCorpora()  // a folder may have moved while the window was closed
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             self?.refreshOnTimer()
         }
@@ -255,11 +287,11 @@ final class CorporaSettingsViewController: NSViewController {
     /// number, so adding or removing another corpus doesn't move it.
     func reloadCorpora() {
         let selectedName = selectedCorpusName
-        rows = AppSettings.shared.corpusLibraryEntries()
+        rows = AppSettings.shared.corpusLibraryEntries(includingMissing: true)
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             .map { entry in
                 Row(entry: entry,
-                    sizeBytes: CorpusMemoryResidency.directorySize(entry.directory.resolvingSymlinksInPath()),
+                    sizeBytes: entry.isMissing ? 0 : CorpusMemoryResidency.directorySize(entry.directory.resolvingSymlinksInPath()),
                     keepResident: AppSettings.shared.isKeepResident(entry.name))
             }
         tableView.reloadData()
@@ -405,7 +437,7 @@ final class CorporaSettingsViewController: NSViewController {
             linkAskingForName(urls[0]) { [weak self] _ in self?.reloadCorpora() }
             return
         }
-        var taken = Set(AppSettings.shared.corpusLibraryEntries().map(\.name))
+        var taken = Set(AppSettings.shared.corpusLibraryEntries(includingMissing: true).map(\.name))
         var problems: [String] = []
         for url in urls {
             if CorpusLibrary.isCorpus(url) {
@@ -440,10 +472,10 @@ final class CorporaSettingsViewController: NSViewController {
     @discardableResult
     func renameCorpus(named old: String, to new: String) throws -> CorpusLibrary.Entry {
         guard let entry = rows.first(where: { $0.name == old })?.entry
-            ?? AppSettings.shared.corpusLibraryEntries().first(where: { $0.name == old }) else {
+            ?? AppSettings.shared.corpusLibraryEntries(includingMissing: true).first(where: { $0.name == old }) else {
             throw CorpusLibrary.LibraryError.invalidName("There is no corpus called \u{201C}\(old)\u{201D}.")
         }
-        let taken = Set(AppSettings.shared.corpusLibraryEntries().map(\.name))
+        let taken = Set(AppSettings.shared.corpusLibraryEntries(includingMissing: true).map(\.name))
         let renamed = try CorpusLibrary.rename(entry, to: new, taken: taken)
         guard renamed.name != old else { return renamed }
         let wasResident = AppSettings.shared.isKeepResident(old)
@@ -462,6 +494,7 @@ final class CorporaSettingsViewController: NSViewController {
     /// A name typed into the list was committed: rename, or say why not and put the old name back.
     func controlTextDidEndEditing(_ obj: Notification) {
         guard let field = obj.object as? NSTextField, rows.indices.contains(field.tag) else { return }
+        field.isEditable = false  // editing starts only by a slow click on the selected name, or Return
         let old = rows[field.tag].name
         do {
             try renameCorpus(named: old, to: field.stringValue)
@@ -492,7 +525,7 @@ final class CorporaSettingsViewController: NSViewController {
         alert.addButton(withTitle: "Cancel")
         alert.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .alertFirstButtonReturn else { done(nil); return }
-            let taken = Set(AppSettings.shared.corpusLibraryEntries().map(\.name))
+            let taken = Set(AppSettings.shared.corpusLibraryEntries(includingMissing: true).map(\.name))
             do {
                 try CorpusLibrary.link(indexDirectory: url, name: field.stringValue, taken: taken)
                 done(nil)
@@ -511,7 +544,7 @@ final class CorporaSettingsViewController: NSViewController {
 
     /// Both kinds of corpus are removed the same way: the user chooses
     /// whether the data goes too.
-    @objc private func removeSelectedCorpus() {
+    @objc func removeSelectedCorpus() {
         let index = tableView.selectedRow
         guard rows.indices.contains(index), let window = view.window else { return }
         let row = rows[index]
@@ -598,6 +631,7 @@ extension CorporaSettingsViewController: NSTableViewDataSource, NSTableViewDeleg
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
+        selectionChangedSinceClick = true
         updateRemoveButton()
     }
 
@@ -606,6 +640,16 @@ extension CorporaSettingsViewController: NSTableViewDataSource, NSTableViewDeleg
         case .built: return "Built"
         case .linked: return "Linked"
         }
+    }
+
+    static func sourceTitle(for entry: CorpusLibrary.Entry) -> String {
+        entry.isMissing ? "Missing" : sourceTitle(entry.origin)
+    }
+
+    static func sourceDetail(for entry: CorpusLibrary.Entry) -> String {
+        guard entry.isMissing, case .linked(let target) = entry.origin else { return sourceDetail(entry.origin) }
+        return "The index folder isn\u{2019}t at \(target.path) any more. Double-click to find it again, "
+            + "or choose Relink\u{2026} in the contextual menu."
     }
 
     static func sourceDetail(_ origin: CorpusLibrary.Origin) -> String {
@@ -620,30 +664,44 @@ extension CorporaSettingsViewController: NSTableViewDataSource, NSTableViewDeleg
         let corpus = rows[row]
         switch identifier {
         case .name:
-            // Editable in place, as in Finder: select the row, then click the name (or double-click it).
+            // Editable in place, as in Finder: click the name of a selected row, or press Return (a double-click
+            // opens the corpus instead). Editing is switched on only then, so that other clicks don't start it.
             let field = NSTextField(string: corpus.name)
-            field.isEditable = true
+            field.isEditable = false
+            field.isSelectable = false
+            field.textColor = corpus.entry.isMissing ? .secondaryLabelColor : .labelColor
             field.isBordered = false
             field.drawsBackground = false
             field.font = .systemFont(ofSize: 12)
             field.lineBreakMode = .byTruncatingTail
             field.delegate = self
             field.tag = row
-            field.toolTip = "Click the name of a selected corpus, or double-click it, to rename it"
+            field.toolTip = "Click the name of a selected corpus, or press Return, to rename it; double-click to open it"
             return field
         case .source:
-            let field = NSTextField(labelWithString: Self.sourceTitle(corpus.entry.origin))
+            let field = NSTextField(labelWithString: Self.sourceTitle(for: corpus.entry))
             field.font = .systemFont(ofSize: 12)
             field.textColor = .secondaryLabelColor
-            field.toolTip = Self.sourceDetail(corpus.entry.origin)
-            return field
+            field.toolTip = Self.sourceDetail(for: corpus.entry)
+            guard corpus.entry.isMissing else { return field }
+            // A warning sign before the word, for a corpus whose folder is gone.
+            let icon = NSImageView(image: NSImage(
+                systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Missing") ?? NSImage())
+            icon.contentTintColor = .systemOrange
+            icon.toolTip = field.toolTip
+            icon.setAccessibilityLabel("Missing: the index folder was not found")
+            let stack = NSStackView(views: [icon, field])
+            stack.orientation = .horizontal
+            stack.spacing = 3
+            return stack
         case .tokens:
             let field = NSTextField(labelWithString: corpus.entry.tokens.map { $0.formatted() } ?? "\u{2014}")
             field.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
             field.alignment = .right
             return field
         case .size:
-            let field = NSTextField(labelWithString: ByteCountFormatter().string(fromByteCount: Int64(corpus.sizeBytes)))
+            let field = NSTextField(labelWithString: corpus.entry.isMissing
+                ? "\u{2014}" : ByteCountFormatter().string(fromByteCount: Int64(corpus.sizeBytes)))
             field.font = .systemFont(ofSize: 12)
             return field
         case .resident:
@@ -653,8 +711,10 @@ extension CorporaSettingsViewController: NSTableViewDataSource, NSTableViewDeleg
             let fits = CorpusMemoryResidency.canKeepResident(
                 sizeBytes: corpus.sizeBytes, currentlyAvailable: CorpusMemoryResidency.availableMemory(),
                 minimumFreeAfter: AppSettings.shared.minimumFreeMemoryAfterResidency)
-            checkbox.isEnabled = corpus.keepResident || fits
-            checkbox.toolTip = checkbox.isEnabled
+            checkbox.isEnabled = !corpus.entry.isMissing && (corpus.keepResident || fits)
+            checkbox.toolTip = corpus.entry.isMissing
+                ? "The index folder is missing."
+                : checkbox.isEnabled
                 ? "Reads the corpus into memory so searches don\u{2019}t wait for the disk."
                 : "Not enough free memory to keep this corpus resident without going under the minimum."
             // Centred under its heading.
@@ -668,4 +728,171 @@ extension CorporaSettingsViewController: NSTableViewDataSource, NSTableViewDeleg
             return cell
         }
     }
+}
+
+// MARK: Opening, renaming, relinking, bringing in
+
+extension CorporaSettingsViewController: NSMenuDelegate {
+    private var selectedRow: Row? {
+        rows.indices.contains(tableView.selectedRow) ? rows[tableView.selectedRow] : nil
+    }
+
+    /// A click on the name of a row that was already selected renames it, after the double-click interval so
+    /// that a double-click (which opens the corpus) doesn't start an edit first.
+    @objc private func rowClicked() {
+        defer { selectionChangedSinceClick = false }
+        pendingRename?.cancel()
+        guard !selectionChangedSinceClick, tableView.clickedColumn == 0, rows.indices.contains(tableView.clickedRow),
+              tableView.clickedRow == tableView.selectedRow else { return }
+        let work = DispatchWorkItem { [weak self] in self?.beginRenamingSelected() }
+        pendingRename = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + NSEvent.doubleClickInterval, execute: work)
+    }
+
+    @objc private func rowDoubleClicked() {
+        pendingRename?.cancel()
+        guard rows.indices.contains(tableView.clickedRow) else { return }
+        tableView.selectRowIndexes([tableView.clickedRow], byExtendingSelection: false)
+        openSelectedCorpus()
+    }
+
+    func beginRenamingSelected() {
+        let index = tableView.selectedRow
+        guard rows.indices.contains(index),
+              let field = tableView.view(atColumn: 0, row: index, makeIfNecessary: false) as? NSTextField else { return }
+        field.isEditable = true
+        field.isSelectable = true
+        view.window?.makeFirstResponder(field)
+    }
+
+    /// Where the corpus's index is: for a linked one, the folder the link leads to.
+    private func location(of row: Row) -> URL {
+        if case .linked(let target) = row.entry.origin { return target }
+        return row.entry.directory
+    }
+
+    /// Double-click: the corpus's folder in Finder; a corpus whose folder is gone asks where it went.
+    @objc func openSelectedCorpus() {
+        guard let row = selectedRow else { return }
+        if row.entry.isMissing {
+            relinkSelected()
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([location(of: row)])
+        }
+    }
+
+    @objc func relinkSelected() {
+        guard let row = selectedRow, row.entry.isLinked, let window = view.window else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose the index folder of \u{201C}\(row.name)\u{201D} (the one with corpus.info in it)."
+        panel.prompt = "Relink"
+        // Start where it used to be, or at the nearest folder that still exists.
+        var start = location(of: row).deletingLastPathComponent()
+        while start.path != "/", !FileManager.default.fileExists(atPath: start.path) { start.deleteLastPathComponent() }
+        panel.directoryURL = start
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            relink(row, to: url)
+        }
+    }
+
+    private func relink(_ row: Row, to url: URL) {
+        let wasResident = AppSettings.shared.isKeepResident(row.name)
+        if wasResident { CorpusMemoryResidency.unwarm(directory: row.entry.directory.resolvingSymlinksInPath()) }
+        do {
+            let entry = try CorpusLibrary.relink(row.entry, to: url)
+            if wasResident {
+                let directory = entry.directory.resolvingSymlinksInPath()
+                Task.detached(priority: .utility) { try? await CorpusMemoryResidency.warm(directory: directory) }
+            }
+        } catch {
+            showAlert("\u{201C}\(row.name)\u{201D} couldn\u{2019}t be relinked", "\(error)")
+        }
+        reloadCorpora()
+    }
+
+    /// Makes a linked corpus a built one: its index is copied (or moved) into Korpora's own folder.
+    @objc func bringSelectedIn() {
+        guard let row = selectedRow, row.entry.isLinked, !row.entry.isMissing, let window = view.window else { return }
+        let size = ByteCountFormatter().string(fromByteCount: Int64(row.sizeBytes))
+        let alert = NSAlert()
+        alert.messageText = "Bring \u{201C}\(row.name)\u{201D} into Korpora?"
+        alert.informativeText = "The index (\(size)) is now kept at \(location(of: row).path). "
+            + "Copying puts a second one in Korpora\u{2019}s own folder and leaves the original alone; "
+            + "moving takes it out of its old place. Either way, the name, subcorpora and history stay."
+        alert.addButton(withTitle: "Copy")
+        alert.addButton(withTitle: "Move")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response != .alertThirdButtonReturn, response != .cancel else { return }
+            bringIn(row, copy: response == .alertFirstButtonReturn)
+        }
+    }
+
+    private func bringIn(_ row: Row, copy: Bool) {
+        if AppSettings.shared.isKeepResident(row.name) {
+            CorpusMemoryResidency.unwarm(directory: row.entry.directory.resolvingSymlinksInPath())
+        }
+        let entry = row.entry
+        hintLabel.stringValue = "\(copy ? "Copying" : "Moving") \u{201C}\(row.name)\u{201D} into Korpora\u{2026}"
+        tableView.isEnabled = false
+        Task { @MainActor [weak self] in
+            // The copy runs off the main actor; a big index takes a while.
+            let outcome: Result<CorpusLibrary.Entry, Error> = await Task.detached(priority: .userInitiated) {
+                Result { try CorpusLibrary.bringIn(entry, copy: copy) }
+            }.value
+            guard let self else { return }
+            hintLabel.stringValue = Self.defaultHint
+            tableView.isEnabled = true
+            if case .failure(let error) = outcome {
+                showAlert("\u{201C}\(row.name)\u{201D} couldn\u{2019}t be brought into Korpora", "\(error)")
+            } else if AppSettings.shared.isKeepResident(row.name),
+                      case .success(let built) = outcome {
+                let directory = built.directory
+                Task.detached(priority: .utility) { try? await CorpusMemoryResidency.warm(directory: directory) }
+            }
+            reloadCorpora()
+        }
+    }
+
+    private func showAlert(_ title: String, _ text: String) {
+        guard let window = view.window else { return }
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = text
+        alert.beginSheetModal(for: window, completionHandler: nil)
+    }
+
+    // MARK: Contextual menu
+
+    /// The commands of the selected corpus (a right-click selects the row first). Rare ones live here and not in
+    /// the toolbar of the list.
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        if tableView.clickedRow >= 0, tableView.clickedRow != tableView.selectedRow {
+            tableView.selectRowIndexes([tableView.clickedRow], byExtendingSelection: false)
+        }
+        guard let row = selectedRow else { return }
+        let linked = row.entry.isLinked, missing = row.entry.isMissing
+        func add(_ title: String, _ action: Selector, enabled: Bool = true) {
+            let item = menu.addItem(withTitle: title, action: action, keyEquivalent: "")
+            item.target = self
+            item.isEnabled = enabled
+        }
+        add("Show in Finder", #selector(openSelectedCorpus), enabled: !missing)
+        add("Rename", #selector(renameFromMenu))
+        if linked {
+            menu.addItem(.separator())
+            add("Relink\u{2026}", #selector(relinkSelected))
+            add("Bring into Korpora\u{2026}", #selector(bringSelectedIn), enabled: !missing)
+        }
+        menu.addItem(.separator())
+        add("Remove\u{2026}", #selector(removeFromMenu))
+    }
+
+    @objc private func renameFromMenu() { beginRenamingSelected() }
+    @objc private func removeFromMenu() { removeSelectedCorpus() }
 }

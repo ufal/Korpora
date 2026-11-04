@@ -73,6 +73,17 @@ enum TestPando {
         }
 
         var corpora: URL { root.appendingPathComponent("Corpora") }
+        /// Where index folders that are linked, not built, live.
+        var elsewhere: URL { root.appendingPathComponent("Elsewhere") }
+
+        /// A folder that looks like an index, in `parent` (`elsewhere` for ones to link).
+        @discardableResult
+        func fakeIndex(named name: String, in parent: URL, tokens: Int = 100) throws -> URL {
+            let folder = parent.appendingPathComponent(name, isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try "size=\(tokens)\n".write(to: folder.appendingPathComponent("corpus.info"), atomically: true, encoding: .utf8)
+            return folder
+        }
 
         /// A folder that looks like an index (a `corpus.info` with a size), for tests of lists.
         @discardableResult

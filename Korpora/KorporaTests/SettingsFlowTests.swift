@@ -204,7 +204,10 @@ import Testing
         try box.fakeIndex(named: "idx")
         let list = controller()
         let cell = try #require(list.tableView.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTextField)
-        #expect(cell.isEditable, "the name can be edited in place")
+        #expect(!cell.isEditable, "a plain click or double-click doesn't start an edit (a double-click opens the corpus)")
+        list.tableView.selectRowIndexes([0], byExtendingSelection: false)
+        list.beginRenamingSelected()
+        #expect(cell.isEditable, "Return or a slow click on the selected name edits it in place")
         #expect(cell.delegate === list, "and a finished edit reaches the list, which renames")
         #expect(cell.stringValue == "idx")
 
@@ -276,9 +279,9 @@ import Testing
         list.reloadCorpora()
         list.tableView.selectRowIndexes([0], byExtendingSelection: false)
         window.makeFirstResponder(list.tableView)
-        // What a click on a selected name does: its field takes the first responder and starts editing.
+        // What a click on a selected name (or Return) does: its field takes the first responder and starts editing.
         let cell = try #require(list.tableView.view(atColumn: 0, row: 0, makeIfNecessary: true) as? NSTextField)
-        #expect(window.makeFirstResponder(cell))
+        list.beginRenamingSelected()
         let editor = try #require(cell.currentEditor(), "editing started")
         editor.string = "Syn"
         #expect(list.isEditingName)

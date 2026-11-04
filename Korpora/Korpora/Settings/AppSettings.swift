@@ -35,8 +35,10 @@ final class AppSettings {
     }
 
     /// Every corpus in the library (built and linked).
-    func corpusLibraryEntries() -> [CorpusLibrary.Entry] {
-        CorpusLibrary.entries()
+    /// - Parameter includingMissing: also the linked corpora whose index folder is gone (the list shows them with
+    ///   a warning); anything that searches leaves them out.
+    func corpusLibraryEntries(includingMissing: Bool = false) -> [CorpusLibrary.Entry] {
+        CorpusLibrary.entries(includingMissing: includingMissing)
     }
 
     /// Names of corpora to keep warm in memory - any corpus, whoever built
