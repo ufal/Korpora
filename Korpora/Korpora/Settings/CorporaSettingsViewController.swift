@@ -372,10 +372,15 @@ final class CorporaSettingsViewController: NSViewController {
         guard let window = view.window else { return }
         panel.beginSheetModal(for: window) { [weak self] response in
             guard let self, response == .OK, !panel.urls.isEmpty else { return }
-            let sheet = CorpusImportSheetController(inputs: panel.urls)
-            sheet.onImported = { [weak self] in self?.reloadCorpora() }
-            presentAsSheet(sheet)
+            self.importCorpus(from: panel.urls)
         }
+    }
+
+    /// The import sheet for `urls`, chosen with the panel above or dropped on the app icon (`ConlluDrop`).
+    func importCorpus(from urls: [URL]) {
+        let sheet = CorpusImportSheetController(inputs: urls)
+        sheet.onImported = { [weak self] in self?.reloadCorpora() }
+        presentAsSheet(sheet)
     }
 
     /// An index folder built elsewhere (with `pando-index`): pick it, or a folder of them.
