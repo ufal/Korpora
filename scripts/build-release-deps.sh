@@ -9,7 +9,7 @@
 # slower than a build with it; see docs/pando-analysis.md).
 #
 # Usage:
-#   scripts/build-release-deps.sh              # PANDO_REF=v0.4.1 FLOOR=15.0 ARCH=arm64
+#   scripts/build-release-deps.sh              # PANDO_REF=a7dbe56 (pando v0.4.4, MIT; not tagged upstream) FLOOR=15.0 ARCH=arm64
 #   PANDO_REF=<tag-or-commit> scripts/build-release-deps.sh
 #
 # On success it prints the variable the app build needs (make-release.sh sets it itself).
@@ -17,7 +17,7 @@ set -euo pipefail
 
 FLOOR="${FLOOR:-15.0}"
 ARCH="${ARCH:-arm64}"
-PANDO_REF="${PANDO_REF:-v0.4.1}"
+PANDO_REF="${PANDO_REF:-a7dbe56}"
 PANDO_URL="${PANDO_URL:-https://github.com/ufal/pando.git}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
