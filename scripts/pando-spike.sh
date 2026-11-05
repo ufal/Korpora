@@ -8,6 +8,8 @@
 #   scripts/pando-spike.sh test       # run the engine and app tests with the pando library loaded
 #   scripts/pando-spike.sh all        # build, sample, test
 #   scripts/pando-spike.sh query IDX 'CQL'   # run a query with the pando CLI
+#   scripts/pando-spike.sh status     # what is new in pando since the commit releases are built with (scripts/PANDO_REF)
+#   scripts/pando-spike.sh pin [REF]  # make REF (default: pando's newest commit) the one releases are built with
 #
 # Needs git, Python 3, Xcode. cmake and ninja are taken from a private venv in the work
 # directory if they aren't installed (nothing is installed system-wide). Regex runs without
@@ -37,6 +39,38 @@ build() {
     -DPANDO_USE_RE2="${PANDO_USE_RE2:-OFF}" -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 >"$WORK/cmake.log"
   cmake --build "$BUILD" >"$WORK/build.log"
   ls "$BUILD"/pando "$BUILD"/pando-index "$BUILD"/libpando.dylib
+}
+
+pinned() { grep -v '^#' "$ROOT/scripts/PANDO_REF" | grep -v '^$' | head -1; }
+
+fetch_source() {
+  if [ -d "$SRC/.git" ]; then git -C "$SRC" fetch -q --tags origin
+  else git clone -q https://github.com/ufal/pando.git "$SRC"; fi
+}
+
+status() {
+  fetch_source
+  local pin latest behind
+  pin="$(pinned)"
+  latest="$(git -C "$SRC" rev-parse --short origin/main)"
+  behind="$(git -C "$SRC" rev-list --count "$pin..origin/main")"
+  echo "releases are built with pando $pin ($(git -C "$SRC" log -1 --format=%cs "$pin"))"
+  echo "pando's newest commit:   $latest ($(git -C "$SRC" log -1 --format=%cs origin/main)), tags: $(git -C "$SRC" tag --sort=-creatordate | head -3 | tr '\n' ' ')"
+  if [ "$behind" = 0 ]; then echo "up to date."; return; fi
+  echo "$behind new commit(s) since the pin:"
+  git -C "$SRC" log --format='  %h %cs %s' "$pin..origin/main" | head -40
+  echo "files that touch the C API: $(git -C "$SRC" diff --stat "$pin" origin/main -- src/api/pando_ffi.h src/api/pando_ffi.cpp | tail -1)"
+  echo "to take them: $0 pin  (then test, and build the release)"
+}
+
+pin() {
+  fetch_source
+  local ref
+  ref="$(git -C "$SRC" rev-parse --short "${1:-origin/main}")"
+  { grep '^#' "$ROOT/scripts/PANDO_REF"; echo "$ref"; } > "$ROOT/scripts/PANDO_REF.new"
+  mv "$ROOT/scripts/PANDO_REF.new" "$ROOT/scripts/PANDO_REF"
+  echo "releases will be built with pando $ref ($(git -C "$SRC" log -1 --format=%s "$ref"))"
+  echo "commit scripts/PANDO_REF, and fix the comment in it if the version changed."
 }
 
 sample() {
@@ -73,6 +107,8 @@ case "${1:-}" in
   ud) ud ;;
   test) tests ;;
   all) build; sample; tests ;;
+  status) status ;;
+  pin) shift; pin "$@" ;;
   query) shift; "$BUILD/pando" "$@" ;;
-  *) sed -n 2,14p "$0"; exit 1 ;;
+  *) sed -n 2,16p "$0"; exit 1 ;;
 esac

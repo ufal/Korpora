@@ -1,0 +1,4 @@
+# The pando commit (or tag) a release is built with: read by build-release-deps.sh.
+# Check for newer ones with `scripts/pando-spike.sh status`; change it with `scripts/pando-spike.sh pin [REF]`.
+# a7dbe56 is pando v0.4.4 (MIT licence); upstream has no tag for 0.4.2-0.4.4.
+a7dbe56

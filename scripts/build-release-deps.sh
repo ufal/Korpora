@@ -9,19 +9,20 @@
 # slower than a build with it; see docs/pando-analysis.md).
 #
 # Usage:
-#   scripts/build-release-deps.sh              # PANDO_REF=a7dbe56 (pando v0.4.4, MIT; not tagged upstream) FLOOR=15.0 ARCH=arm64
-#   PANDO_REF=<tag-or-commit> scripts/build-release-deps.sh
+#   scripts/build-release-deps.sh              # pando as pinned in scripts/PANDO_REF, FLOOR=15.0 ARCH=arm64
+#   PANDO_REF=<tag-or-commit> scripts/build-release-deps.sh   # for one build, without changing the pin
 #
 # On success it prints the variable the app build needs (make-release.sh sets it itself).
 set -euo pipefail
 
-FLOOR="${FLOOR:-15.0}"
-ARCH="${ARCH:-arm64}"
-PANDO_REF="${PANDO_REF:-a7dbe56}"
-PANDO_URL="${PANDO_URL:-https://github.com/ufal/pando.git}"
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$SCRIPT_DIR")"
+FLOOR="${FLOOR:-15.0}"
+ARCH="${ARCH:-arm64}"
+# The pinned pando is in scripts/PANDO_REF (first line that isn't a comment).
+PANDO_REF="${PANDO_REF:-$(grep -v '^#' "$SCRIPT_DIR/PANDO_REF" | grep -v '^$' | head -1)}"
+[ -n "$PANDO_REF" ] || { echo "ERROR: no pando ref in $SCRIPT_DIR/PANDO_REF" >&2; exit 1; }
+PANDO_URL="${PANDO_URL:-https://github.com/ufal/pando.git}"
 DEP="$ROOT/release-deps"
 SRC="$DEP/pando-src"
 BUILD="$DEP/pando/build"
