@@ -22,14 +22,14 @@ PANDO_URL="${PANDO_URL:-https://github.com/ufal/pando.git}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$SCRIPT_DIR")"
-DEP="$ROOT/.release-deps"
+DEP="$ROOT/release-deps"
 SRC="$DEP/pando-src"
 BUILD="$DEP/pando/build"
 NCPU="$(sysctl -n hw.ncpu)"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
-# cmake and ninja: installed ones, else a private venv under .release-deps (nothing system-wide).
+# cmake and ninja: installed ones, else a private venv under release-deps (nothing system-wide).
 mkdir -p "$DEP"
 if ! command -v cmake >/dev/null || ! command -v ninja >/dev/null; then
     [ -x "$DEP/venv/bin/cmake" ] || { python3 -m venv "$DEP/venv"; "$DEP/venv/bin/pip" install -q cmake ninja; }
@@ -66,7 +66,7 @@ for binary in "$BUILD/pando-index" "$BUILD/libpando.dylib"; do
     fi
 done
 echo "$COMMIT" > "$DEP/pando/.built-from"
-touch "$DEP/pando/.build-ok"
+touch "$DEP/pando/build-ok"
 
 echo
 echo "pando is built. make-release.sh uses it; to bundle it by hand, export:"

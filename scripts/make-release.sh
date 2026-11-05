@@ -8,7 +8,7 @@
 #
 # Prerequisites:
 #   - scripts/build-release-deps.sh has been run (pando built at the release
-#     floor in .release-deps/).
+#     floor in release-deps/).
 #   - A "Developer ID Application" identity for team 8YW3ZU8MFU in the
 #     keychain.
 #   - Notary credentials stored once under a keychain profile:
@@ -35,7 +35,7 @@ NOTARIZE=yes
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$SCRIPT_DIR")"
-DEP="$ROOT/.release-deps"
+DEP="$ROOT/release-deps"
 OUT="$ROOT/release"
 DERIVED="$DEP/DerivedData"
 
@@ -55,7 +55,7 @@ retry3() {
 }
 
 # ------------------------------------------------------- preconditions ----
-[ -f "$DEP/pando/.build-ok" ] || die "release deps missing - run scripts/build-release-deps.sh first"
+[ -f "$DEP/pando/build-ok" ] || die "release deps missing - run scripts/build-release-deps.sh first"
 [ -x "$DEP/pando/build/pando-index" ] || die "release pando tools missing - run scripts/build-release-deps.sh first"
 security find-identity -v -p codesigning | grep -q "\"$SIGN_IDENTITY: .*($TEAM_ID)\"" \
     || die "no valid '$SIGN_IDENTITY' identity for team $TEAM_ID in the keychain"
