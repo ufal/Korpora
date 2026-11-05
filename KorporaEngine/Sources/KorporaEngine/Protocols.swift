@@ -39,14 +39,19 @@ extension CorpusHandle {
     }
 }
 
-/// A running query whose loaded hits can be sorted, sampled, grouped and
-/// analysed in place.
+/// A running query whose hits can be read a window at a time, and sorted,
+/// sampled, grouped and analysed in place.
 ///
-/// Not every hit is loaded: a query with millions of hits loads the first
-/// `limit` (see `CorpusEngine.openConcordance`); `size` counts the hits in the
-/// current view, `totalHits` all hits in the corpus.
+/// Until the first operation (sort, shuffle, sample, line group) the view is
+/// every hit in corpus order, and lines are read from the engine a window at a
+/// time, so a result of any size can be scrolled. An operation needs the hits
+/// in memory: it works on the first `limit` hits (see
+/// `CorpusEngine.openConcordance`), so for a larger result the view shrinks to
+/// those (`size < totalHits`). `size` counts the hits in the current view,
+/// `totalHits` all hits in the corpus.
 public protocol ConcordanceHandle: Actor {
-    /// Number of hits in the current view (loaded, after sampling and group deletion).
+    /// Number of hits in the current view (all hits until an operation; then the loaded ones,
+    /// after sampling and group deletion).
     var size: Int { get async }
 
     /// Number of hits the query has in the corpus, loaded or not.
@@ -65,11 +70,15 @@ public protocol ConcordanceHandle: Actor {
     func linegroup(at lineIndex: Int) async -> Int
     func deleteLineGroups(_ groups: [Int], invert: Bool) async throws
 
-    func kwicLines(leftContext: String, rightContext: String, kwicAttr: String,
+    /// The lines of the view rows in `range` (clamped to the view), in view order.
+    func kwicLines(range: Range<Int>, leftContext: String, rightContext: String, kwicAttr: String,
                    secondaryAttributes: [String]) async throws -> [KWICLine]
 
-    /// Values of one region attribute (`"doc.title"`) for every line of the current view, in view order.
-    func structureValues(attribute: String) async throws -> [String]
+    /// Values of one region attribute (`"doc.title"`) for the view rows in `range`, in view order.
+    func structureValues(attribute: String, range: Range<Int>) async throws -> [String]
+
+    /// How many lines of the view are in each line group (groups without lines are left out).
+    func lineGroupCounts() async -> [Int: Int]
 
     /// Every region attribute of every structure around the hit in view row `row`.
     func structureInfo(forViewRow row: Int) async throws -> [(structure: String, attribute: String, value: String)]
@@ -84,11 +93,21 @@ public protocol ConcordanceHandle: Actor {
 extension ConcordanceHandle {
     public func sort(_ criteria: SortCriteria) async throws { try await sort(criteria, unique: false) }
 
+    /// Every line of the view (for a result of millions of hits, ask for ranges instead).
     public func kwicLines(leftContext: String = "-10", rightContext: String = "10",
                           kwicAttr: String = "form", secondaryAttributes: [String] = []) async throws -> [KWICLine] {
-        try await kwicLines(leftContext: leftContext, rightContext: rightContext, kwicAttr: kwicAttr,
-                            secondaryAttributes: secondaryAttributes)
+        let count = await size
+        return try await kwicLines(range: 0..<count, leftContext: leftContext, rightContext: rightContext,
+                            kwicAttr: kwicAttr, secondaryAttributes: secondaryAttributes)
     }
+
+    /// The region attribute for every line of the view.
+    public func structureValues(attribute: String) async throws -> [String] {
+        let count = await size
+        return try await structureValues(attribute: attribute, range: 0..<count)
+    }
+
+    public func lineGroupCounts() async -> [Int: Int] { [:] }
 
     public func frequencyDistribution(_ criteria: [FrequencyCriterion]) async throws -> [FrequencyItem] {
         try await frequencyDistribution(criteria, minFrequency: 1)
@@ -121,7 +140,8 @@ public protocol CorpusEngine: Sendable {
     func openCorpus(name: String) async throws -> any CorpusHandle
 
     /// Runs `query` (in the engine's own query language) on `corpus`, which
-    /// must have been opened by this engine, and loads up to `limit` hits.
+    /// must have been opened by this engine. `limit` is how many hits an operation
+    /// (sort, shuffle, sample, line groups) can work on; reading lines needs no limit.
     /// Cancelling the calling task aborts the query and throws `CancellationError`.
     func openConcordance(query: String, in corpus: any CorpusHandle, limit: Int) async throws -> any ConcordanceHandle
 }
@@ -129,15 +149,18 @@ public protocol CorpusEngine: Sendable {
 extension CorpusEngine {
     public var capabilities: EngineCapabilities { .all }
 
-    /// Loads up to `ConcordanceLimit.defaultLimit` hits.
+    /// With `ConcordanceLimit.defaultLimit` as the limit for operations.
     public func openConcordance(query: String, in corpus: any CorpusHandle) async throws -> any ConcordanceHandle {
         try await openConcordance(query: query, in: corpus, limit: ConcordanceLimit.defaultLimit)
     }
 }
 
 public enum ConcordanceLimit {
-    /// How many hits a concordance loads when nothing else is asked.
-    public static let defaultLimit = 10_000
+    /// How many hits an operation (sort, shuffle, sample, line groups) works on when nothing else
+    /// is asked. A result with more hits can still be read to its end, but is sorted only over its
+    /// first hits: pando can't yet sort a result of that size through its C API
+    /// (docs/pando-gui-plan.md, "Paging long results").
+    public static let defaultLimit = 100_000
 }
 
 public enum CorpusEngineError: Error, CustomStringConvertible {

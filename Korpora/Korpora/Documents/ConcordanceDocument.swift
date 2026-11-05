@@ -99,8 +99,155 @@ final class ConcordanceDocument: NSDocument {
     }
 
     private(set) var operations: [ConcordanceOperation] = []
-    private(set) var rows: [ConcordanceRow] = []
     private(set) var status: String = ""
+
+    // MARK: - Rows, read a window at a time
+
+    /// Rows are fetched from the engine in chunks as the table scrolls to them, so a result of
+    /// millions of hits needs no more memory than a few screens (the way Manatee/KonText make only the
+    /// requested page of lines). `rowCount` is every row; `row(at:)` the loaded ones.
+    static let rowChunk = 200
+    /// Chunks kept; the ones farthest from where the table is reading are dropped beyond this.
+    private static let cachedChunkLimit = 100
+
+    /// Rows in the current view (every hit until an operation shrinks it).
+    private(set) var rowCount = 0
+    private var rowChunks: [Int: [ConcordanceRow]] = [:]
+    private var chunksBeingFetched: Set<Int> = []
+    /// Bumped when the cached rows go stale (a new result, a changed display setting).
+    private var rowsGeneration = 0
+    private var rowSource: RowSource?
+
+    /// What fetching a row needs, as it was when the result or its display last changed.
+    private struct RowSource {
+        let live: any ConcordanceHandle
+        let count: Int
+        let leftContext: String
+        let rightContext: String
+        let kwicAttr: String
+        let secondaryAttributes: [String]
+        let structuralAttribute: String?
+        /// A descending sort shows the engine's view backwards: row `i` is view row `count - 1 - i`.
+        let descending: Bool
+    }
+
+    /// The loaded rows, in order (all of them for a small result; for a big one the chunks nearest the
+    /// last place the table read).
+    var rows: [ConcordanceRow] { rowChunks.keys.sorted().flatMap { rowChunks[$0] ?? [] } }
+
+    /// Called with the display rows that just arrived, so the table can redraw them.
+    var onRowsLoaded: ((Range<Int>) -> Void)?
+
+    /// A row that is loaded; nil (and a fetch in the background) when it isn't yet.
+    func row(at index: Int) -> ConcordanceRow? {
+        guard index >= 0, index < rowCount else { return nil }
+        if let chunk = rowChunks[index / Self.rowChunk], chunk.indices.contains(index % Self.rowChunk) {
+            return chunk[index % Self.rowChunk]
+        }
+        requestRows(around: index)
+        return nil
+    }
+
+    /// The engine's view row behind display row `row`.
+    private func viewIndex(forRow row: Int) -> Int {
+        (rowSource?.descending ?? false) ? rowCount - 1 - row : row
+    }
+
+    /// Fetches the chunk holding `index` (and the next one, so a scroll finds it ready) unless present.
+    func requestRows(around index: Int) {
+        guard let source = rowSource else { return }
+        let first = index / Self.rowChunk
+        for chunk in first...(first + 1) where chunk * Self.rowChunk < rowCount {
+            guard rowChunks[chunk] == nil, !chunksBeingFetched.contains(chunk) else { continue }
+            chunksBeingFetched.insert(chunk)
+            let generation = rowsGeneration
+            let range = (chunk * Self.rowChunk)..<min((chunk + 1) * Self.rowChunk, rowCount)
+            Task { @MainActor in
+                let rows = try? await Self.fetchRows(range, from: source)
+                guard generation == rowsGeneration else { return }
+                chunksBeingFetched.remove(chunk)
+                guard let rows else { return }
+                rowChunks[chunk] = rows
+                evictChunks(keepingNear: chunk)
+                onRowsLoaded?(range)
+            }
+        }
+    }
+
+    private func evictChunks(keepingNear chunk: Int) {
+        guard rowChunks.count > Self.cachedChunkLimit else { return }
+        let farthest = rowChunks.keys.sorted { abs($0 - chunk) > abs($1 - chunk) }
+        for stale in farthest.prefix(rowChunks.count - Self.cachedChunkLimit) { rowChunks[stale] = nil }
+    }
+
+    /// Display rows `range` of `source`'s view, with their line groups and region values.
+    private static func fetchRows(_ range: Range<Int>, from source: RowSource) async throws -> [ConcordanceRow] {
+        let engineRange = source.descending ? (source.count - range.upperBound)..<(source.count - range.lowerBound) : range
+        var lines = try await source.live.kwicLines(
+            range: engineRange, leftContext: source.leftContext, rightContext: source.rightContext,
+            kwicAttr: source.kwicAttr, secondaryAttributes: source.secondaryAttributes)
+        var regionValues: [String] = []
+        if let attribute = source.structuralAttribute {
+            regionValues = (try? await source.live.structureValues(attribute: attribute, range: engineRange)) ?? []
+        }
+        if source.descending {
+            lines.reverse()
+            regionValues.reverse()
+        }
+        var rows: [ConcordanceRow] = []
+        rows.reserveCapacity(lines.count)
+        for (offset, line) in lines.enumerated() {
+            try Task.checkCancellation()
+            let row = range.lowerBound + offset
+            let viewRow = source.descending ? source.count - 1 - row : row
+            let value = regionValues.indices.contains(offset) ? regionValues[offset] : ""
+            rows.append(ConcordanceRow(
+                id: row, line: line, group: await source.live.linegroup(at: viewRow),
+                structuralAttributeValue: value.isEmpty || value == "_" ? nil : value, viewIndex: viewRow))
+        }
+        return rows
+    }
+
+    /// The first screens of rows from `live`, fetched before the result is shown (`setRows` shows them).
+    private func firstRows(live: any ConcordanceHandle, descending: Bool) async throws
+        -> (rows: [ConcordanceRow], count: Int, source: RowSource) {
+        let count = await live.size
+        let source = RowSource(
+            live: live, count: count, leftContext: leftContext, rightContext: rightContext, kwicAttr: kwicAttr,
+            secondaryAttributes: attributesToFetch, structuralAttribute: structuralAttributeToShow,
+            descending: descending)
+        let first = try await Self.fetchRows(0..<min(count, 2 * Self.rowChunk), from: source)
+        try Task.checkCancellation()
+        return (first, count, source)
+    }
+
+    private func setRows(_ first: [ConcordanceRow], count: Int, source: RowSource?) {
+        rowsGeneration += 1
+        chunksBeingFetched = []
+        rowChunks = [:]
+        for start in stride(from: 0, to: first.count, by: Self.rowChunk) {
+            rowChunks[start / Self.rowChunk] = Array(first[start..<min(start + Self.rowChunk, first.count)])
+        }
+        rowCount = count
+        rowSource = source
+    }
+
+    /// Every row in order, in chunks, for exporting: nothing is kept.
+    func forEachRow(chunkSize: Int = 2_000, _ body: ([ConcordanceRow]) throws -> Void) async throws {
+        guard let source = rowSource else { return }
+        var start = 0
+        while start < source.count {
+            try Task.checkCancellation()
+            let rows = try await Self.fetchRows(start..<min(start + chunkSize, source.count), from: source)
+            try body(rows)
+            start += chunkSize
+        }
+    }
+
+    /// How many lines are in each line group.
+    func lineGroupCounts() async -> [Int: Int] {
+        await liveConcordance?.lineGroupCounts() ?? [:]
+    }
 
     /// The corpus (and subcorpus) the results are from, for headings.
     var corpusLabel: String {
@@ -365,23 +512,14 @@ final class ConcordanceDocument: NSDocument {
     /// has produced a result (the next `replay()` will pick these settings up).
     private func refetchDisplay() {
         guard liveConcordance != nil else { return }
-        let leftContext = leftContext
-        let rightContext = rightContext
-        let kwicAttr = kwicAttr
-        let secondaryAttributes = attributesToFetch
-        let structuralAttributeToShow = structuralAttributeToShow
         let descendingSort = Self.descendingSort(in: operations)
         let previousReplay = currentReplayTask
         currentReplayTask = Task { @MainActor in
             await previousReplay?.value
             guard let live = liveConcordance else { return }
             do {
-                let lines = try await live.kwicLines(
-                    leftContext: leftContext, rightContext: rightContext, kwicAttr: kwicAttr,
-                    secondaryAttributes: secondaryAttributes)
-                rows = await Self.buildRows(
-                    from: lines, live: live, descendingSort: descendingSort,
-                    structuralAttributeToShow: structuralAttributeToShow)
+                let first = try await firstRows(live: live, descending: descendingSort)
+                setRows(first.rows, count: first.count, source: first.source)
             } catch {
                 status = "\(error)"
             }
@@ -400,10 +538,6 @@ final class ConcordanceDocument: NSDocument {
         let corpusName = corpusName
         let subcorpus = subcorpus
         let query = subcorpus?.restriction.apply(to: initialQuery) ?? initialQuery
-        let leftContext = leftContext
-        let rightContext = rightContext
-        let secondaryAttributes = attributesToFetch
-        let structuralAttributeToShow = structuralAttributeToShow
         let operations = operations
         let descendingSort = Self.descendingSort(in: operations)
         let loadLimit = AppSettings.shared.maxConcordanceLines
@@ -431,23 +565,17 @@ final class ConcordanceDocument: NSDocument {
                     try await op.apply(to: live)
                     try Task.checkCancellation()
                 }
-                let lines = try await live.kwicLines(
-                    leftContext: leftContext, rightContext: rightContext, kwicAttr: kwicAttr,
-                    secondaryAttributes: secondaryAttributes)
-                let newRows = await Self.buildRows(
-                    from: lines, live: live, descendingSort: descendingSort,
-                    structuralAttributeToShow: structuralAttributeToShow)
-                try Task.checkCancellation()
+                let first = try await firstRows(live: live, descending: descendingSort)
                 guard generation == replayGeneration else { return }
-                rows = newRows
+                setRows(first.rows, count: first.count, source: first.source)
                 liveConcordance = live
                 totalHits = await live.totalHits
                 status = Self.statusLine(
-                    shown: lines.count, total: totalHits, corpusTokens: info.sizeTokens, corpusName: corpusName,
-                    subcorpus: subcorpus)
+                    shown: rowCount, total: totalHits, corpusTokens: info.sizeTokens, corpusName: corpusName,
+                    subcorpus: subcorpus, operationLimit: operations.isEmpty ? nil : loadLimit)
             } catch {
                 guard generation == replayGeneration else { return }
-                rows = []
+                setRows([], count: 0, source: nil)
                 liveConcordance = nil
                 totalHits = 0
                 status = error is CancellationError ? "Search cancelled." : "\(error)"
@@ -462,18 +590,26 @@ final class ConcordanceDocument: NSDocument {
 
     /// "12 hits in the 38,181,322-token corpus UD", or for a big result "10,000 of 3,978,146 hits (the
     /// first ones; see Settings > Concordance) in ...".
-    static func statusLine(shown: Int, total: Int, corpusTokens: Int, corpusName: String, subcorpus: Subcorpus?) -> String {
+    static func statusLine(shown: Int, total: Int, corpusTokens: Int, corpusName: String, subcorpus: Subcorpus?,
+                           operationLimit: Int? = nil) -> String {
         let hits: String
-        if total > shown {
+        // An operation (sort, shuffle, sample, line group) ran on a result too big to hold: it covers the
+        // first hits only, because pando's C API can't sort or shuffle the whole of it.
+        var note = ""
+        if total > shown, let operationLimit {
+            hits = "\(shown.formatted()) of \(total.formatted()) hits"
+            note = " (sorting, shuffling and sampling cover only the first \(operationLimit.formatted()) hits: "
+                + "pando can\u{2019}t yet do them on a result this large)"
+        } else if total > shown {
             hits = "\(shown.formatted()) of \(total.formatted()) hits (the first ones)"
         } else {
             hits = "\(shown.formatted()) hit\(shown == 1 ? "" : "s")"
         }
         let corpus = "the \(corpusTokens.formatted())-token corpus \u{201C}\(corpusName)\u{201D}"
         if let subcorpus {
-            return "\(hits) in subcorpus \u{201C}\(subcorpus.name)\u{201D} of \(corpus)"
+            return "\(hits) in subcorpus \u{201C}\(subcorpus.name)\u{201D} of \(corpus)\(note)"
         }
-        return "\(hits) in \(corpus)"
+        return "\(hits) in \(corpus)\(note)"
     }
 
     private static func descendingSort(in operations: [ConcordanceOperation]) -> Bool {
@@ -481,33 +617,6 @@ final class ConcordanceDocument: NSDocument {
             if case .sort(_, _, let descending) = op { return descending }
             return nil
         }.first ?? false
-    }
-
-    private static func buildRows(
-        from lines: [KWICLine], live: any ConcordanceHandle, descendingSort: Bool,
-        structuralAttributeToShow: String?
-    ) async -> [ConcordanceRow] {
-        // One batched lookup for the region column, one group lookup per row.
-        var regionValues: [String] = []
-        if let attribute = structuralAttributeToShow {
-            regionValues = (try? await live.structureValues(attribute: attribute)) ?? []
-        }
-        var rows: [ConcordanceRow] = []
-        rows.reserveCapacity(lines.count)
-        for (offset, line) in lines.enumerated() {
-            if Task.isCancelled { break }
-            let value = regionValues.indices.contains(offset) ? regionValues[offset] : ""
-            rows.append(ConcordanceRow(
-                id: offset, line: line, group: await live.linegroup(at: offset),
-                structuralAttributeValue: value.isEmpty || value == "_" ? nil : value, viewIndex: offset))
-        }
-        if descendingSort {
-            rows = rows.reversed().enumerated().map { i, row in
-                ConcordanceRow(id: i, line: row.line, group: row.group,
-                               structuralAttributeValue: row.structuralAttributeValue, viewIndex: row.viewIndex)
-            }
-        }
-        return rows
     }
 
     // MARK: - Analysis (collocations, frequency distributions)
@@ -553,17 +662,17 @@ final class ConcordanceDocument: NSDocument {
 
     func structuralInfo(at rowID: Int) async throws -> [(structure: String, attribute: String, value: String)] {
         guard let liveConcordance else { throw AnalysisError.noResultsYet }
-        guard rows.indices.contains(rowID) else { return [] }
-        return try await liveConcordance.structureInfo(forViewRow: rows[rowID].viewIndex)
+        guard rowID >= 0, rowID < rowCount else { return [] }
+        return try await liveConcordance.structureInfo(forViewRow: viewIndex(forRow: rowID))
     }
 
     /// One hit's match plus much wider surrounding context than its table row shows
     /// (`AppSettings.defaultExtendedContextTokens` each side).
     func extendedContext(at rowID: Int) async throws -> (before: String, match: String, after: String) {
         guard let liveConcordance else { throw AnalysisError.noResultsYet }
-        guard rows.indices.contains(rowID) else { throw AnalysisError.noResultsYet }
+        guard rowID >= 0, rowID < rowCount else { throw AnalysisError.noResultsYet }
         return try await liveConcordance.extendedContext(
-            forViewRow: rows[rowID].viewIndex, tokens: AppSettings.shared.defaultExtendedContextTokens)
+            forViewRow: viewIndex(forRow: rowID), tokens: AppSettings.shared.defaultExtendedContextTokens)
     }
 
     struct ExtendedContextInfo {

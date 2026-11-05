@@ -64,8 +64,11 @@ final class PandoRealCorpusTests: XCTestCase {
         let verbs = try await engine.openConcordance(query: #"[upos="VERB"]"#, in: corpus)
         let verbCount = await verbs.totalHits
         XCTAssertGreaterThan(verbCount, 1_000_000)
+        let readable = await verbs.size
+        XCTAssertEqual(readable, verbCount, "every hit can be read, millions or not")
+        try await verbs.shuffle()
         let loaded = await verbs.size
-        XCTAssertEqual(loaded, ConcordanceLimit.defaultLimit, "millions of hits load only the first ones")
+        XCTAssertEqual(loaded, ConcordanceLimit.defaultLimit, "an operation works on the first hits only")
         let page = try await engine.openConcordance(query: #"[lemma="house" & upos="NOUN"]"#, in: corpus)
         let lines = try await page.kwicLines()
         XCTAssertFalse(lines.isEmpty)

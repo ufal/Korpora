@@ -32,29 +32,35 @@ private actor FakeCorpus: CorpusHandle {
 private actor FakeConcordance: ConcordanceHandle {
     let recorder: Recorder
     let total: Int
+    /// What an operation works on: the first `loaded` hits (a result is every hit until then).
+    private let loaded: Int
     private var hits: Int
-    init(recorder: Recorder, total: Int = 3, loaded: Int = 3) { self.recorder = recorder; self.total = total; hits = loaded }
+    init(recorder: Recorder, total: Int = 3, loaded: Int = 3) {
+        self.recorder = recorder; self.total = total; self.loaded = loaded; hits = total
+    }
+    private func operate() { hits = min(hits, loaded) }
     var size: Int { get async { hits } }
     var totalHits: Int { get async { total } }
     func hitHistogram(bins: Int, corpusSize: Int) async throws -> [Int] { [hits] + Array(repeating: 0, count: bins - 1) }
-    func sort(_ criteria: SortCriteria, unique: Bool) async throws { recorder.add("sort") }
-    func shuffle() async throws { recorder.add("shuffle") }
-    func sample(lines: Int) async throws { recorder.add("sample \(lines)"); hits = min(hits, lines) }
-    func setLineGroup(rangeStart: Int, rangeLen: Int, group: Int) async throws { recorder.add("group") }
+    func sort(_ criteria: SortCriteria, unique: Bool) async throws { operate(); recorder.add("sort") }
+    func shuffle() async throws { operate(); recorder.add("shuffle") }
+    func sample(lines: Int) async throws { operate(); recorder.add("sample \(lines)"); hits = min(hits, lines) }
+    func setLineGroup(rangeStart: Int, rangeLen: Int, group: Int) async throws { operate(); recorder.add("group") }
     func linegroup(at lineIndex: Int) async -> Int { lineIndex == 1 ? 2 : 0 }
+    func lineGroupCounts() async -> [Int: Int] { hits > 1 ? [2: 1] : [:] }
     func deleteLineGroups(_ groups: [Int], invert: Bool) async throws {}
-    func kwicLines(leftContext: String, rightContext: String, kwicAttr: String, secondaryAttributes: [String])
-        async throws -> [KWICLine] {
+    func kwicLines(range: Range<Int>, leftContext: String, rightContext: String, kwicAttr: String,
+                   secondaryAttributes: [String]) async throws -> [KWICLine] {
         recorder.add("kwic \(leftContext) \(rightContext) \(kwicAttr)")
-        return (0..<hits).map { i in
+        return range.clamped(to: 0..<hits).map { i in
             KWICLine(leftTokens: [KWICToken(word: "left", secondaryAttributes: [:])],
                      kwicTokens: [KWICToken(word: "hit\(i)", secondaryAttributes: [:])],
                      rightTokens: [], position: 10 * i)
         }
     }
-    func structureValues(attribute: String) async throws -> [String] {
+    func structureValues(attribute: String, range: Range<Int>) async throws -> [String] {
         recorder.add("structure \(attribute)")
-        return (0..<hits).map { $0 == 0 ? "" : "Book \($0)" }
+        return range.clamped(to: 0..<hits).map { $0 == 0 ? "" : "Book \($0)" }
     }
     func structureInfo(forViewRow row: Int) async throws -> [(structure: String, attribute: String, value: String)] {
         [("doc", "title", "Book \(row)"), ("s", "sent_id", "s\(row)")]
@@ -123,12 +129,52 @@ private struct FakeEngine: CorpusEngine {
         #expect(recorder.all.contains { $0.hasSuffix(" form") && $0.hasPrefix("kwic") })
     }
 
-    @Test func aBigResultSaysHowManyHitsThereAreInAll() async {
-        let document = document(engine: FakeEngine(recorder: recorder, total: 3_978_146, loaded: 3))
+    @Test func aBigResultCanBeReadToItsEndAndSaysHowManyHitsThereAre() async {
+        let document = document(engine: FakeEngine(recorder: recorder, total: 3_978_146, loaded: 100))
         document.runQuery("[]")
         await settle(document)
         #expect(document.totalHits == 3_978_146)
-        #expect(document.status.hasPrefix("3 of 3,978,146 hits (the first ones) in the"), "\(document.status)")
+        #expect(document.rowCount == 3_978_146, "no cap: every hit is a row")
+        #expect(document.rows.count == 2 * ConcordanceDocument.rowChunk, "only the first screens are loaded")
+        #expect(document.status.hasPrefix("3,978,146 hits in the"), "\(document.status)")
+    }
+
+    @Test func rowsFarDownAreFetchedWhenTheTableAsksForThem() async {
+        let document = document(engine: FakeEngine(recorder: recorder, total: 3_978_146, loaded: 100))
+        document.runQuery("[]")
+        await settle(document)
+        var arrived: [Range<Int>] = []
+        document.onRowsLoaded = { arrived.append($0) }
+        #expect(document.row(at: 2_000_000) == nil, "not loaded yet; the fetch starts")
+        for _ in 0..<500 where arrived.isEmpty { try? await Task.sleep(for: .milliseconds(2)) }
+        #expect(arrived.first?.contains(2_000_000) == true)
+        #expect(document.row(at: 2_000_000)?.line.kwic == "hit2000000")
+        #expect(document.row(at: 3_978_146) == nil)
+        #expect(document.rows.count <= 4 * ConcordanceDocument.rowChunk)
+    }
+
+    @Test func aDescendingSortShowsTheViewBackwardsWindowByWindow() async {
+        let document = document(engine: FakeEngine(recorder: recorder, total: 1_000, loaded: 1_000))
+        document.runQuery("[]")
+        await settle(document)
+        document.performSort(SortCriteria(SortLevel(attribute: "form", anchor: .kwic)), descending: true)
+        await settle(document)
+        #expect(document.row(at: 0)?.line.kwic == "hit999")
+        #expect(document.row(at: 0)?.viewIndex == 999)
+        #expect(document.row(at: 5)?.line.kwic == "hit994")
+    }
+
+    @Test func sortingABigResultCoversItsFirstHitsAndTheStatusSaysWhy() async {
+        let document = document(engine: FakeEngine(recorder: recorder, total: 3_978_146, loaded: 100))
+        document.runQuery("[]")
+        await settle(document)
+        document.performShuffle()
+        await settle(document)
+        #expect(document.rowCount == 100)
+        #expect(document.totalHits == 3_978_146)
+        #expect(document.status.hasPrefix("100 of 3,978,146 hits in the"), "\(document.status)")
+        #expect(document.status.contains("cover only the first \(AppSettings.shared.maxConcordanceLines.formatted()) hits"), "\(document.status)")
+        #expect(document.status.contains("pando"), "\(document.status)")
     }
 
     @Test func theStatusLineWordsEachCase() {

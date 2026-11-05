@@ -76,8 +76,11 @@ remembered, a long folder path is shortened rather than widening the window, and
 while a name is being edited.
 
 ### Differences users will notice
-- Searches load the first 10,000 hits (Settings > Concordance); the status line says "10,000 of 3,978,146 hits (the first
-  ones)". Sorting, sampling and line groups work on the loaded hits.
+- A search shows every hit, however many: the table reads lines from pando a window at a time as it scrolls (a result of
+  millions of hits needs no more memory than a few screens). Sorting, shuffling, sampling and line groups need the hits in
+  memory, so on a result with more than 100,000 hits (Settings > Concordance, "Sort and shuffle at most") they work on the
+  first 100,000 and the status line says so: pando's C API can't sort or shuffle the whole result yet
+  (docs/pando-issue-c-api-options.md).
 - Words around a hit show their spelling only (no lemma/tag under context words; sorting by left/right words is by spelling).
 - No positive/negative filter, no sentence view mode, no `.subc`-style typed subcorpus expressions.
 - Subcorpora are picks of document properties, saved per corpus; they restrict every search in them.
@@ -86,7 +89,7 @@ while a name is being edited.
 - Old `.corpconc` documents (format 1-2) don't open: a message says why. Old Manatee corpora are not read.
 
 ### Asks for pando (Maarten)
-Attributes on context tokens; sentence-bounded context through the C API; a hit-position histogram; a warning when CoNLL-U metadata values with spaces are dropped (`# text_X` vs
+Attributes on context tokens; sentence-bounded context, `shuffle`, `sample`, `seed` and cached sorted paging through the C API (draft: docs/pando-issue-c-api-options.md); a hit-position histogram; a warning when CoNLL-U metadata values with spaces are dropped (`# text_X` vs
 `# meta::X`); a licence.
 
 ### Next
@@ -139,7 +142,7 @@ window for their results yet; completing attribute values. See the aggregates li
 
 In: the pando-only concordancer as it is, with menu commands for every toolbar action and a
 customizable toolbar (done); still to do: exercise the release path (notarized build, clean-VM smoke
-test), settle pando's licence for redistribution, and paging beyond the 10,000-hit load cap (6.11).
+test), settle pando's licence for redistribution. (Paging beyond the old 10,000-hit cap is done: see "Paging long results".)
 
 Out, for 2.0: importing more formats and plain text (the corpus workshop, via Flexiconv/Flexipipe), a
 remote FQS backend, and importing CWB-vertical (`.vrt`/`.vert`) corpora, both from the Import button and by
@@ -175,6 +178,12 @@ Findings:
   The server API caches sort indexes and sorted pages (`--cache-mb`); the C API does not expose that.
 - `shuffle`, `sample` and `seed` exist in the HTTP API only; `parse_query_opts`/`parse_program_opts` in
   `src/api/pando_ffi.cpp` do not read them (like `sentence`).
+
+Done (2026-11-05): `ConcordanceHandle` reads lines by range; `PandoConcordance` is *windowed* until the first operation and
+*loaded* (first `limit` hits, default 100,000) after it; `ConcordanceDocument` keeps chunks of 200 rows (100 chunks at
+most) and the table asks for the ones on screen (`NSTableViewDataSource`, no diffable snapshot of millions of ids; an
+`NSTableView` with 4 million rows reloads in milliseconds). Export writes a chunk at a time to a temporary file that then
+replaces the target. The issue to file with pando is docs/pando-issue-c-api-options.md.
 
 Asks for pando: sorted paging with the sort cached per handle (or `Last`/a named set as a page source), and `shuffle`,
 `sample`, `seed` (and `sentence`) in the C API options.

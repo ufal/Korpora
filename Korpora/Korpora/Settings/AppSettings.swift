@@ -157,8 +157,8 @@ final class AppSettings {
 
     /// Seeds `ConcordanceDocument.viewMode` for a brand-new document -
     /// see `ConcordanceViewMode`.
-    /// How many hits a search loads at most. A search with more hits shows the first ones and says
-    /// how many there are in all; sorting and sampling work on the loaded ones.
+    /// How many hits sorting, shuffling, sampling and line groups work on at most. Searches show every
+    /// hit; an operation on a larger result covers its first hits only (the status line says so).
     var maxConcordanceLines: Int {
         get {
             let value = defaults.integer(forKey: Key.maxConcordanceLines)

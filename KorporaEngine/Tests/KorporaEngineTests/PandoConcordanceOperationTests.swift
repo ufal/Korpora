@@ -40,17 +40,41 @@ final class PandoConcordanceOperationTests: XCTestCase {
         XCTAssertEqual(lines.map(\.right), ["sleeps", "eats", "runs", "Sleeps", ""])
     }
 
-    func testTheLimitCapsWhatIsLoadedButNotTheTotal() async throws {
+    func testWithoutAnOperationEveryHitCanBeReadWindowByWindow() async throws {
         let live = try await cats(limit: 3)
         let sizeBefore = await live.size
-        XCTAssertEqual(sizeBefore, 3, "size is known before anything is loaded")
-        let lines = try await live.kwicLines()
-        XCTAssertEqual(lines.count, 3)
+        XCTAssertEqual(sizeBefore, 5, "the limit is for operations; reading a result needs none")
+        let window = try await live.kwicLines(range: 1..<4, leftContext: "-1", rightContext: "1", kwicAttr: "form",
+                                              secondaryAttributes: [])
+        XCTAssertEqual(window.map(\.position), [6, 9, 12])
+        XCTAssertEqual(window.map { "\($0.left)|\($0.kwic)|\($0.right)" }, Array(corpusOrder[1..<4]))
+        let past = try await live.kwicLines(range: 3..<50, leftContext: "-1", rightContext: "1", kwicAttr: "form",
+                                            secondaryAttributes: [])
+        XCTAssertEqual(past.map(\.position), [12, 14], "a window past the end is cut to the result")
         let total = await live.totalHits
         XCTAssertEqual(total, 5)
+    }
+
+    func testAnOperationWorksOnTheFirstHitsUpToTheLimit() async throws {
+        let live = try await cats(limit: 3)
+        try await live.shuffle()
         let size = await live.size
-        XCTAssertEqual(size, 3)
-        XCTAssertEqual(lines.map(\.position), [2, 6, 9], "the first hits, in corpus order")
+        XCTAssertEqual(size, 3, "a sort, shuffle or sample of a larger result covers its first hits only")
+        let lines = try await live.kwicLines()
+        XCTAssertEqual(Set(lines.map(\.position)), [2, 6, 9], "the first hits, in corpus order before shuffling")
+        let total = await live.totalHits
+        XCTAssertEqual(total, 5)
+    }
+
+    func testRegionValuesAndGroupsOfAWindow() async throws {
+        let live = try await cats()
+        let genres = try await live.structureValues(attribute: "doc.genre", range: 2..<4)
+        XCTAssertEqual(genres.count, 2)
+        let groups = await live.lineGroupCounts()
+        XCTAssertTrue(groups.isEmpty)
+        try await live.setLineGroup(rangeStart: 0, rangeLen: 2, group: 3)
+        let counts = await live.lineGroupCounts()
+        XCTAssertEqual(counts, [3: 2])
     }
 
     func testAQueryWithNoHits() async throws {

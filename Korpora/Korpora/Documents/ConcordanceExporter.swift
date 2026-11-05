@@ -22,19 +22,29 @@ enum ConcordanceExporter {
     /// word" (rather than, say, one combined suffix per cell) is what keeps
     /// each value attached to the word it actually describes.
     static func export(rows: [ConcordanceRow], format: ConcordanceExportFormat, inlineAttributes: [String] = []) -> String {
-        let separator = format == .commaSeparated ? "," : "\t"
-        var lines = [join(["Group", "Left", "Match", "Right"], separator: separator, format: format)]
-        for row in rows {
-            lines.append(join(
-                [String(row.group),
-                 text(for: row.line.leftTokens, inlineAttributes: inlineAttributes),
-                 text(for: row.line.kwicTokens, inlineAttributes: inlineAttributes),
-                 text(for: row.line.rightTokens, inlineAttributes: inlineAttributes)],
-                separator: separator, format: format))
-        }
+        var lines = [header(format: format)]
+        lines.append(contentsOf: rows.map { line(for: $0, format: format, inlineAttributes: inlineAttributes) })
         // CRLF, not LF - the conventional CSV/TSV line ending (RFC 4180),
         // and harmless either way for a plain-text viewer.
         return lines.joined(separator: "\r\n")
+    }
+
+    /// The heading line (no line ending), for an export written a chunk at a time with `lines(for:)`.
+    static func header(format: ConcordanceExportFormat) -> String {
+        join(["Group", "Left", "Match", "Right"], separator: format == .commaSeparated ? "," : "\t", format: format)
+    }
+
+    /// Each row as a line preceded by a CRLF, so chunks follow the header (or one another) directly.
+    static func lines(for rows: [ConcordanceRow], format: ConcordanceExportFormat, inlineAttributes: [String] = []) -> String {
+        rows.map { "\r\n" + line(for: $0, format: format, inlineAttributes: inlineAttributes) }.joined()
+    }
+
+    private static func line(for row: ConcordanceRow, format: ConcordanceExportFormat, inlineAttributes: [String]) -> String {
+        join([String(row.group),
+              text(for: row.line.leftTokens, inlineAttributes: inlineAttributes),
+              text(for: row.line.kwicTokens, inlineAttributes: inlineAttributes),
+              text(for: row.line.rightTokens, inlineAttributes: inlineAttributes)],
+             separator: format == .commaSeparated ? "," : "\t", format: format)
     }
 
     private static func text(for tokens: [KWICToken], inlineAttributes: [String]) -> String {

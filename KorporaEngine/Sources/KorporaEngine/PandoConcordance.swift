@@ -1,14 +1,23 @@
 import Foundation
 
-/// A pando query with its hits loaded (docs/pando-gui-plan.md).
+/// A pando query and a view of its hits (docs/pando-gui-plan.md).
 ///
-/// pando evaluates lazily and pages, and has no live, re-orderable result set
-/// like Manatee's. So this loads the first `limit` hits once - each with the
-/// attributes of its match tokens and some tokens of context - and keeps a
-/// *view* of them: an ordering and subset that sorting, shuffling, sampling
-/// and deleting line groups change, all in memory. Collocations,
-/// frequencies and region attributes are separate pando programs on the same
-/// query.
+/// pando evaluates lazily and pages, and through the C API it has no stored,
+/// re-orderable result set like Manatee's. So there are two states.
+///
+/// *Windowed* (until the first operation): the view is every hit in corpus
+/// order and lines are read from pando a window at a time (`offset`/`limit`),
+/// so a result of millions of hits can be scrolled to its end; nothing is kept.
+///
+/// *Loaded* (after a sort, shuffle, sample or line group): the first `limit`
+/// hits are loaded once - each with the attributes of its match tokens and some
+/// tokens of context - and the view is an ordering and subset of them that the
+/// operations change, all in memory. For a result larger than `limit` that is
+/// the first `limit` hits only: pando's C API sorts the whole result on every
+/// call (seconds for millions of hits) and has no shuffle or sample.
+///
+/// Collocations, frequencies and region attributes are separate pando programs
+/// on the same query.
 ///
 /// Owns its own engine handle, so it can be cancelled from another thread and
 /// never shares a handle between threads.
@@ -70,8 +79,17 @@ public actor PandoConcordance: ConcordanceHandle {
 
     deinit { library.close(handle) }
 
+    /// No operation yet: the view is every hit, in corpus order, read from pando as needed.
+    private var windowed = true
+
     public var size: Int {
-        loadedWindow == 0 ? min(totalHits, limit) : view.count
+        windowed ? totalHits : view.count
+    }
+
+    /// The index into `lines` of view row `row`, or (windowed) the hit number itself.
+    private func sourceIndex(forRow row: Int) -> Int? {
+        if windowed { return (0..<totalHits).contains(row) ? row : nil }
+        return view.indices.contains(row) ? view[row] : nil
     }
 
     // MARK: Loading
@@ -128,6 +146,7 @@ public actor PandoConcordance: ConcordanceHandle {
         }
         lines = fresh
         loadedWindow = wanted
+        windowed = false
     }
 
     // MARK: Lines
@@ -137,23 +156,42 @@ public actor PandoConcordance: ConcordanceHandle {
         Int(context).map { abs($0) } ?? 10
     }
 
-    public func kwicLines(leftContext: String, rightContext: String, kwicAttr: String,
+    /// One loaded hit as a display line.
+    private func kwicLine(_ line: Line, left: Int, right: Int, kwicAttr: String,
+                          secondaryAttributes: [String]) -> KWICLine {
+        func plain(_ words: [String]) -> [KWICToken] {
+            words.map { KWICToken(word: $0, secondaryAttributes: [:]) }
+        }
+        let kwic = line.match.enumerated().map { offset, token -> KWICToken in
+            var secondary: [String: String] = [:]
+            for name in secondaryAttributes { if let value = token[name] { secondary[name] = value } }
+            let word = token[kwicAttr] ?? (offset < line.matchWords.count ? line.matchWords[offset] : "")
+            return KWICToken(word: word, secondaryAttributes: secondary)
+        }
+        return KWICLine(leftTokens: plain(Array(line.left.suffix(left))), kwicTokens: kwic,
+                        rightTokens: plain(Array(line.right.prefix(right))), position: line.position)
+    }
+
+    public func kwicLines(range: Range<Int>, leftContext: String, rightContext: String, kwicAttr: String,
                           secondaryAttributes: [String]) throws -> [KWICLine] {
         let left = Self.tokens(in: leftContext), right = Self.tokens(in: rightContext)
+        let rows = range.clamped(to: 0..<size)
+        guard !rows.isEmpty else { return [] }
+        if windowed {
+            var attrs = secondaryAttributes
+            if !attrs.contains(kwicAttr) { attrs.append(kwicAttr) }
+            let object = try library.result(library.query(handle, query, PandoLibrary.json([
+                "limit": rows.count, "offset": rows.lowerBound, "total": false,
+                "context": max(left, right), "attrs": attrs,
+            ])))
+            return parse(object["hits"] as? [[String: Any]] ?? []).map {
+                kwicLine($0, left: left, right: right, kwicAttr: kwicAttr, secondaryAttributes: secondaryAttributes)
+            }
+        }
         try ensureLoaded(window: max(left, right))
-        return view.map { index in
-            let line = lines[index]
-            func plain(_ words: [String]) -> [KWICToken] {
-                words.map { KWICToken(word: $0, secondaryAttributes: [:]) }
-            }
-            let kwic = line.match.enumerated().map { offset, token -> KWICToken in
-                var secondary: [String: String] = [:]
-                for name in secondaryAttributes { if let value = token[name] { secondary[name] = value } }
-                let word = token[kwicAttr] ?? (offset < line.matchWords.count ? line.matchWords[offset] : "")
-                return KWICToken(word: word, secondaryAttributes: secondary)
-            }
-            return KWICLine(leftTokens: plain(Array(line.left.suffix(left))), kwicTokens: kwic,
-                            rightTokens: plain(Array(line.right.prefix(right))), position: line.position)
+        return rows.map { row in
+            kwicLine(lines[view[row]], left: left, right: right, kwicAttr: kwicAttr,
+                     secondaryAttributes: secondaryAttributes)
         }
     }
 
@@ -222,8 +260,15 @@ public actor PandoConcordance: ConcordanceHandle {
     }
 
     public func linegroup(at lineIndex: Int) -> Int {
-        guard view.indices.contains(lineIndex) else { return 0 }
+        guard !windowed, view.indices.contains(lineIndex) else { return 0 }
         return groups[view[lineIndex]] ?? 0
+    }
+
+    public func lineGroupCounts() -> [Int: Int] {
+        var counts: [Int: Int] = [:]
+        guard !windowed else { return counts }
+        for index in view { if let group = groups[index], group != 0 { counts[group, default: 0] += 1 } }
+        return counts
     }
 
     public func deleteLineGroups(_ groupNumbers: [Int], invert: Bool) throws {
@@ -243,7 +288,7 @@ public actor PandoConcordance: ConcordanceHandle {
         func add(_ position: Int) {
             counts[min(max(position * bins / corpusSize, 0), bins - 1)] += 1
         }
-        if loadedWindow > 0 && lines.count == totalHits {
+        if !windowed && lines.count == totalHits {
             for index in view { add(lines[index].position) }
             return counts
         }
@@ -271,36 +316,38 @@ public actor PandoConcordance: ConcordanceHandle {
         return (object["rows"] as? [[Any]] ?? []).map { $0.map { "\($0)" } }
     }
 
-    public func structureValues(attribute: String) throws -> [String] {
-        try ensureLoaded(window: Self.minimumWindow)
+    public func structureValues(attribute: String, range: Range<Int>) throws -> [String] {
+        let rows = range.clamped(to: 0..<size)
+        guard !rows.isEmpty else { return [] }
         let name = PandoNames.attribute(attribute)
+        if windowed {
+            return try tabulate(offset: rows.lowerBound, count: rows.count, fields: [name]).map { $0.first ?? "" }
+        }
         if regionValues[name] == nil {
             regionValues[name] = try tabulate(offset: 0, count: lines.count, fields: [name]).map { $0.first ?? "" }
         }
         let values = regionValues[name] ?? []
-        return view.map { values.indices.contains($0) ? values[$0] : "" }
+        return rows.map { values.indices.contains(view[$0]) ? values[view[$0]] : "" }
     }
 
     public func structureInfo(forViewRow row: Int) throws -> [(structure: String, attribute: String, value: String)] {
-        try ensureLoaded(window: Self.minimumWindow)
-        guard view.indices.contains(row) else { return [] }
+        guard let index = sourceIndex(forRow: row) else { return [] }
         var wanted: [(structure: String, attribute: String)] = []
         for structure in structures {
             for attribute in structure.attributes { wanted.append((structure.name, attribute)) }
         }
         guard !wanted.isEmpty else { return [] }
         let fields = wanted.map { PandoNames.attribute("\($0.structure).\($0.attribute)") }
-        guard let values = try tabulate(offset: view[row], count: 1, fields: fields).first else { return [] }
+        guard let values = try tabulate(offset: index, count: 1, fields: fields).first else { return [] }
         return zip(wanted, values).compactMap { entry, value in
             value.isEmpty || value == "_" ? nil : (entry.structure, entry.attribute, value)
         }
     }
 
     public func extendedContext(forViewRow row: Int, tokens: Int) throws -> (before: String, match: String, after: String) {
-        try ensureLoaded(window: Self.minimumWindow)
-        guard view.indices.contains(row) else { throw PandoError.failure("That hit isn\u{2019}t there any more.") }
+        guard let index = sourceIndex(forRow: row) else { throw PandoError.failure("That hit isn\u{2019}t there any more.") }
         let object = try library.result(library.query(handle, query, PandoLibrary.json([
-            "limit": 1, "offset": view[row], "total": false, "context": tokens, "attrs": ["form"],
+            "limit": 1, "offset": index, "total": false, "context": tokens, "attrs": ["form"],
         ])))
         guard let hit = (object["hits"] as? [[String: Any]])?.first, let context = hit["context"] as? [String: Any] else {
             throw PandoError.failure("pando returned no context for that hit.")

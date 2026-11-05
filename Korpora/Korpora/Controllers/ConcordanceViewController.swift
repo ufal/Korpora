@@ -3,7 +3,6 @@ import KorporaEngine
 import UniformTypeIdentifiers
 
 final class ConcordanceViewController: NSViewController {
-    private enum Section { case main }
     private enum Column: String { case disclosure, group, doc, left, kwic, right }
 
     private let document: ConcordanceDocument
@@ -19,7 +18,6 @@ final class ConcordanceViewController: NSViewController {
     let cancelHintLabel = NSTextField(labelWithString: "Press \u{2318}. to cancel")
     private let tableView = SortableTableView()
     private let scrollView = NSScrollView()
-    private var dataSource: NSTableViewDiffableDataSource<Section, Int>!
     // Guards against `syncSortIndicators` (which assigns `tableView.
     // sortDescriptors` to mirror the document's actual current sort) being
     // mistaken for a user header click and re-applied as a new operation.
@@ -140,6 +138,7 @@ final class ConcordanceViewController: NSViewController {
         updateCompletionProvider()
 
         document.onResultsChanged = { [weak self] animated in self?.refresh(animated: animated) }
+        document.onRowsLoaded = { [weak self] range in self?.rowsArrived(range) }
         refresh()
 
         NotificationCenter.default.addObserver(
@@ -325,9 +324,10 @@ final class ConcordanceViewController: NSViewController {
         // Sourced from the concordance's current per-row group, not raw
         // operation counts, so a line reassigned between groups is only
         // ever counted under its actual current group.
-        let counts = Dictionary(grouping: document.rows.filter { $0.group != 0 }, by: \.group)
-            .mapValues(\.count)
-        controller.lineGroups = counts.keys.sorted().map { (group: $0, lineCount: counts[$0]!) }
+        Task { @MainActor in
+            let counts = await document.lineGroupCounts()
+            controller.lineGroups = counts.keys.sorted().map { (group: $0, lineCount: counts[$0]!) }
+        }
     }
 
     @objc func collocationsTapped(_ sender: Any) {
@@ -394,11 +394,40 @@ final class ConcordanceViewController: NSViewController {
             guard let self, response == .OK, let url = panel.url else { return }
             let format: ConcordanceExportFormat = url.pathExtension.lowercased() == "csv" ? .commaSeparated : .tabSeparated
             let inlineAttributes = accessory.includeInlineAttributes ? self.document.inlineAttributes : []
-            let text = ConcordanceExporter.export(rows: self.document.rows, format: format, inlineAttributes: inlineAttributes)
+            self.export(to: url, format: format, inlineAttributes: inlineAttributes)
+        }
+    }
+
+    /// Writes every row of the view, a chunk at a time (a result can have millions of rows, which are
+    /// never all in memory), to a temporary file that then replaces `url`; the status line counts along.
+    private func export(to url: URL, format: ConcordanceExportFormat, inlineAttributes: [String]) {
+        let total = document.rowCount
+        let partial = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Korpora export \(UUID().uuidString)")
+        Task { @MainActor in
+            defer { try? FileManager.default.removeItem(at: partial) }
             do {
-                try text.write(to: url, atomically: true, encoding: .utf8)
+                FileManager.default.createFile(atPath: partial.path, contents: nil)
+                let handle = try FileHandle(forWritingTo: partial)
+                defer { try? handle.close() }
+                try handle.write(contentsOf: Data(ConcordanceExporter.header(format: format).utf8))
+                var written = 0
+                try await document.forEachRow { rows in
+                    let text = ConcordanceExporter.lines(for: rows, format: format, inlineAttributes: inlineAttributes)
+                    try handle.write(contentsOf: Data(text.utf8))
+                    written += rows.count
+                    statusLabel.stringValue = "Exporting \(written.formatted()) of \(total.formatted()) lines…"
+                }
+                try handle.close()
+                if FileManager.default.fileExists(atPath: url.path) {
+                    _ = try FileManager.default.replaceItemAt(url, withItemAt: partial)
+                } else {
+                    try FileManager.default.moveItem(at: partial, to: url)
+                }
+                statusLabel.stringValue = document.status
             } catch {
-                self.showErrorAlert(error)
+                statusLabel.stringValue = document.status
+                showErrorAlert(error)
             }
         }
     }
@@ -526,10 +555,7 @@ final class ConcordanceViewController: NSViewController {
         tableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         tableView.onSortDescriptorsChange = { [weak self] in self?.headerSortChanged($0) }
 
-        dataSource = NSTableViewDiffableDataSource<Section, Int>(tableView: tableView) { [weak self] _, column, _, id in
-            self?.makeCell(for: column, rowID: id) ?? NSView()
-        }
-        tableView.dataSource = dataSource
+        tableView.dataSource = self
         tableView.delegate = self
         // Double-click a line to show its Extended Context (6.6a) - the
         // same action the "Extended Context…" context-menu item runs, and
@@ -636,7 +662,7 @@ final class ConcordanceViewController: NSViewController {
     }
 
     private func makeCell(for column: NSTableColumn?, rowID: Int) -> NSView {
-        guard document.rows.indices.contains(rowID) else { return NSView() }
+        guard rowID >= 0, rowID < document.rowCount else { return NSView() }
         let kind = column.flatMap { Column(rawValue: $0.identifier.rawValue) }
         // An expanded row's *text* is rendered entirely by the overlay
         // `applyOverlay` adds to its `NSTableRowView` (one continuous
@@ -649,10 +675,11 @@ final class ConcordanceViewController: NSViewController {
         if expandedRowIDs.contains(rowID), let kind, !Self.leadingMetadataColumns.contains(kind) {
             return NSView()
         }
-        let row = document.rows[rowID]
         if kind == .disclosure {
             return makeDisclosureCell(rowID: rowID)
         }
+        // Not read from the engine yet (it is being fetched: `rowsArrived` redraws it).
+        guard let row = document.row(at: rowID) else { return NSView() }
         let cell = KWICCellView()
         let inlineAttributes = document.inlineAttributes
         let tooltipAttributes = document.tooltipAttributes
@@ -734,7 +761,7 @@ final class ConcordanceViewController: NSViewController {
     /// existing expansions; with it off, they all collapse first, which is
     /// exactly 6.6's single-expansion behavior.
     private func toggleInlineExtendedContext(for row: Int) {
-        guard document.rows.indices.contains(row) else { return }
+        guard row >= 0, row < document.rowCount else { return }
         if expandedRowIDs.contains(row) {
             expandedRowIDs.remove(row)
             expandedContexts[row] = nil
@@ -747,7 +774,7 @@ final class ConcordanceViewController: NSViewController {
                 // Re-checked after the await, not before: the row could
                 // have been collapsed (or the whole table replayed) while
                 // the fetch was in flight.
-                guard document.rows.indices.contains(row) else { return }
+                guard row >= 0, row < document.rowCount else { return }
                 var changed = [row]
                 if !allowsMultipleExtendedContexts {
                     changed.append(contentsOf: expandedRowIDs.filter { $0 != row })
@@ -910,20 +937,14 @@ final class ConcordanceViewController: NSViewController {
         }
         statusLabel.stringValue = document.status
         cancelHintLabel.isHidden = !document.isSearching
-        var snapshot = NSDiffableDataSourceSnapshot<Section, Int>()
-        snapshot.appendSections([.main])
-        let ids = document.rows.map(\.id)
-        snapshot.appendItems(ids)
-        // A row's `id` is a stable offset, not a content hash - e.g. a
-        // line-group assignment changes `group` without changing `id`, so
-        // without an explicit reload the diffable data source would decide
-        // nothing changed and leave the (now stale) cell alone.
-        snapshot.reloadItems(ids)
-        dataSource.apply(snapshot, animatingDifferences: animated)
+        // Rows are read from the engine a window at a time (`ConcordanceDocument.row(at:)`), so the table
+        // is told only how many there are.
+        tableView.reloadData()
+        if animated { tableView.scrollRowToVisible(0) }
         windowController?.updateToolbarState(hasLineGroups: document.hasLineGroups)
         syncSortIndicators()
         // If the Operations popover is open, its line-group rows are sourced
-        // from `document.rows` (see `updateOperationsPopover`), which only
+        // from the engine's line groups (see `updateOperationsPopover`), which only
         // becomes current once the async replay triggered by a remove/clear
         // actually finishes - i.e. right here, not at the moment the button
         // was clicked. Without this, the popover shows stale line-group
@@ -958,15 +979,14 @@ final class ConcordanceViewController: NSViewController {
 
     @objc private func copySelection(_ sender: Any) {
         let row = tableView.clickedRow
-        guard document.rows.indices.contains(row) else { return }
-        let line = document.rows[row].line
+        guard let line = document.row(at: row)?.line else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString("\(line.left)\t\(line.kwic)\t\(line.right)", forType: .string)
     }
 
     @objc private func showDocumentInfo(_ sender: Any) {
         let row = tableView.clickedRow
-        guard document.rows.indices.contains(row) else { return }
+        guard row >= 0, row < document.rowCount else { return }
         Task { @MainActor in
             do {
                 let info = try await document.structuralInfo(at: row)
@@ -990,7 +1010,7 @@ final class ConcordanceViewController: NSViewController {
     /// popup; `.inline` expands the row itself in place instead.
     @objc private func showExtendedContext(_ sender: Any) {
         let row = tableView.clickedRow
-        guard document.rows.indices.contains(row) else { return }
+        guard row >= 0, row < document.rowCount else { return }
         guard AppSettings.shared.extendedContextDisplayMode == .inline else {
             Task { @MainActor in
                 do {
@@ -1030,7 +1050,25 @@ final class ConcordanceViewController: NSViewController {
     }
 }
 
+extension ConcordanceViewController: NSTableViewDataSource {
+    func numberOfRows(in tableView: NSTableView) -> Int { document.rowCount }
+}
+
 extension ConcordanceViewController: NSTableViewDelegate {
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        makeCell(for: tableColumn, rowID: row)
+    }
+
+    /// Rows that were not loaded when they were drawn have arrived: redraw the ones on screen.
+    fileprivate func rowsArrived(_ range: Range<Int>) {
+        let visible = tableView.rows(in: tableView.visibleRect)
+        guard visible.length > 0 else { return }
+        let arrived = range.clamped(to: visible.location..<(visible.location + visible.length))
+        guard !arrived.isEmpty else { return }
+        tableView.reloadData(forRowIndexes: IndexSet(integersIn: arrived),
+                             columnIndexes: IndexSet(0..<tableView.numberOfColumns))
+    }
+
     /// Only an expanded row (inline Extended Context - see
     /// `expandedRowIDs`) ever differs from `tableView.rowHeight`; sized to
     /// how tall its paragraph needs to be at the row's *current* width
