@@ -5,6 +5,7 @@ public enum CorpusImportError: Error, CustomStringConvertible {
     case noInput
     case nameTaken(String)
     case failed(String)
+    case folderUnavailable(URL)
 
     public var description: String {
         switch self {
@@ -12,6 +13,9 @@ public enum CorpusImportError: Error, CustomStringConvertible {
         case .noInput: return "There is nothing to import."
         case .nameTaken(let name): return "A corpus named \u{201C}\(name)\u{201D} is already in Korpora."
         case .failed(let log): return "Indexing failed.\n\n\(log)"
+        case .folderUnavailable(let url):
+            return "The folder for corpora (\(url.path)) isn\u{2019}t available. Is its disk connected? "
+                + "You can choose another folder in Settings > Corpora."
         }
     }
 }
@@ -62,6 +66,7 @@ public enum CorpusImporter {
         }
         let fm = FileManager.default
         let base = CorpusLibrary.baseDirectory
+        guard CorpusLibrary.baseDirectoryIsAvailable else { throw CorpusImportError.folderUnavailable(base) }
         try fm.createDirectory(at: base, withIntermediateDirectories: true)
         let destination = base.appendingPathComponent(name, isDirectory: true)
         guard !fm.fileExists(atPath: destination.path), !CorpusLibrary.names().contains(name) else {

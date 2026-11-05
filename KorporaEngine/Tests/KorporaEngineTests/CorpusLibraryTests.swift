@@ -304,4 +304,80 @@ final class CorpusLibraryTests: XCTestCase {
         broken.isMissing = true
         XCTAssertThrowsError(try CorpusLibrary.bringIn(broken, copy: true))
     }
+
+    // MARK: The folder for built corpora
+
+    func testAChosenFolderReplacesTheDefaultButNotTheTestOverride() throws {
+        let box = try TestPando.Sandbox()
+        let chosen = box.elsewhere.appendingPathComponent("My Corpora")
+        CorpusLibrary.customBaseDirectory = chosen
+        defer { CorpusLibrary.customBaseDirectory = nil }
+        XCTAssertEqual(CorpusLibrary.baseDirectory.path, box.corpora.path, "the environment override wins (tests)")
+
+        unsetenv("KORPORA_CORPORA_DIRECTORY")
+        XCTAssertEqual(CorpusLibrary.baseDirectory.path, chosen.path)
+        XCTAssertTrue(CorpusLibrary.baseDirectoryIsChosen)
+        XCTAssertFalse(CorpusLibrary.baseDirectoryIsAvailable, "a disk that isn't there")
+        try FileManager.default.createDirectory(at: chosen, withIntermediateDirectories: true)
+        XCTAssertTrue(CorpusLibrary.baseDirectoryIsAvailable)
+        try box.fakeIndex(named: "here", in: chosen, tokens: 3)
+        XCTAssertEqual(CorpusLibrary.entries().map(\.name), ["here"])
+
+        CorpusLibrary.customBaseDirectory = nil
+        XCTAssertTrue(CorpusLibrary.baseDirectory.path.hasSuffix("Korpora/Corpora"))
+        XCTAssertFalse(CorpusLibrary.baseDirectoryIsChosen)
+        XCTAssertTrue(CorpusLibrary.baseDirectoryIsAvailable, "the default is made when needed")
+    }
+
+    func testImportingIntoAMissingChosenFolderSaysSoInsteadOfCreatingIt() async throws {
+        let box = try TestPando.Sandbox()
+        unsetenv("KORPORA_CORPORA_DIRECTORY")
+        CorpusLibrary.customBaseDirectory = box.elsewhere.appendingPathComponent("Disk That Is Gone")
+        defer { CorpusLibrary.customBaseDirectory = nil }
+        do {
+            _ = try await CorpusImporter.importCorpus(
+                name: "x", inputs: [box.root], tool: URL(fileURLWithPath: "/usr/bin/true"))
+            XCTFail("should not import")
+        } catch let error as CorpusImportError {
+            guard case .folderUnavailable = error else { return XCTFail("\(error)") }
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: box.elsewhere.appendingPathComponent("Disk That Is Gone").path))
+    }
+
+    func testOnlyAWritableFolderOutsideTheCurrentOneIsAcceptable() throws {
+        let box = try TestPando.Sandbox()
+        let current = box.corpora
+        try FileManager.default.createDirectory(at: current, withIntermediateDirectories: true)
+        let fine = box.elsewhere.appendingPathComponent("fine")
+        try FileManager.default.createDirectory(at: fine, withIntermediateDirectories: true)
+        XCTAssertNoThrow(try CorpusLibrary.validateNewBaseDirectory(fine, replacing: current))
+
+        XCTAssertThrowsError(try CorpusLibrary.validateNewBaseDirectory(box.elsewhere.appendingPathComponent("nope"), replacing: current))
+        let inside = current.appendingPathComponent("inside")
+        try FileManager.default.createDirectory(at: inside, withIntermediateDirectories: true)
+        XCTAssertThrowsError(try CorpusLibrary.validateNewBaseDirectory(inside, replacing: current))
+        let file = box.elsewhere.appendingPathComponent("file.txt")
+        try "x".write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try CorpusLibrary.validateNewBaseDirectory(file, replacing: current))
+    }
+
+    func testMovingTheBuiltCorporaKeepsNamesAndSizesAndSkipsTakenNames() throws {
+        let box = try TestPando.Sandbox()
+        try box.fakeIndex(named: "alpha", in: box.corpora, tokens: 11)
+        try box.fakeIndex(named: "beta", in: box.corpora, tokens: 22)
+        try box.fakeIndex(named: ".Removed", in: box.corpora)  // not a listed corpus: stays
+        let new = box.elsewhere.appendingPathComponent("SSD")
+        try box.fakeIndex(named: "beta", in: new, tokens: 99)  // already there
+
+        let result = CorpusLibrary.moveBuiltCorpora(from: box.corpora, to: new)
+        XCTAssertEqual(result.moved, ["alpha"])
+        XCTAssertEqual(result.skipped, ["beta"])
+        XCTAssertTrue(result.failed.isEmpty)
+        XCTAssertEqual(CorpusLibrary.builtCorpora(in: new).map(\.name), ["alpha", "beta"])
+        XCTAssertEqual(CorpusLibrary.builtCorpora(in: new).map(\.tokens), [11, 99], "the one already there is untouched")
+        XCTAssertEqual(CorpusLibrary.builtCorpora(in: box.corpora).map(\.name), ["beta"], "the skipped one stays")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: box.corpora.appendingPathComponent(".Removed").path))
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: new.path).filter { $0.hasPrefix(".moving") }
+        XCTAssertTrue(leftovers.isEmpty, "no staging folder left")
+    }
 }

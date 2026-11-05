@@ -10,10 +10,39 @@ import Foundation
 ///   on a server, a shared drive, a download), each a symlink in
 ///   `linkedDirectory`, so Korpora never copies or owns their data.
 public enum CorpusLibrary {
-    /// Built corpora, one folder each. Finder-visible.
-    /// `KORPORA_CORPORA_DIRECTORY` overrides it (tests, development).
+    /// Built corpora, one folder each. Finder-visible. The folder the user chose in Settings
+    /// (`customBaseDirectory`), else `defaultBaseDirectory`; `KORPORA_CORPORA_DIRECTORY` overrides both
+    /// (tests, development).
     public static var baseDirectory: URL {
-        directory(environment: "KORPORA_CORPORA_DIRECTORY", default: "Korpora/Corpora")
+        if let override = ProcessInfo.processInfo.environment["KORPORA_CORPORA_DIRECTORY"], !override.isEmpty {
+            return URL(fileURLWithPath: override, isDirectory: true)
+        }
+        return customBaseDirectory ?? defaultBaseDirectory
+    }
+
+    /// Where built corpora go unless the user chose another folder.
+    public static var defaultBaseDirectory: URL {
+        directory(environment: "KORPORA_DEFAULT_CORPORA_DIRECTORY", default: "Korpora/Corpora")
+    }
+
+    private static let customLock = NSLock()
+    private static var customStorage: URL?
+
+    /// The folder the user chose for built corpora (for example on an external disk); nil for the default.
+    /// The app sets it from its settings at launch and whenever the choice changes.
+    public static var customBaseDirectory: URL? {
+        get { customLock.withLock { customStorage } }
+        set { customLock.withLock { customStorage = newValue } }
+    }
+
+    /// Whether built corpora are kept in a folder the user chose.
+    public static var baseDirectoryIsChosen: Bool { customBaseDirectory != nil }
+
+    /// A folder the user chose can be on a disk that is not connected; the default is made when needed.
+    public static var baseDirectoryIsAvailable: Bool {
+        guard baseDirectoryIsChosen else { return true }
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: baseDirectory.path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 
     /// Symlinks to index folders kept elsewhere.
@@ -62,9 +91,12 @@ public enum CorpusLibrary {
         case nameTaken(String)
         case notACorpus(URL)
         case invalidName(String)
+        case unusableFolder(String)
 
         public var description: String {
             switch self {
+            case .unusableFolder(let reason):
+                return reason
             case .nameTaken(let name):
                 return "A corpus named \u{201C}\(name)\u{201D} is already in Korpora."
             case .notACorpus(let url):
@@ -187,6 +219,64 @@ public enum CorpusLibrary {
             }
         }
         return (added, skipped)
+    }
+
+    // MARK: Moving the corpora folder
+
+    /// Why `folder` can't be the place for built corpora, if it can't: not a folder, not writable, or inside the
+    /// current one (it would have to hold itself).
+    public static func validateNewBaseDirectory(_ folder: URL, replacing current: URL) throws {
+        let fm = FileManager.default
+        var isDirectory: ObjCBool = false
+        guard fm.fileExists(atPath: folder.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            throw LibraryError.unusableFolder("\u{201C}\(folder.lastPathComponent)\u{201D} isn\u{2019}t a folder.")
+        }
+        guard fm.isWritableFile(atPath: folder.path) else {
+            throw LibraryError.unusableFolder("Korpora can\u{2019}t write to \u{201C}\(folder.lastPathComponent)\u{201D}.")
+        }
+        let new = folder.resolvingSymlinksInPath().path, old = current.resolvingSymlinksInPath().path
+        if new.hasPrefix(old + "/") {
+            throw LibraryError.unusableFolder("The new folder can\u{2019}t be inside the current one.")
+        }
+    }
+
+    /// The corpora Korpora built that sit in `folder`.
+    public static func builtCorpora(in folder: URL) -> [Entry] {
+        corpusFolders(in: folder).map {
+            Entry(name: $0.lastPathComponent, origin: .built, directory: $0, tokens: tokenCount(of: $0))
+        }
+    }
+
+    /// What `moveBuiltCorpora` did, corpus by corpus.
+    public struct MoveResult: Sendable {
+        public var moved: [String] = []
+        /// Left where they were: the new folder already has a corpus of that name.
+        public var skipped: [String] = []
+        public var failed: [(name: String, reason: String)] = []
+    }
+
+    /// Moves every built corpus from `old` to `new`, one at a time. Each goes through a hidden name first and is
+    /// renamed into place at the end, so a copy to another disk that is stopped never leaves half a corpus
+    /// listed. An existing corpus of the same name in `new` is never overwritten.
+    public static func moveBuiltCorpora(from old: URL, to new: URL, onProgress: (String) -> Void = { _ in }) -> MoveResult {
+        let fm = FileManager.default
+        var result = MoveResult()
+        for folder in corpusFolders(in: old) {
+            let name = folder.lastPathComponent
+            let destination = new.appendingPathComponent(name, isDirectory: true)
+            guard !fm.fileExists(atPath: destination.path) else { result.skipped.append(name); continue }
+            onProgress(name)
+            let staging = new.appendingPathComponent(".moving-\(UUID().uuidString)", isDirectory: true)
+            do {
+                try fm.moveItem(at: folder, to: staging)
+                try fm.moveItem(at: staging, to: destination)
+                result.moved.append(name)
+            } catch {
+                try? fm.removeItem(at: staging)
+                result.failed.append((name, error.localizedDescription))
+            }
+        }
+        return result
     }
 
     // MARK: Relinking and bringing in
