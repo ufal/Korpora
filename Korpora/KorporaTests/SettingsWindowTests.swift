@@ -33,7 +33,7 @@ import Testing
         let designed: [SettingsWindowController.Pane: NSSize] = [
             .corpora: NSSize(width: 680, height: 440),
             .appearance: NSSize(width: 420, height: 470),
-            .concordance: NSSize(width: 460, height: 260),
+            .concordance: NSSize(width: 460, height: 290),
         ]
         for pane in SettingsWindowController.Pane.allCases {
             SettingsWindowController.shared.showPane(pane)

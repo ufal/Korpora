@@ -118,6 +118,19 @@ private struct FakeEngine: CorpusEngine {
         #expect(document.status == "3 hits in the 1,000-token corpus \u{201C}fakecorp\u{201D}", "\(document.status)")
     }
 
+    @Test func sentenceViewAsksTheEngineForTheSentenceAndKwicRestoresTheWidth() async {
+        let document = document()
+        document.runQuery("[form=\"x\"]")
+        await settle(document)
+        document.setContext(left: 7, right: 8)
+        document.setViewMode(.sentence)
+        for _ in 0..<500 where !recorder.all.contains("kwic -1:s 1:s form") { try? await Task.sleep(for: .milliseconds(2)) }
+        #expect(recorder.all.contains("kwic -1:s 1:s form"), "\(recorder.all)")
+        document.setViewMode(.kwic)
+        for _ in 0..<500 where !recorder.all.contains("kwic -7 8 form") { try? await Task.sleep(for: .milliseconds(2)) }
+        #expect(recorder.all.contains("kwic -7 8 form"), "the width set before is back: \(recorder.all)")
+    }
+
     @Test func theCorpusDecidesWhichAttributeIsShown() async {
         let document = document()
         #expect(document.kwicAttr == "form")
@@ -291,6 +304,19 @@ private struct FakeEngine: CorpusEngine {
         #expect(saved["formatVersion"] as? Int == 3)
         #expect(saved["engine"] as? String == "pando")
         #expect(saved["subcorpus"] == nil)
+    }
+
+    @Test func theViewModeIsSavedAndAnOlderDocumentIsKwic() throws {
+        let document = ConcordanceDocument()
+        document.corpusName = "syn"
+        document.setViewMode(.sentence)
+        let copy = ConcordanceDocument()
+        try copy.read(from: document.data(ofType: "corpconc"), ofType: "corpconc")
+        #expect(copy.viewMode == .sentence)
+        let older = ConcordanceDocument()
+        older.setViewMode(.sentence)
+        try older.read(from: state(), ofType: "corpconc")      // no "viewMode" key
+        #expect(older.viewMode == .kwic)
     }
 
     @Test func roundTripKeepsTheContentIncludingTheSubcorpus() throws {

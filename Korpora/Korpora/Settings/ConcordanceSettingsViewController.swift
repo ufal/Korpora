@@ -8,6 +8,8 @@ import KorporaEngine
 final class ConcordanceSettingsViewController: NSViewController {
     private let leftContextField = NSTextField(string: "")
     private let rightContextField = NSTextField(string: "")
+    private let viewModeControl = NSSegmentedControl(
+        labels: ["KWIC", "Sentence"], trackingMode: .selectOne, target: nil, action: nil)
     private let maxLinesField = NSTextField(string: "")
     private let extendedContextField = NSTextField(string: "")
     // "Window", not "Sheet": the `.sheet` case keeps its name/rawValue for
@@ -21,12 +23,13 @@ final class ConcordanceSettingsViewController: NSViewController {
         target: nil, action: nil)
 
     override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 220))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 250))
 
         let contextLabel = NSTextField(labelWithString: "Default context width:")
         let leftLabel = NSTextField(labelWithString: "Left:")
         let rightLabel = NSTextField(labelWithString: "Right:")
-        let viewModeLabel = NSTextField(labelWithString: "Full sorting options up to (hits):")
+        let viewModeLabel = NSTextField(labelWithString: "Default view:")
+        let maxLinesLabel = NSTextField(labelWithString: "Full sorting options up to (hits):")
         let extendedLabel = NSTextField(labelWithString: "Extended context tokens:")
         let extendedDisplayLabel = NSTextField(labelWithString: "Extended context display:")
 
@@ -38,6 +41,11 @@ final class ConcordanceSettingsViewController: NSViewController {
             + "grouped in memory with every option (several sort keys, retrograde, unique, alphabetical order of the "
             + "language, line groups). pando sorts one key, shuffles and samples a bigger result itself, in code-point "
             + "order; several keys, retrograde, unique and line groups then work on the first hits only."
+        viewModeControl.segmentStyle = .texturedRounded
+        viewModeControl.target = self
+        viewModeControl.action = #selector(viewModeChanged)
+        viewModeControl.setToolTip("KWIC: the same number of tokens left and right of every hit.", forSegment: 0)
+        viewModeControl.setToolTip("Sentence: the whole sentence around every hit.", forSegment: 1)
         extendedContextDisplayControl.segmentStyle = .texturedRounded
         extendedContextDisplayControl.target = self
         extendedContextDisplayControl.action = #selector(extendedContextDisplayModeChanged)
@@ -49,12 +57,13 @@ final class ConcordanceSettingsViewController: NSViewController {
         rightContextField.stringValue = String(settings.defaultRightContext)
         extendedContextField.stringValue = String(settings.defaultExtendedContextTokens)
         maxLinesField.stringValue = settings.maxConcordanceLines.formatted()
+        viewModeControl.selectedSegment = settings.defaultViewMode == .sentence ? 1 : 0
         extendedContextDisplayControl.selectedSegment = settings.extendedContextDisplayMode == .inline ? 1 : 0
         allowMultipleExtendedContextsButton.state = settings.allowMultipleExtendedContexts ? .on : .off
 
         let views: [NSView] = [
             contextLabel, leftLabel, leftContextField, rightLabel, rightContextField,
-            viewModeLabel, maxLinesField, extendedLabel, extendedContextField,
+            viewModeLabel, viewModeControl, maxLinesLabel, maxLinesField, extendedLabel, extendedContextField,
             extendedDisplayLabel, extendedContextDisplayControl,
             allowMultipleExtendedContextsButton,
         ]
@@ -82,10 +91,15 @@ final class ConcordanceSettingsViewController: NSViewController {
 
             viewModeLabel.topAnchor.constraint(equalTo: leftLabel.bottomAnchor, constant: 20),
             viewModeLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20),
-            maxLinesField.centerYAnchor.constraint(equalTo: viewModeLabel.centerYAnchor),
-            maxLinesField.leadingAnchor.constraint(equalTo: viewModeLabel.trailingAnchor, constant: 8),
+            viewModeControl.centerYAnchor.constraint(equalTo: viewModeLabel.centerYAnchor),
+            viewModeControl.leadingAnchor.constraint(equalTo: viewModeLabel.trailingAnchor, constant: 8),
 
-            extendedLabel.topAnchor.constraint(equalTo: viewModeLabel.bottomAnchor, constant: 20),
+            maxLinesLabel.topAnchor.constraint(equalTo: viewModeLabel.bottomAnchor, constant: 20),
+            maxLinesLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20),
+            maxLinesField.centerYAnchor.constraint(equalTo: maxLinesLabel.centerYAnchor),
+            maxLinesField.leadingAnchor.constraint(equalTo: maxLinesLabel.trailingAnchor, constant: 8),
+
+            extendedLabel.topAnchor.constraint(equalTo: maxLinesLabel.bottomAnchor, constant: 20),
             extendedLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20),
             extendedContextField.centerYAnchor.constraint(equalTo: extendedLabel.centerYAnchor),
             extendedContextField.leadingAnchor.constraint(equalTo: extendedLabel.trailingAnchor, constant: 8),
@@ -108,7 +122,11 @@ final class ConcordanceSettingsViewController: NSViewController {
 
         // A form: nothing here can use extra room, so it stays centered.
         view = SettingsLayout.centeredRoot(around: root, width: 460)
-        preferredContentSize = NSSize(width: 460, height: 260)
+        preferredContentSize = NSSize(width: 460, height: 290)
+    }
+
+    @objc private func viewModeChanged() {
+        AppSettings.shared.defaultViewMode = viewModeControl.selectedSegment == 1 ? .sentence : .kwic
     }
 
     @objc private func extendedContextDisplayModeChanged() {

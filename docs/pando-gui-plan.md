@@ -52,7 +52,7 @@ positions; warn when CoNLL-U metadata values with spaces are dropped (`# text_X`
 - **App** (173 tests): library in Settings (Tokens column, import from CoNLL-U/folders, add/remove, Keep in Memory),
   New Concordance sheet, subcorpus picker (values with document counts), sort popover, load limit in Settings, document
   format 3, pando-CQL colouring and completion. Removed: the filter sheet and "Filter to Selection", the sentence view
-  (KWIC only), the CQL-expression mode of subcorpora, registry settings, the vertical import sheet.
+  (KWIC only; back on 2026-11-05), the CQL-expression mode of subcorpora, registry settings, the vertical import sheet.
 - **Release plumbing**: `build-release-deps.sh` builds pando at the macOS 15 floor; `make-release.sh --skip-notarize` makes a
   signed app with `libpando.dylib` and `pando-index` bundled (6.9 MB; the DMG 4.3 MB). Not yet: a notarized release, and the VM
   smoke test (updated for pando, not run).
@@ -85,15 +85,18 @@ while a name is being edited.
   alphabet; the region column and "Document Info" are blank/unavailable for shuffled or sampled hits of a big result (pando's
   hit pages carry no region values).
 - Words around a hit show their spelling only (no lemma/tag under context words; sorting by left/right words is by spelling).
-- No positive/negative filter, no sentence view mode, no `.subc`-style typed subcorpus expressions.
+- No positive/negative filter, no `.subc`-style typed subcorpus expressions. The KWIC | Sentence switch is back (toolbar, and a
+  default in Settings > Concordance): pando's `sentence` option, since 0.4.2; Context is off in Sentence view.
 - Subcorpora are picks of document properties, saved per corpus; they restrict every search in them.
 - Frequencies have a "Per million" column and chart measure (pando's `freq`: relative to the tokens of the value's documents
   for a document property, to the whole corpus otherwise - the same as Manatee's "norm"-based figure, plus the latter).
 - Old `.corpconc` documents (format 1-2) don't open: a message says why. Old Manatee corpora are not read.
 
 ### Asks for pando (Maarten)
-Attributes on context tokens; sentence-bounded context, `shuffle`, `sample`, `seed` and cached sorted paging through the C API (draft: docs/pando-issue-c-api-options.md); a hit-position histogram; a warning when CoNLL-U metadata values with spaces are dropped (`# text_X` vs
-`# meta::X`); a licence.
+Open: attributes on context tokens; region attribute values in hit pages (then the Document column and info also work for
+shuffled and sampled hits of a big result); collation for sorting (pando sorts by code point); several sort keys; a
+hit-position histogram. Done in 0.4.2-0.4.4: `sentence`, `shuffle`, `sample`, `seed` in `pando_query`, `cat` paging of a sorted
+set, CoNLL-U metadata values with spaces, the MIT licence (ufal/pando#1 and #3; draft docs/pando-issue-c-api-options.md).
 
 ### Next
 Click-through of the whole UI; the workshop (plain text and documents to corpus through Flexiconv and Flexipipe in a

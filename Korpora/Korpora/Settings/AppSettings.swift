@@ -19,6 +19,7 @@ final class AppSettings {
         static let minimumFreeMemoryAfterResidency = "minimumFreeMemoryAfterResidency"
         static let defaultLeftContext = "defaultLeftContext"
         static let defaultRightContext = "defaultRightContext"
+        static let defaultViewMode = "defaultViewMode"
         static let defaultExtendedContextTokens = "defaultExtendedContextTokens"
         static let scriptFontOverrides = "scriptFontOverrides"
         static let positionalAttributeColor = "positionalAttributeColor"
@@ -157,6 +158,14 @@ final class AppSettings {
 
     /// Seeds `ConcordanceDocument.viewMode` for a brand-new document -
     /// see `ConcordanceViewMode`.
+    var defaultViewMode: ConcordanceViewMode {
+        get { defaults.string(forKey: Key.defaultViewMode).flatMap(ConcordanceViewMode.init(rawValue:)) ?? .kwic }
+        set {
+            defaults.set(newValue.rawValue, forKey: Key.defaultViewMode)
+            NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
+        }
+    }
+
     /// Up to how many hits a result is sorted, shuffled and grouped in memory, with every option. Searches
     /// show every hit; on a bigger result pando sorts one key, shuffles and samples, and what it can't do
     /// (several keys, line groups, ...) works on the first hits only (the status line says so).

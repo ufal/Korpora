@@ -171,6 +171,32 @@ final class PandoConcordanceOperationTests: XCTestCase {
         XCTAssertFalse(partial)
     }
 
+    // MARK: Sentence view
+
+    func testSentenceContextStopsAtTheSentenceBoundary() async throws {
+        let live = try await cats()
+        let lines = try await live.kwicLines(range: 0..<5, leftContext: "-1:s", rightContext: "1:s", kwicAttr: "form",
+                                             secondaryAttributes: [])
+        // Fifth hit: the one-word sentence s5, whose left neighbour in a token window is the end of s4.
+        XCTAssertEqual(lines.map { "\($0.left)|\($0.kwic)|\($0.right)" },
+                       ["the big|cat|sleeps", "a small|cat|eats", "one|cat|runs", "my|cat|Sleeps", "|cat|"])
+        let kwic = try await live.kwicLines(leftContext: "-1", rightContext: "1", kwicAttr: "form", secondaryAttributes: [])
+        XCTAssertEqual(kwic.last?.left, "Sleeps", "back to a token window gives the neighbour again")
+    }
+
+    func testSentenceContextAlsoOfSortedAndBigResults() async throws {
+        let live = try await cats()
+        try await live.shuffle()
+        let loaded = try await live.kwicLines(leftContext: "-1:s", rightContext: "1:s", kwicAttr: "form", secondaryAttributes: [])
+        XCTAssertEqual(Set(loaded.map { "\($0.left)|\($0.kwic)|\($0.right)" }),
+                       ["the big|cat|sleeps", "a small|cat|eats", "one|cat|runs", "my|cat|Sleeps", "|cat|"], "in memory")
+        let big = try await cats(limit: 2)
+        try await big.sort(SortCriteria(SortLevel(attribute: "form", anchor: .right, span: 1, caseInsensitive: true)))
+        let sorted = try await big.kwicLines(leftContext: "-1:s", rightContext: "1:s", kwicAttr: "form", secondaryAttributes: [])
+        XCTAssertEqual(sorted.map(\.right), ["", "eats", "runs", "sleeps", "Sleeps"], "sorted by pando, sentence context")
+        XCTAssertEqual(sorted.first?.left, "")
+    }
+
     func testRegionValuesAndGroupsOfAWindow() async throws {
         let live = try await cats()
         let genres = try await live.structureValues(attribute: "doc.genre", range: 2..<4)

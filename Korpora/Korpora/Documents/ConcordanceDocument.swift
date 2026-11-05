@@ -41,6 +41,14 @@ enum ExtendedContextDisplayMode: String, Codable {
     case inline
 }
 
+/// KWIC (a fixed number of tokens each side, `leftContext`/`rightContext`) vs. Sentence (the whole sentence
+/// around the hit, whatever `leftContext`/`rightContext` say). Like KonText, a switch independent of the
+/// numeric width, so going back to KWIC restores the width that was set.
+enum ConcordanceViewMode: String, Codable {
+    case kwic
+    case sentence
+}
+
 /// The persisted content is the query, not the materialized rows - stable
 /// and small regardless of result-set size, and the base that the
 /// `operations` chain (see `ConcordanceOperation`) replays against. See
@@ -65,6 +73,8 @@ final class ConcordanceDocument: NSDocument {
     // one (`read(from:)` immediately overwrites them anyway).
     var leftContext = "-\(AppSettings.shared.defaultLeftContext)"
     var rightContext = "\(AppSettings.shared.defaultRightContext)"
+    /// See `ConcordanceViewMode`; `effectiveLeftContext`/`effectiveRightContext` are what the engine is asked for.
+    private(set) var viewMode: ConcordanceViewMode = AppSettings.shared.defaultViewMode
     /// The attribute shown as each token (`form` for pando corpora; set from the corpus when a search runs
     /// if the saved one isn't there).
     var kwicAttr = "form"
@@ -213,7 +223,8 @@ final class ConcordanceDocument: NSDocument {
         -> (rows: [ConcordanceRow], count: Int, source: RowSource) {
         let count = await live.size
         let source = RowSource(
-            live: live, count: count, leftContext: leftContext, rightContext: rightContext, kwicAttr: kwicAttr,
+            live: live, count: count, leftContext: effectiveLeftContext, rightContext: effectiveRightContext,
+            kwicAttr: kwicAttr,
             secondaryAttributes: attributesToFetch, structuralAttribute: structuralAttributeToShow,
             descending: descending)
         let first = try await Self.fetchRows(0..<min(count, 2 * Self.rowChunk), from: source)
@@ -487,12 +498,18 @@ final class ConcordanceDocument: NSDocument {
         refetchDisplay()
     }
 
-    /// What's actually sent to the engine for left/right context - see
-    /// `ConcordanceViewMode`. `-1:s`/`1:s` are manatee-open's own
-    /// Bonito/Sketch-Engine-style context-spec syntax for "expand to the
-    /// enclosing `<s>` boundary" (confirmed in `concord/concctx.cc`),
-    /// already supported end-to-end since `leftContext`/`rightContext`
-    /// were free-form strings, not parsed integers, from the start.
+    /// What's actually asked of the engine for left/right context - see `ConcordanceViewMode`. `-1:s`/`1:s`
+    /// (the engine's context spec for "up to the sentence boundary") ask for the whole sentence.
+    private var effectiveLeftContext: String { viewMode == .sentence ? "-1:s" : leftContext }
+    private var effectiveRightContext: String { viewMode == .sentence ? "1:s" : rightContext }
+
+    /// KWIC vs. Sentence: a display setting like `setContext`, not part of the operation chain.
+    func setViewMode(_ mode: ConcordanceViewMode) {
+        guard mode != viewMode else { return }
+        viewMode = mode
+        refetchDisplay()
+    }
+
     func setAttributeDisplay(inlineAttributes: [String], tooltipAttributes: [String]) {
         self.inlineAttributes = inlineAttributes
         self.tooltipAttributes = tooltipAttributes
@@ -730,6 +747,8 @@ final class ConcordanceDocument: NSDocument {
         var inlineAttributes: [String]?
         var tooltipAttributes: [String]?
         var structuralAttributeToShow: String?
+        // Optional: a document saved before the view switch came back has none (read as KWIC).
+        var viewMode: ConcordanceViewMode?
         var operations: [ConcordanceOperation]
     }
 
@@ -739,7 +758,7 @@ final class ConcordanceDocument: NSDocument {
             corpusName: corpusName, subcorpus: subcorpus, initialQuery: initialQuery,
             leftContext: leftContext, rightContext: rightContext, kwicAttr: kwicAttr,
             inlineAttributes: inlineAttributes, tooltipAttributes: tooltipAttributes,
-            structuralAttributeToShow: structuralAttributeToShow, operations: operations)
+            structuralAttributeToShow: structuralAttributeToShow, viewMode: viewMode, operations: operations)
         return try JSONEncoder().encode(state)
     }
 
@@ -766,6 +785,7 @@ final class ConcordanceDocument: NSDocument {
         inlineAttributes = state.inlineAttributes ?? []
         tooltipAttributes = state.tooltipAttributes ?? []
         structuralAttributeToShow = state.structuralAttributeToShow
+        viewMode = state.viewMode ?? .kwic
         operations = state.operations
     }
 }

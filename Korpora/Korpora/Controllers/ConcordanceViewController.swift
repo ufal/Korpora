@@ -54,6 +54,10 @@ final class ConcordanceViewController: NSViewController {
 
     weak var windowController: ConcordanceWindowController?
 
+    /// The window controller sets the KWIC | Sentence control and the Context button from this when it builds
+    /// the toolbar items, before any `refresh()` has run.
+    var viewMode: ConcordanceViewMode { document.viewMode }
+
     /// `ConcordanceWindowController` needs this to set the "KWIC | Sentence"
     /// segmented control's initial selection and the Context button's
     /// initial enabled state, both at toolbar-item-creation time, before
@@ -219,6 +223,10 @@ final class ConcordanceViewController: NSViewController {
         popover.behavior = .transient
         let anchor = popoverAnchor(sender, for: ConcordanceWindowController.ItemID.sample)
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .minY)
+    }
+
+    @objc func viewModeChanged(_ sender: NSSegmentedControl) {
+        document.setViewMode(sender.selectedSegment == 1 ? .sentence : .kwic)
     }
 
     @objc func attributesTapped(_ sender: Any?) {
@@ -941,7 +949,7 @@ final class ConcordanceViewController: NSViewController {
         // is told only how many there are.
         tableView.reloadData()
         if animated { tableView.scrollRowToVisible(0) }
-        windowController?.updateToolbarState(hasLineGroups: document.hasLineGroups)
+        windowController?.updateToolbarState(hasLineGroups: document.hasLineGroups, viewMode: document.viewMode)
         syncSortIndicators()
         // If the Operations popover is open, its line-group rows are sourced
         // from the engine's line groups (see `updateOperationsPopover`), which only

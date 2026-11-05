@@ -9,6 +9,7 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
         static let sort = NSToolbarItem.Identifier("sort")
         static let shuffle = NSToolbarItem.Identifier("shuffle")
         static let sample = NSToolbarItem.Identifier("sample")
+        static let viewMode = NSToolbarItem.Identifier("viewMode")
         static let context = NSToolbarItem.Identifier("context")
         static let attributes = NSToolbarItem.Identifier("attributes")
         static let collocations = NSToolbarItem.Identifier("collocations")
@@ -41,6 +42,8 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
     /// because the toolbar may build its items more than once (first launch, customizing), so state
     /// is applied to the items the toolbar actually holds, never to ones remembered from creation.
     private var lineGroupsActive = false
+    /// Sentence view, in which the fixed context width doesn't apply (Context is switched off).
+    private var sentenceViewActive = false
     private static let operationItems: Set<NSToolbarItem.Identifier> = [ItemID.sort, ItemID.shuffle, ItemID.sample]
 
     convenience init(document: ConcordanceDocument) {
@@ -70,8 +73,8 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
     }
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-        [ItemID.history, .space, ItemID.resultGroup, .space, ItemID.displayGroup, .space, ItemID.analysisGroup,
-         .flexibleSpace, ItemID.operations]
+        [ItemID.history, .space, ItemID.resultGroup, .space, ItemID.displayGroup, ItemID.viewMode, .space,
+         ItemID.analysisGroup, .flexibleSpace, ItemID.operations]
     }
 
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -97,6 +100,7 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
                 sub.paletteLabel = leaf.label
                 sub.autovalidates = false
                 if Self.operationItems.contains(leaf.itemIdentifier) { sub.isEnabled = !lineGroupsActive }
+                if leaf.itemIdentifier == ItemID.context { sub.isEnabled = !sentenceViewActive }
             }
             return item
         }
@@ -137,7 +141,28 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
                 action: #selector(ConcordanceViewController.sampleTapped(_:)))
             let item = makeItem(identifier, label: "Sample", view: button)
             return item
+        case ItemID.viewMode:
+            // "text.aligncenter" (centred lines) reads as the match centred in a fixed window; "text.alignleft"
+            // (an ordinary paragraph) as the sentence flowing on.
+            let segmented = PerSegmentToolTipSegmentedControl(
+                images: [
+                    NSImage(systemSymbolName: "text.aligncenter", accessibilityDescription: "KWIC") ?? NSImage(),
+                    NSImage(systemSymbolName: "text.alignleft", accessibilityDescription: "Sentence") ?? NSImage(),
+                ],
+                trackingMode: .selectOne,
+                target: viewController, action: #selector(ConcordanceViewController.viewModeChanged(_:)))
+            segmented.segmentStyle = .texturedRounded
+            segmented.selectedSegment = viewController.viewMode == .sentence ? 1 : 0
+            segmented.segmentToolTips = [
+                "KWIC: the same number of tokens left and right of every hit.",
+                "Sentence: the whole sentence around every hit.",
+            ]
+            let item = makeItem(identifier, label: "View", view: segmented)
+            item.paletteLabel = "View: KWIC or Sentence"
+            return item
         case ItemID.context:
+            // Switched off in Sentence view (`updateToolbarState`); otherwise not tracked: unlike
+            // sort/shuffle/sample, widening context is a display setting, not an operation on the result.
             // Not tracked in `updateToolbarState`: unlike sort/shuffle/sample, widening
             // context is a display setting (see `ConcordanceDocument.setContext`), not
             // an operation on the result, so it never needs to disable when line
@@ -270,12 +295,18 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
     /// *existing* operations (including bulk-clearing line groups) doesn't
     /// conflict with an active line-group view the way starting a *new*
     /// sort/filter/shuffle/sample would.
-    func updateToolbarState(hasLineGroups: Bool) {
+    func updateToolbarState(hasLineGroups: Bool, viewMode: ConcordanceViewMode) {
         lineGroupsActive = hasLineGroups
-        for case let item as NSToolbarItemGroup in window?.toolbar?.items ?? [] {
-            guard let group = Self.groups.first(where: { $0.id == item.itemIdentifier }) else { continue }
-            for (sub, id) in zip(item.subitems, group.items) where Self.operationItems.contains(id) {
-                sub.isEnabled = !hasLineGroups
+        sentenceViewActive = viewMode == .sentence
+        for item in window?.toolbar?.items ?? [] {
+            if let control = item.view as? NSSegmentedControl, item.itemIdentifier == ItemID.viewMode {
+                control.selectedSegment = viewMode == .sentence ? 1 : 0
+            }
+            guard let item = item as? NSToolbarItemGroup,
+                  let group = Self.groups.first(where: { $0.id == item.itemIdentifier }) else { continue }
+            for (sub, id) in zip(item.subitems, group.items) {
+                if Self.operationItems.contains(id) { sub.isEnabled = !hasLineGroups }
+                if id == ItemID.context { sub.isEnabled = viewMode != .sentence }
             }
         }
     }

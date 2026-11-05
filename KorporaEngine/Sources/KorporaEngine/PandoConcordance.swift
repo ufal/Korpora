@@ -119,16 +119,19 @@ public actor PandoConcordance: ConcordanceHandle {
     }
 
     /// `count` hits of the view's own order (corpus, sorted by pando, shuffled, sampled) from `offset`.
-    private func hitPage(offset: Int, count: Int, context: Int, attrs: [String]) throws -> [[String: Any]] {
+    private func hitPage(offset: Int, count: Int, context: Int, attrs: [String], sentence: Bool = false)
+        throws -> [[String: Any]] {
         let object: [String: Any]
         if order == .sorted {
+            var options: [String: Any] = ["context": context, "attrs": attrs]
+            if sentence { options["sentence"] = true }
             object = try library.result(library.run(
-                handle, "cat \(Self.sortedSet) \(offset) \(offset + count - 1)",
-                PandoLibrary.json(["context": context, "attrs": attrs])))
+                handle, "cat \(Self.sortedSet) \(offset) \(offset + count - 1)", PandoLibrary.json(options)))
         } else {
             var options: [String: Any] = [
                 "limit": count, "offset": offset, "total": false, "context": context, "attrs": attrs,
             ]
+            if sentence { options["sentence"] = true }
             if let sampleSize { options["sample"] = sampleSize }
             if order == .shuffled { options["shuffle"] = true }
             if order == .shuffled || sampleSize != nil { options["seed"] = Int(seed) }
@@ -172,10 +175,15 @@ public actor PandoConcordance: ConcordanceHandle {
         }
     }
 
-    /// Loads the hits with at least `window` tokens of context each side.
-    private func ensureLoaded(window: Int) throws {
+    /// Whether the hits were loaded with their sentence as context (`sentence`), not a token window.
+    private var loadedSentence = false
+
+    /// Loads the hits with at least `window` tokens of context each side, or their sentence (`sentence` true;
+    /// nil: whichever is loaded - a sort or a line group doesn't care).
+    private func ensureLoaded(window: Int, sentence: Bool? = nil) throws {
         let wanted = max(window, Self.minimumWindow)
-        if loadedWindow >= wanted { return }
+        let wantSentence = sentence ?? loadedSentence
+        if loadedWindow >= wanted, loadedSentence == wantSentence { return }
         if windowed {
             loadedCount = min(windowedSize, limit)
             viewIsPartial = loadedCount < windowedSize
@@ -183,7 +191,7 @@ public actor PandoConcordance: ConcordanceHandle {
         let count = loadedCount
         var fresh: [Line] = []
         if count > 0 {
-            fresh = parse(try hitPage(offset: 0, count: count, context: wanted, attrs: attributes))
+            fresh = parse(try hitPage(offset: 0, count: count, context: wanted, attrs: attributes, sentence: wantSentence))
         }
         if loadedWindow == 0 || fresh.count != lines.count {
             view = Array(fresh.indices)
@@ -192,6 +200,7 @@ public actor PandoConcordance: ConcordanceHandle {
         }
         lines = fresh
         loadedWindow = wanted
+        loadedSentence = wantSentence
         windowed = false
     }
 
@@ -201,6 +210,9 @@ public actor PandoConcordance: ConcordanceHandle {
     private static func tokens(in context: String) -> Int {
         Int(context).map { abs($0) } ?? 10
     }
+
+    /// "-1:s" / "1:s": up to the sentence boundary (Manatee's context spec for a structure).
+    private static func isSentence(_ context: String) -> Bool { context.hasSuffix(":s") }
 
     /// One loaded hit as a display line.
     private func kwicLine(_ line: Line, left: Int, right: Int, kwicAttr: String,
@@ -220,18 +232,23 @@ public actor PandoConcordance: ConcordanceHandle {
 
     public func kwicLines(range: Range<Int>, leftContext: String, rightContext: String, kwicAttr: String,
                           secondaryAttributes: [String]) throws -> [KWICLine] {
-        let left = Self.tokens(in: leftContext), right = Self.tokens(in: rightContext)
+        let sentence = Self.isSentence(leftContext) || Self.isSentence(rightContext)
+        // A sentence has no fixed length: every token pando gives is kept.
+        let left = sentence ? Int.max : Self.tokens(in: leftContext)
+        let right = sentence ? Int.max : Self.tokens(in: rightContext)
         let rows = range.clamped(to: 0..<size)
         guard !rows.isEmpty else { return [] }
         if windowed {
             var attrs = secondaryAttributes
             if !attrs.contains(kwicAttr) { attrs.append(kwicAttr) }
-            let hits = try hitPage(offset: rows.lowerBound, count: rows.count, context: max(left, right), attrs: attrs)
+            let hits = try hitPage(offset: rows.lowerBound, count: rows.count,
+                                   context: sentence ? Self.minimumWindow : max(left, right), attrs: attrs,
+                                   sentence: sentence)
             return parse(hits).map {
                 kwicLine($0, left: left, right: right, kwicAttr: kwicAttr, secondaryAttributes: secondaryAttributes)
             }
         }
-        try ensureLoaded(window: max(left, right))
+        try ensureLoaded(window: sentence ? Self.minimumWindow : max(left, right), sentence: sentence)
         return rows.map { row in
             kwicLine(lines[view[row]], left: left, right: right, kwicAttr: kwicAttr,
                      secondaryAttributes: secondaryAttributes)

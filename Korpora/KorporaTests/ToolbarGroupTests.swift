@@ -17,7 +17,8 @@ import Testing
         let controller = shownController()
         let ids = controller.toolbarDefaultItemIdentifiers(NSToolbar())
         let ItemID = ConcordanceWindowController.ItemID.self
-        #expect(ids == [ItemID.history, .space, ItemID.resultGroup, .space, ItemID.displayGroup, .space,
+        // The KWIC | Sentence switch is a control of its own, next to the display group it belongs to.
+        #expect(ids == [ItemID.history, .space, ItemID.resultGroup, .space, ItemID.displayGroup, ItemID.viewMode, .space,
                         ItemID.analysisGroup, .flexibleSpace, ItemID.operations])
         #expect(ConcordanceWindowController.groups.count <= 3, "the HIG: no more than three groups")
     }
@@ -72,10 +73,10 @@ import Testing
         }
         let result = try group(ItemID.resultGroup), display = try group(ItemID.displayGroup)
         #expect(result.subitems.count == 3 && result.subitems.allSatisfy { $0.isEnabled })
-        controller.updateToolbarState(hasLineGroups: true)
+        controller.updateToolbarState(hasLineGroups: true, viewMode: .kwic)
         #expect(result.subitems.allSatisfy { !$0.isEnabled })
         #expect(display.subitems.allSatisfy { $0.isEnabled }, "Context and Attributes are display settings, never off")
-        controller.updateToolbarState(hasLineGroups: false)
+        controller.updateToolbarState(hasLineGroups: false, viewMode: .kwic)
         #expect(result.subitems.allSatisfy { $0.isEnabled })
     }
 
@@ -83,7 +84,7 @@ import Testing
     @Test func aGroupBuiltWhileLineGroupsExistStartsDisabled() throws {
         let controller = shownController()
         let toolbar = try #require(controller.window?.toolbar)
-        controller.updateToolbarState(hasLineGroups: true)
+        controller.updateToolbarState(hasLineGroups: true, viewMode: .kwic)
         let built = try #require(controller.toolbar(toolbar, itemForItemIdentifier: ConcordanceWindowController.ItemID.resultGroup,
                                                     willBeInsertedIntoToolbar: true) as? NSToolbarItemGroup)
         #expect(built.subitems.allSatisfy { !$0.isEnabled })
@@ -158,12 +159,12 @@ import Testing
         let controls = segmented(root).sorted { $0.convert($0.bounds, to: nil).minX < $1.convert($1.bounds, to: nil).minX }
         let result = try #require(controls.first), display = try #require(controls.dropFirst().first)
         #expect(result.segmentCount == 3 && display.segmentCount == 2)
-        controller.updateToolbarState(hasLineGroups: true)
+        controller.updateToolbarState(hasLineGroups: true, viewMode: .kwic)
         window.toolbar?.validateVisibleItems()
         RunLoop.current.run(until: Date().addingTimeInterval(0.2))
         #expect((0..<3).allSatisfy { !result.isEnabled(forSegment: $0) }, "Sort, Shuffle, Sample are off")
         #expect((0..<2).allSatisfy { display.isEnabled(forSegment: $0) }, "Context and Attributes stay on")
-        controller.updateToolbarState(hasLineGroups: false)
+        controller.updateToolbarState(hasLineGroups: false, viewMode: .kwic)
         window.toolbar?.validateVisibleItems()
         #expect((0..<3).allSatisfy { result.isEnabled(forSegment: $0) })
     }

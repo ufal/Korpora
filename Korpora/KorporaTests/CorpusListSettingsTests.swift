@@ -22,6 +22,13 @@ import Testing
         #expect(settings.keepResidentCorpora == ["syn2025"])
     }
 
+    @Test func theDefaultViewIsKwicUntilChosen() {
+        let settings = AppSettings(defaults: freshDefaults())
+        #expect(settings.defaultViewMode == .kwic)
+        settings.defaultViewMode = .sentence
+        #expect(settings.defaultViewMode == .sentence)
+    }
+
     @Test func sourceLabels() {
         #expect(CorporaSettingsViewController.sourceTitle(.built) == "Built")
         #expect(CorporaSettingsViewController.sourceTitle(.linked(target: URL(fileURLWithPath: "/x"))) == "Linked")
