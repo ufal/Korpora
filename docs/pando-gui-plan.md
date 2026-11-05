@@ -151,3 +151,30 @@ Corpora are positioned as having syntax, so a vertical corpus without it comes w
 For 0.4/1.0 dragging a CoNLL-U file on the app icon opens the existing import sheet; no temporary corpora. The pando limits (attributes on context tokens,
 sentence context through the C API, hit-position histogram) are not tied to a release: support is
 added when a feature needs it.
+
+## Paging long results: measurements (2026-11-05)
+
+Question: can the concordance work the way Manatee/KonText do (hit positions only; text lines made for the visible window)
+instead of loading up to 10,000 complete lines? Measured through the C API (`pando_query` / `pando_run`, pando 0.4.1) on
+SYN2025 (122 M tokens), query `[lemma="být"]` (3,978,146 hits), context 10, one handle, warm file cache:
+
+| Operation | Time |
+|---|---|
+| total (`limit 1`, `total`) | 1 ms (cached) |
+| page of 50 at offset 0 / 1,000 / 100,000 | 1 / 0.4 / 6 ms |
+| page of 50 at offset 1,000,000 / 3,000,000 | 48 / 149 ms |
+| single hit at a random offset (up to 3 M) | 72 ms |
+| `M = …; sort M by form %c on matchend[1]..matchend[3]` + a page | 5.4-6.2 s |
+| the same sort again, on the same handle, another offset | 2.3-5.5 s (no reuse) |
+
+Findings:
+- Windowed fetching is fast at any depth, so a lazy table (rows fetched by `offset`/`limit` for the visible window, a small
+  window cache) needs no 10,000-hit cap for hits in corpus order.
+- Sorting works through `pando_run` but the whole result is sorted on every call (seconds for millions of hits). The
+  session keeps `M` (`show named` says materialised) but there is no C API statement that pages it without sorting again.
+  The server API caches sort indexes and sorted pages (`--cache-mb`); the C API does not expose that.
+- `shuffle`, `sample` and `seed` exist in the HTTP API only; `parse_query_opts`/`parse_program_opts` in
+  `src/api/pando_ffi.cpp` do not read them (like `sentence`).
+
+Asks for pando: sorted paging with the sort cached per handle (or `Last`/a named set as a page source), and `shuffle`,
+`sample`, `seed` (and `sentence`) in the C API options.
