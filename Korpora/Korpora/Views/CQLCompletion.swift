@@ -187,7 +187,7 @@ enum CQLCompletionContext: Equatable {
 ///
 /// Fully synchronous by design - see `CQLCompletionContext`'s scope note.
 /// The only thing it needs from the corpus is its *schema*, which comes
-/// from registry metadata already parsed at open time (`Corpus.info()`),
+/// from the corpus's `info()` (read when it is opened),
 /// so it's fetched once up front and never touched again.
 ///
 /// `@MainActor` for the mutable `attributeNames` only; the candidate lists

@@ -33,7 +33,7 @@ struct KWICDisplayLine: Equatable {
 
 /// Pure formatting logic for turning a `KWICLine` segment's tokens into what
 /// `KWICCellView` actually displays - kept separate from both
-/// `ManateeKit.KWICToken` (an engine-layer model with no display opinion)
+/// `KorporaEngine.KWICToken` (an engine-layer model with no display opinion)
 /// and `KWICCellView` (an AppKit view with no formatting opinion), so it's
 /// unit-testable without either a live corpus or a window.
 ///

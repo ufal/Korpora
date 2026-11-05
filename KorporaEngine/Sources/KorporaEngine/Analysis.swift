@@ -1,11 +1,8 @@
 import Foundation
 
-/// Manatee's collocation association measures (`corp/bgrstat.hh`'s `bgr_*`
-/// functions, selected by a single-char code). This is a curated subset -
-/// the ones with real KonText UI usage - not the full code alphabet
-/// (`bgr_known_fun_codes` in the engine also has 'p'/'r'/'f'/'F'/'C'/'1',
-/// more obscure/less commonly surfaced measures); the shim accepts any
-/// valid code, so this can grow later without a shim change.
+/// The collocation association measures the app offers: a curated subset of the ones KonText has UI for,
+/// which pando computes (`measures` option of `coll`). The raw value is the one-character code the saved
+/// settings and the measure picker use.
 public enum AssociationMeasure: Character, Sendable, Codable, CaseIterable {
     /// `14 + log2(2*f_AB/(f_A+f_B))` - Manatee/KonText's own conventional
     /// default collocation measure.
@@ -22,9 +19,9 @@ public enum AssociationMeasure: Character, Sendable, Codable, CaseIterable {
     case dice = "D"
 }
 
-/// Parameters for `LiveConcordance.collocations(_:)` - mirrors KonText's own
+/// Parameters for `ConcordanceHandle.collocations(_:)` - mirrors KonText's own
 /// collocation form (`cattr`/`csortfn`/`cfromw`/`ctow`), plus the two
-/// frequency thresholds Manatee's `CollocItems` itself requires.
+/// frequency thresholds a collocate must reach.
 public struct CollocationSpec: Sendable, Codable {
     /// Positional attribute the collocate candidates are drawn from and
     /// reported in (e.g. "word", "lemma") - not necessarily the attribute
@@ -57,7 +54,7 @@ public struct CollocationSpec: Sendable, Codable {
     }
 }
 
-/// One collocate returned by `LiveConcordance.collocations(_:)`, best-scoring
+/// One collocate returned by `ConcordanceHandle.collocations(_:)`, best-scoring
 /// first.
 public struct CollocationItem: Sendable, Equatable {
     public let word: String
@@ -76,10 +73,8 @@ public struct CollocationItem: Sendable, Equatable {
     }
 }
 
-/// One grouping key for `LiveConcordance.frequencyDistribution(_:minFrequency:)`.
-/// Manatee's own criteria-string grammar (see `SortCriteria.criteriaString`)
-/// supports joining several of these into one multi-level key, though the
-/// first UI surface built on this only ever passes one.
+/// One grouping key for `ConcordanceHandle.frequencyDistribution(_:minFrequency:)`;
+/// pando's `freq by` takes several of them (the Frequencies sheet passes one).
 public struct FrequencyCriterion: Sendable, Codable {
     /// A positional attribute (e.g. "lemma") or a structural one written
     /// "struct.attr" (e.g. "doc.author") - the latter is what makes `norm`

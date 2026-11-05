@@ -97,7 +97,7 @@ private final class FrequencyViewController: NSViewController {
         for column in [word, freq, norm] {
             tableView.addTableColumn(column)
         }
-        // Results already arrive frequency-descending from LiveConcordance.
+        // Results already arrive frequency-descending from the engine.
         // frequencyDistribution(_:minFrequency:) - reflect that initially.
         tableView.sortDescriptors = [NSSortDescriptor(key: Column.freq.rawValue, ascending: false)]
 

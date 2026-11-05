@@ -11,7 +11,7 @@ import KorporaEngine
 /// real corpus (same `Corpus(name:).info()` call `CollocationSheetController`
 /// already uses to populate its own attribute picker), not free text - a
 /// typo'd name would otherwise throw on every subsequent KWIC refetch (see
-/// `LiveConcordance.kwicLines`'s doc comment on an unknown attribute name).
+/// `ConcordanceHandle.kwicLines` on an unknown attribute name).
 final class AttributeDisplayPopoverController: NSViewController {
     var corpusName: String = ""
     /// The primary attribute already shown as each token's main text -

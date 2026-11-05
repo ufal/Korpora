@@ -2,8 +2,8 @@ import Foundation
 
 /// A single past query - `date` is when it was run. Persisted via
 /// `UserDefaults` (mirrors `AppSettings`'s own precedent) rather than
-/// `ManateeKit`, since this is purely app-level convenience state, not
-/// anything the engine or a corpus registry needs to know about.
+/// `KorporaEngine`, since this is purely app-level convenience state, not
+/// anything the engine needs to know about.
 struct QueryHistoryEntry: Codable, Equatable {
     var corpusName: String
     var subcorpusName: String?

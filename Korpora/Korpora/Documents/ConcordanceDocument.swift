@@ -274,7 +274,7 @@ final class ConcordanceDocument: NSDocument {
         return lines
     }
 
-    /// The `LiveConcordance` behind the most recently *successful* replay -
+    /// The `ConcordanceHandle` behind the most recently *successful* replay -
     /// kept around (rather than discarded once `rows` is fetched, as before)
     /// so Phase 3 features (collocations, frequency distributions) have a
     /// live handle reflecting the document's current sort/filter/sample/
@@ -287,15 +287,14 @@ final class ConcordanceDocument: NSDocument {
     /// replay - kept around, same reasoning as `liveConcordance`, so
     /// `structuralInfo(at:)` can look up a specific hit's enclosing
     /// structural attributes (e.g. "doc.author") on demand later, without
-    /// needing a live `LiveConcordance`/iterator (structural lookups are
+    /// needing a live `ConcordanceHandle` (structural lookups are
     /// pure `Corpus`-level position queries - see `KWICLine.position`).
     private var queryCorpus: (any CorpusHandle)?
 
     /// Once any line-group operation exists, sort/filter/shuffle/sample are
     /// disabled - mirrors KonText's own mutual-exclusion rule, since a fresh
     /// sort/sample would silently invalidate the view line-group
-    /// assignments are keyed to (Manatee resets/discards the view on some of
-    /// those operations - see `LiveConcordance.sample`'s doc comment).
+    /// assignments are keyed to.
     var hasLineGroups: Bool { operations.contains { $0.isLineGroupOperation } }
 
     /// The view controller sets this to learn when `rows`/`status` change.
@@ -400,8 +399,8 @@ final class ConcordanceDocument: NSDocument {
     /// Assigns every given row to `group` as a single operation-chain update.
     /// Must be used instead of calling `performSetLineGroup` once per row -
     /// each call to `appendOperation` triggers its own `replay()`, and
-    /// `replay()` opens a brand-new `Corpus`/`LiveConcordance` (a fresh
-    /// Manatee handle) - firing one per selected row let multiple overlapping
+    /// `replay()` opens a brand-new `Corpus`/`ConcordanceHandle` (a fresh
+    /// engine handle) - firing one per selected row let multiple overlapping
     /// handles hit the engine concurrently and crashed it.
     func performSetLineGroups(_ rangeStarts: [Int], group: Int) {
         guard !rangeStarts.isEmpty else { return }
@@ -411,8 +410,7 @@ final class ConcordanceDocument: NSDocument {
 
     /// Drops every `.setLineGroup` operation assigning `group` specifically
     /// (every other group's assignments are untouched) and replays - lines
-    /// whose only assignment was to `group` revert to no group (Manatee's
-    /// own default); a line reassigned to a different group afterward is
+    /// whose only assignment was to `group` revert to no group; a line reassigned to a different group afterward is
     /// unaffected, since its later operation is what's actually still in
     /// effect. Safe to filter by group number alone, ignoring position,
     /// because the toolbar disables sort/filter/shuffle/sample once any
@@ -454,10 +452,8 @@ final class ConcordanceDocument: NSDocument {
     // MARK: - Query execution
 
     /// Chains onto any in-flight replay instead of letting two run
-    /// concurrently - each `replay()` opens its own `Corpus`/`LiveConcordance`
-    /// (a fresh Manatee handle), and the engine's thread-safety under
-    /// concurrent access from separate handles is undocumented (see
-    /// `LiveConcordance`'s doc comment). Two operations queued back-to-back
+    /// concurrently - each `replay()` opens its own `Corpus`/`ConcordanceHandle`
+    /// (a fresh engine handle), and one handle is not for two threads at once. Two operations queued back-to-back
     /// before the first query resolves (e.g. `performSetLineGroups`, or any
     /// future rapid double-action) would otherwise fire concurrently.
     private var currentReplayTask: Task<Void, Never>?
@@ -477,7 +473,7 @@ final class ConcordanceDocument: NSDocument {
     var beforeSearchHook: (() async -> Void)?
 
     /// Aborts the running search: the engine stops (see
-    /// `LiveConcordance.init(corpus:cql:)`) and the document shows no
+    /// `PandoConcordance.init`) and the document shows no
     /// results and the status "Search cancelled." - the query and its
     /// operations stay, so pressing Return in the query bar searches again.
     /// Does nothing when no search is running.

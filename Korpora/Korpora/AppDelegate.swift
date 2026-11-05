@@ -45,7 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// corpus - quitting through it silently, the same way every other
     /// window does, would be a much worse surprise than one confirmation
     /// dialog. `CorpusImportSheetController` already cancels its own import
-    /// (terminating the `encodevert` subprocess cleanly) on
+    /// (terminating the `pando-index` subprocess cleanly) on
     /// `willTerminateNotification` regardless of the answer here - this
     /// alert only decides whether that's allowed to happen at all.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

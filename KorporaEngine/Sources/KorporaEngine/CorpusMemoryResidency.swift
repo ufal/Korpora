@@ -1,13 +1,10 @@
 import Darwin
 import Foundation
 
-/// Best-effort "keep this compiled corpus warm in the OS page cache" support.
-/// Deliberately has **no** dependency on CManatee/manatee-open - warming
-/// works by touching whatever files sit under a compiled corpus's data
-/// directory (see `CompiledCorpusStore.dataDirectory`), independent of
-/// Manatee's own separate `mmap` of those same files at query time (both are
-/// `MAP_SHARED`, so they end up sharing the same underlying page-cache pages
-/// - no engine change needed).
+/// Best-effort "keep this corpus warm in the OS page cache" support.
+/// Works by touching the files in a corpus's index folder, independent of pando's
+/// own separate `mmap` of those same files at query time (both are `MAP_SHARED`, so
+/// they end up sharing the same underlying page-cache pages - no engine change needed).
 ///
 /// This is explicitly *not* true `mlock` - no special entitlements, always
 /// safe/reversible, no risk of starving the system if a free-memory estimate

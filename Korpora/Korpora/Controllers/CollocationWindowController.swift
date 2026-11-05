@@ -90,7 +90,7 @@ private final class CollocationViewController: NSViewController {
         for column in [word, freq, cnt, score] {
             tableView.addTableColumn(column)
         }
-        // Results already arrive best-scoring first from LiveConcordance.
+        // Results already arrive best-scoring first from the engine.
         // collocations(_:) - reflect that as the table's initial sort state.
         tableView.sortDescriptors = [NSSortDescriptor(key: Column.score.rawValue, ascending: false)]
 

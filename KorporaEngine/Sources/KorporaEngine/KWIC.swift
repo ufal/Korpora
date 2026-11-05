@@ -1,7 +1,7 @@
 import Foundation
 
 /// One token's positional-attribute values within a `KWICLine`. `word` is
-/// whichever attribute `LiveConcordance.kwicLines` was called with as its
+/// whichever attribute `ConcordanceHandle.kwicLines` was called with as its
 /// primary `kwicAttr` (default "word"); `secondaryAttributes` holds any
 /// additional attributes requested via `kwicLines(secondaryAttributes:)`
 /// (e.g. "lemma"/"tag"), keyed by attribute name - empty when none were
@@ -21,7 +21,7 @@ public struct KWICLine: Sendable {
     public let kwicTokens: [KWICToken]
     public let rightTokens: [KWICToken]
     /// The match's corpus-wide token start position - stable and meaningful
-    /// independent of the `LiveConcordance`/iterator that produced this
+    /// independent of the `ConcordanceHandle` that produced this
     /// line, so a caller can look up this specific hit's enclosing
     /// structural attributes (e.g. "doc.author") later, on demand, via
     /// `Corpus.structuralAttributeValue(at:attribute:)`, without keeping

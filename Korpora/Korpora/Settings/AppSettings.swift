@@ -10,8 +10,7 @@ final class AppSettings {
     static let corporaDidChangeNotification = Notification.Name("AppCorporaDidChange")
 
     private enum Key {
-        /// Retired: Settings once had a separate list of registry
-        /// directories. Read once by `migrateCorpusList()`, then removed.
+        /// The corpora to keep in memory, by name.
         static let keepResidentCorpora = "keepResidentCorpora"
         static let resultsFontName = "resultsFontName"
         static let resultsFontSize = "resultsFontSize"
@@ -65,8 +64,7 @@ final class AppSettings {
         CorpusLibrary.entries(includingMissing: includingMissing)
     }
 
-    /// Names of corpora to keep warm in memory - any corpus, whoever built
-    /// it (the data directory comes from its registry file's `PATH`).
+    /// Names of corpora to keep warm in memory - any corpus, built, linked or imported.
     var keepResidentCorpora: Set<String> {
         get { Set(defaults.stringArray(forKey: Key.keepResidentCorpora) ?? []) }
         set {
@@ -118,7 +116,7 @@ final class AppSettings {
     }
 
     /// Minimum free memory (bytes) a corpus's "Keep in Memory" toggle must
-    /// leave available - see `ManateeKit.CorpusMemoryResidency.
+    /// leave available - see `CorpusMemoryResidency.
     /// canKeepResident`. Defaults to 10 GB.
     var minimumFreeMemoryAfterResidency: UInt64 {
         get {

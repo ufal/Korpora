@@ -2,7 +2,7 @@ import Cocoa
 
 /// Content of the toolbar's Sample popover - an absolute line count, matching
 /// KonText's own sample form (no percentage option; see
-/// `LiveConcordance.sample`'s doc comment).
+/// `ConcordanceHandle.sample`).
 final class SamplePopoverController: NSViewController {
     var onApply: ((Int) -> Void)?
 

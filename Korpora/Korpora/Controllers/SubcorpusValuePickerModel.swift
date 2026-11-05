@@ -184,7 +184,7 @@ final class SubcorpusValuePickerModel {
         selected.values.reduce(0) { $0 + $1.count }
     }
 
-    /// The picks as a restriction, attributes in registry order and values
+    /// The picks as a restriction, attributes in the corpus's own order and values
     /// in reading order so the string is stable.
     var restriction: SubcorpusRestriction {
         SubcorpusRestriction(structure: structure, selections: attributes.compactMap { name in
