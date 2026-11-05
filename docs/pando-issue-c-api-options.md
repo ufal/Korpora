@@ -1,6 +1,6 @@
 # Draft issue for ufal/pando: the C API lacks options and caching the HTTP API has (2026-11-05)
 
-Not filed. Tested with pando 0.4.1 (`libpando.dylib`, macOS 27, arm64) and a UD index. Korpora (a native macOS
+Filed as https://github.com/ufal/pando/issues/3 on 2026-11-05 (`sentence` is issue #1). Tested with pando 0.4.1 (`libpando.dylib`, macOS 27, arm64) and a UD index. Korpora (a native macOS
 concordancer) embeds `libpando` through `pando_ffi.h`, so it can only use what the C API reads.
 
 **Title:** C API: `sentence`, `shuffle`, `sample`, `seed` are ignored, and a sorted result can't be paged without
