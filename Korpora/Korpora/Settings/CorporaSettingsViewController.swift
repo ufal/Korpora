@@ -588,7 +588,7 @@ final class CorporaSettingsViewController: NSViewController {
         switch row.entry.origin {
         case .built:
             text = "Korpora built this corpus; its data (\(size)) is in \(row.entry.directory.path). "
-                + "Keeping the data moves it to a \u{201C}.Removed\u{201D} folder next to it; "
+                + "Keeping the data moves it to a \u{201C}Removed Corpora\u{201D} folder next to it; "
                 + "add it back later with Add Index Folder\u{2026}."
         case .linked(let target):
             text = "This corpus is an index folder outside Korpora (\(target.path), \(size)). "

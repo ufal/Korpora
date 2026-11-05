@@ -1,9 +1,12 @@
 import Cocoa
+import KorporaEngine
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = makeMainMenu()
         AppSettings.shared.applyCorporaDirectory()  // before anything looks for a corpus
+        // Early versions hid some folders next to the corpora; make them visible (nothing is deleted).
+        if CorpusLibrary.baseDirectoryIsAvailable { CorpusLibrary.makeHiddenFoldersVisible(in: CorpusLibrary.baseDirectory) }
         CorpusResidencyManager.shared.start()
         // An app launched via Xcode's debugger can appear frontmost and
         // accept clicks/keyboard input while not being *fully* activated

@@ -365,7 +365,8 @@ final class CorpusLibraryTests: XCTestCase {
         let box = try TestPando.Sandbox()
         try box.fakeIndex(named: "alpha", in: box.corpora, tokens: 11)
         try box.fakeIndex(named: "beta", in: box.corpora, tokens: 22)
-        try box.fakeIndex(named: ".Removed", in: box.corpora)  // not a listed corpus: stays
+        try FileManager.default.createDirectory(
+            at: box.corpora.appendingPathComponent("Removed Corpora"), withIntermediateDirectories: true)  // not a corpus: stays
         let new = box.elsewhere.appendingPathComponent("SSD")
         try box.fakeIndex(named: "beta", in: new, tokens: 99)  // already there
 
@@ -376,8 +377,144 @@ final class CorpusLibraryTests: XCTestCase {
         XCTAssertEqual(CorpusLibrary.builtCorpora(in: new).map(\.name), ["alpha", "beta"])
         XCTAssertEqual(CorpusLibrary.builtCorpora(in: new).map(\.tokens), [11, 99], "the one already there is untouched")
         XCTAssertEqual(CorpusLibrary.builtCorpora(in: box.corpora).map(\.name), ["beta"], "the skipped one stays")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: box.corpora.appendingPathComponent(".Removed").path))
-        let leftovers = try FileManager.default.contentsOfDirectory(atPath: new.path).filter { $0.hasPrefix(".moving") }
-        XCTAssertTrue(leftovers.isEmpty, "no staging folder left")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: box.corpora.appendingPathComponent("Removed Corpora").path))
+        let names = try FileManager.default.contentsOfDirectory(atPath: new.path)
+        XCTAssertEqual(names.sorted(), ["alpha", "beta"], "no staging folder left, visible or hidden")
+    }
+
+    // MARK: Copying with progress
+
+    /// An index with a file big enough to be copied in several chunks.
+    @discardableResult
+    private func bigIndex(_ box: TestPando.Sandbox, named name: String, in parent: URL, megabytes: Int = 9) throws -> URL {
+        let folder = try box.fakeIndex(named: name, in: parent, tokens: 5)
+        try Data(count: megabytes << 20).write(to: folder.appendingPathComponent("big.dat"))
+        try FileManager.default.createDirectory(at: folder.appendingPathComponent("sub"), withIntermediateDirectories: true)
+        try "x".write(to: folder.appendingPathComponent("sub/small.txt"), atomically: true, encoding: .utf8)
+        return folder
+    }
+
+    func testCopyingATreeReportsEveryByteAndKeepsTheFiles() throws {
+        let box = try TestPando.Sandbox()
+        let source = try bigIndex(box, named: "src", in: box.elsewhere)
+        let destination = box.elsewhere.appendingPathComponent("copy")
+        var copied: Int64 = 0
+        try CorpusLibrary.copyTree(from: source, to: destination) { copied += $0 }
+        XCTAssertEqual(copied, CorpusLibrary.treeSize(source))
+        XCTAssertEqual(copied, Int64(9 << 20) + Int64("size=5\nindexed_with=0.4.1\n".utf8.count) + 1)
+        XCTAssertEqual(try Data(contentsOf: destination.appendingPathComponent("big.dat")).count, 9 << 20)
+        XCTAssertEqual(try String(contentsOf: destination.appendingPathComponent("sub/small.txt")), "x")
+        XCTAssertTrue(CorpusLibrary.isCorpus(destination))
+    }
+
+    func testBringingInAcrossDisksShowsGrowingProgressEndingAtTheTotal() throws {
+        let box = try TestPando.Sandbox()
+        let target = try bigIndex(box, named: "far", in: box.elsewhere)
+        let entry = try CorpusLibrary.link(indexDirectory: target, taken: [])
+        CorpusLibrary.alwaysCopyFiles = true
+        defer { CorpusLibrary.alwaysCopyFiles = false }
+        var events: [CorpusLibrary.TransferProgress] = []
+        let built = try CorpusLibrary.bringIn(entry, copy: false) { events.append($0) }
+        XCTAssertEqual(built.origin, .built)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: target.path), "moved: the original is gone afterwards")
+        XCTAssertEqual(events.first?.bytesDone, 0)
+        XCTAssertEqual(events.last?.bytesDone, events.last?.bytesTotal)
+        XCTAssertEqual(events.map(\.bytesDone), events.map(\.bytesDone).sorted(), "never goes back")
+        XCTAssertTrue(events.allSatisfy { $0.name == "far" })
+    }
+
+    func testCancellingStopsTheCopyAndLeavesTheOriginalAndNothingHalfDone() async throws {
+        let box = try TestPando.Sandbox()
+        let target = try bigIndex(box, named: "far", in: box.elsewhere)
+        let entry = try CorpusLibrary.link(indexDirectory: target, taken: [])
+        CorpusLibrary.alwaysCopyFiles = true
+        defer { CorpusLibrary.alwaysCopyFiles = false }
+        let outcome = await Task { () -> Error? in
+            do {
+                _ = try CorpusLibrary.bringIn(entry, copy: false) { progress in
+                    if progress.bytesDone > 0 { withUnsafeCurrentTask { $0?.cancel() } }
+                }
+                return nil
+            } catch {
+                return error
+            }
+        }.value
+        XCTAssertTrue(outcome is CancellationError)
+        XCTAssertTrue(CorpusLibrary.isCorpus(target), "the original stays")
+        XCTAssertEqual(CorpusLibrary.entries().map(\.isLinked), [true], "still linked, not built")
+        let left = (try? FileManager.default.contentsOfDirectory(atPath: CorpusLibrary.baseDirectory.path)) ?? []
+        XCTAssertTrue(left.isEmpty, "no partial copy left, and no Unfinished Work folder either: \(left)")
+    }
+
+    func testMovingCorporaAcrossDisksReportsOneRunningTotalAndCanBeCancelled() async throws {
+        let box = try TestPando.Sandbox()
+        try bigIndex(box, named: "a", in: box.corpora, megabytes: 5)
+        try bigIndex(box, named: "b", in: box.corpora, megabytes: 5)
+        let new = box.elsewhere.appendingPathComponent("SSD")
+        try FileManager.default.createDirectory(at: new, withIntermediateDirectories: true)
+        CorpusLibrary.alwaysCopyFiles = true
+        defer { CorpusLibrary.alwaysCopyFiles = false }
+
+        var events: [CorpusLibrary.TransferProgress] = []
+        let all = CorpusLibrary.moveBuiltCorpora(from: box.corpora, to: new) { events.append($0) }
+        XCTAssertEqual(all.moved, ["a", "b"])
+        XCTAssertEqual(Set(events.map(\.bytesTotal)).count, 1, "one total for the whole job")
+        XCTAssertEqual(events.last?.bytesDone, events.last?.bytesTotal)
+        XCTAssertTrue(CorpusLibrary.builtCorpora(in: box.corpora).isEmpty)
+
+        // Back again, cancelled once the second corpus has started: the first stays moved.
+        let result = await Task { () -> CorpusLibrary.MoveResult in
+            CorpusLibrary.moveBuiltCorpora(from: new, to: box.corpora) { progress in
+                if progress.name == "b" {
+                    withUnsafeCurrentTask { $0?.cancel() }
+                }
+            }
+        }.value
+        XCTAssertTrue(result.cancelled)
+        XCTAssertEqual(result.moved, ["a"])
+        XCTAssertEqual(CorpusLibrary.builtCorpora(in: new).map(\.name), ["b"], "b stayed")
+        XCTAssertEqual(CorpusLibrary.builtCorpora(in: box.corpora).map(\.name), ["a"])
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: box.corpora.path), ["a"], "nothing else there")
+    }
+
+    // MARK: Nothing hidden
+
+    func testRemovedCorporaGoToAVisibleFolder() throws {
+        let box = try TestPando.Sandbox()
+        try box.fakeIndex(named: "gone", in: box.corpora)
+        let entry = try XCTUnwrap(CorpusLibrary.entries().first)
+        let kept = try XCTUnwrap(try CorpusLibrary.remove(entry, deleteData: false))
+        XCTAssertEqual(kept.deletingLastPathComponent().lastPathComponent, "Removed Corpora")
+        XCTAssertFalse(kept.pathComponents.contains { $0.hasPrefix(".") }, "nothing hidden in the path")
+        XCTAssertTrue(CorpusLibrary.names().isEmpty, "and it is not listed as a corpus")
+    }
+
+    func testHiddenFoldersFromEarlyVersionsBecomeVisibleAndNothingIsDeleted() throws {
+        let box = try TestPando.Sandbox()
+        let base = box.corpora
+        try box.fakeIndex(named: "keep", in: base)
+        try box.fakeIndex(named: "old one", in: base.appendingPathComponent(".Removed"), tokens: 1)
+        try FileManager.default.createDirectory(at: base.appendingPathComponent(".importing-ABC"), withIntermediateDirectories: true)
+        try "partial".write(to: base.appendingPathComponent(".importing-ABC/data"), atomically: true, encoding: .utf8)
+
+        let surfaced = CorpusLibrary.makeHiddenFoldersVisible(in: base)
+        XCTAssertEqual(Set(surfaced), [".Removed", ".importing-ABC"])
+        let top = try FileManager.default.contentsOfDirectory(atPath: base.path)
+        XCTAssertEqual(top.sorted(), ["Removed Corpora", "Unfinished Work", "keep"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: base.appendingPathComponent("Removed Corpora/old one/corpus.info").path))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: base.appendingPathComponent("Unfinished Work").path),
+                       ["Left over importing-ABC"])
+        XCTAssertEqual(CorpusLibrary.names(), ["keep"])
+    }
+
+    func testAnExistingRemovedCorporaFolderIsMergedWithTheHiddenOne() throws {
+        let box = try TestPando.Sandbox()
+        let base = box.corpora
+        try box.fakeIndex(named: "same", in: base.appendingPathComponent("Removed Corpora"), tokens: 1)
+        try box.fakeIndex(named: "same", in: base.appendingPathComponent(".Removed"), tokens: 2)
+        CorpusLibrary.makeHiddenFoldersVisible(in: base)
+        let names = try FileManager.default.contentsOfDirectory(atPath: base.appendingPathComponent("Removed Corpora").path)
+        XCTAssertEqual(names.sorted(), ["same", "same 2"], "both kept, neither overwritten")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: base.appendingPathComponent(".Removed").path))
     }
 }

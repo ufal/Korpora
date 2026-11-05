@@ -74,9 +74,12 @@ public enum CorpusImporter {
         }
 
         // One input is passed as is; several are linked into a staging folder.
-        let work = base.appendingPathComponent(".importing-\(UUID().uuidString)", isDirectory: true)
+        let work = try CorpusLibrary.unfinishedFolder(in: base, label: "Importing \(name)")
         try fm.createDirectory(at: work, withIntermediateDirectories: true)
-        defer { try? fm.removeItem(at: work) }
+        defer {
+            try? fm.removeItem(at: work)
+            CorpusLibrary.clearUnfinishedWork(in: base)
+        }
         let source: URL
         if inputs.count == 1 {
             source = inputs[0]

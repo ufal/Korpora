@@ -38,8 +38,9 @@ final class CorpusImporterTests: XCTestCase {
         XCTAssertEqual(seen.all.compactMap { $0.tokens > 0 ? $0.tokens : nil }.last, 8)
         XCTAssertTrue(seen.all.contains { $0.phase == .finishing })
         // No leftovers of the temporary folder.
-        let leftovers = try FileManager.default.contentsOfDirectory(atPath: box.corpora.path).filter { $0.hasPrefix(".importing") }
-        XCTAssertEqual(leftovers, [])
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: box.corpora.path)
+        XCTAssertEqual(leftovers.filter { $0 != "Tiny" }, [], "no \"Unfinished Work\" folder either")
+        XCTAssertTrue(leftovers.allSatisfy { !$0.hasPrefix(".") }, "and nothing hidden")
     }
 
     func testSeveralFilesBecomeOneCorpus() async throws {

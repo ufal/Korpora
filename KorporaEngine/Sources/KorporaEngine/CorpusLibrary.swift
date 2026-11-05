@@ -51,9 +51,79 @@ public enum CorpusLibrary {
         directory(environment: "KORPORA_LINKED_CORPORA_DIRECTORY", default: "Korpora/LinkedCorpora")
     }
 
-    /// Where a built corpus goes when it is removed but its data kept.
+    /// Where a built corpus goes when it is removed but its data kept. A visible folder, like everything Korpora
+    /// makes: these can be gigabytes.
+    public static let removedFolderName = "Removed Corpora"
     public static var removedDirectory: URL {
-        baseDirectory.appendingPathComponent(".Removed", isDirectory: true)
+        baseDirectory.appendingPathComponent(removedFolderName, isDirectory: true)
+    }
+
+    /// Where work in progress (an import being indexed, a corpus being copied) is kept until it is complete, in
+    /// the corpora folder so that it is on the same disk, and visible, so that nothing big is ever hidden. Not a
+    /// corpus itself, so it is never listed; it is removed again when empty.
+    public static let unfinishedFolderName = "Unfinished Work"
+
+    /// A fresh folder for `label` inside the unfinished-work folder of `base` (not yet created itself).
+    static func unfinishedFolder(in base: URL, label: String) throws -> URL {
+        let fm = FileManager.default
+        let parent = base.appendingPathComponent(unfinishedFolderName, isDirectory: true)
+        try fm.createDirectory(at: parent, withIntermediateDirectories: true)
+        var folder = parent.appendingPathComponent(label, isDirectory: true)
+        var n = 2
+        while fm.fileExists(atPath: folder.path) {
+            folder = parent.appendingPathComponent("\(label) \(n)", isDirectory: true)
+            n += 1
+        }
+        return folder
+    }
+
+    /// Removes the unfinished-work folder of `base` if nothing is left in it.
+    static func clearUnfinishedWork(in base: URL) {
+        let parent = base.appendingPathComponent(unfinishedFolderName, isDirectory: true)
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: parent.path)) ?? []
+        if names.filter({ $0 != ".DS_Store" }).isEmpty { try? FileManager.default.removeItem(at: parent) }
+    }
+
+    /// Early versions kept removed corpora in a hidden `.Removed` folder and work in progress in hidden
+    /// `.importing-…` style folders next to the corpora. Makes them visible: `.Removed` becomes
+    /// "Removed Corpora" (merged into it if that exists), anything else goes into "Unfinished Work" under a
+    /// plain name. Nothing is deleted. Returns what was moved.
+    @discardableResult
+    public static func makeHiddenFoldersVisible(in base: URL) -> [String] {
+        let fm = FileManager.default
+        guard let names = try? fm.contentsOfDirectory(atPath: base.path) else { return [] }
+        var surfaced: [String] = []
+        for name in names where name.hasPrefix(".") && name != ".DS_Store" && name != "." && name != ".." {
+            let hidden = base.appendingPathComponent(name, isDirectory: true)
+            var isDirectory: ObjCBool = false
+            guard fm.fileExists(atPath: hidden.path, isDirectory: &isDirectory), isDirectory.boolValue else { continue }
+            do {
+                if name == ".Removed" {
+                    let visible = base.appendingPathComponent(removedFolderName, isDirectory: true)
+                    if fm.fileExists(atPath: visible.path) {
+                        for child in (try? fm.contentsOfDirectory(atPath: hidden.path)) ?? [] {
+                            var target = visible.appendingPathComponent(child, isDirectory: true)
+                            var n = 2
+                            while fm.fileExists(atPath: target.path) {
+                                target = visible.appendingPathComponent("\(child) \(n)", isDirectory: true)
+                                n += 1
+                            }
+                            try fm.moveItem(at: hidden.appendingPathComponent(child), to: target)
+                        }
+                        try fm.removeItem(at: hidden)
+                    } else {
+                        try fm.moveItem(at: hidden, to: visible)
+                    }
+                } else {
+                    let label = "Left over " + String(name.dropFirst())
+                    try fm.moveItem(at: hidden, to: try unfinishedFolder(in: base, label: label))
+                }
+                surfaced.append(name)
+            } catch {
+                continue
+            }
+        }
+        return surfaced
     }
 
     private static func directory(environment: String, default fallback: String) -> URL {
@@ -253,30 +323,167 @@ public enum CorpusLibrary {
         /// Left where they were: the new folder already has a corpus of that name.
         public var skipped: [String] = []
         public var failed: [(name: String, reason: String)] = []
+        /// The task was cancelled: what is in `moved` was moved, the rest was left alone.
+        public var cancelled = false
     }
 
-    /// Moves every built corpus from `old` to `new`, one at a time. Each goes through a hidden name first and is
-    /// renamed into place at the end, so a copy to another disk that is stopped never leaves half a corpus
-    /// listed. An existing corpus of the same name in `new` is never overwritten.
-    public static func moveBuiltCorpora(from old: URL, to new: URL, onProgress: (String) -> Void = { _ in }) -> MoveResult {
+    /// Moves every built corpus from `old` to `new`, one at a time, reporting how many bytes are done (to another
+    /// disk every index is copied, which takes a while). Each goes through a hidden name first and is renamed into
+    /// place at the end, so a stopped copy never leaves half a corpus listed. An existing corpus of the same name
+    /// in `new` is never overwritten. Cancelling the calling task stops it between two chunks; the corpus being
+    /// copied is left where it was.
+    public static func moveBuiltCorpora(
+        from old: URL, to new: URL, onProgress: (TransferProgress) -> Void = { _ in }
+    ) -> MoveResult {
         let fm = FileManager.default
         var result = MoveResult()
+        var todo: [(folder: URL, destination: URL)] = []
         for folder in corpusFolders(in: old) {
+            let destination = new.appendingPathComponent(folder.lastPathComponent, isDirectory: true)
+            if fm.fileExists(atPath: destination.path) {
+                result.skipped.append(folder.lastPathComponent)
+            } else {
+                todo.append((folder, destination))
+            }
+        }
+        let total = todo.reduce(Int64(0)) { $0 + treeSize($1.folder) }
+        var base: Int64 = 0
+        for (folder, destination) in todo {
             let name = folder.lastPathComponent
-            let destination = new.appendingPathComponent(name, isDirectory: true)
-            guard !fm.fileExists(atPath: destination.path) else { result.skipped.append(name); continue }
-            onProgress(name)
-            let staging = new.appendingPathComponent(".moving-\(UUID().uuidString)", isDirectory: true)
+            let size = treeSize(folder)
             do {
-                try fm.moveItem(at: folder, to: staging)
-                try fm.moveItem(at: staging, to: destination)
-                result.moved.append(name)
+                let staging = try unfinishedFolder(in: new, label: "Moving \(name)")
+                do {
+                    try transfer(from: folder, to: staging, move: true, name: name, base: base, total: total, report: onProgress)
+                    try fm.moveItem(at: staging, to: destination)
+                    base += size
+                    result.moved.append(name)
+                } catch {
+                    try? fm.removeItem(at: staging)
+                    throw error
+                }
+            } catch is CancellationError {
+                result.cancelled = true
+                break
             } catch {
-                try? fm.removeItem(at: staging)
                 result.failed.append((name, error.localizedDescription))
             }
         }
+        clearUnfinishedWork(in: new)
         return result
+    }
+
+    // MARK: Copying with progress
+
+    /// How far a copy or move of corpora has come.
+    public struct TransferProgress: Sendable, Equatable {
+        public var bytesDone: Int64
+        public var bytesTotal: Int64
+        /// The corpus being copied.
+        public var name: String
+    }
+
+    /// Tests: copy file by file even within one disk, as a move to an external disk does.
+    static var alwaysCopyFiles = false
+
+    /// The bytes in the files under `url`.
+    static func treeSize(_ url: URL) -> Int64 {
+        let keys: [URLResourceKey] = [.isRegularFileKey, .fileSizeKey]
+        guard let walker = FileManager.default.enumerator(at: url, includingPropertiesForKeys: keys) else { return 0 }
+        var total: Int64 = 0
+        for case let file as URL in walker {
+            let values = try? file.resourceValues(forKeys: Set(keys))
+            if values?.isRegularFile == true { total += Int64(values?.fileSize ?? 0) }
+        }
+        return total
+    }
+
+    private static func sameVolume(_ a: URL, _ b: URL) -> Bool {
+        let first = try? a.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier as? NSObject
+        let second = try? b.resourceValues(forKeys: [.volumeIdentifierKey]).volumeIdentifier as? NSObject
+        guard let first, let second else { return false }
+        return first.isEqual(second)
+    }
+
+    /// Puts the folder `source` at `destination` (which must not exist), as a copy or a move. Within one disk that
+    /// is one rename (or a clone), reported as done at once; to another disk the files are copied in chunks and
+    /// the progress reported (at most ten times a second), and a cancelled task stops it and removes what was
+    /// copied. `base` and `total` place this folder in a bigger job.
+    static func transfer(
+        from source: URL, to destination: URL, move: Bool, name: String, base: Int64, total: Int64,
+        report: (TransferProgress) -> Void
+    ) throws {
+        let fm = FileManager.default
+        let size = treeSize(source)
+        if !alwaysCopyFiles, sameVolume(source, destination.deletingLastPathComponent()) {
+            try Task.checkCancellation()
+            if move { try fm.moveItem(at: source, to: destination) } else { try fm.copyItem(at: source, to: destination) }
+            report(TransferProgress(bytesDone: base + size, bytesTotal: total, name: name))
+            return
+        }
+        var done: Int64 = 0
+        var lastReport = Date.distantPast
+        report(TransferProgress(bytesDone: base, bytesTotal: total, name: name))
+        do {
+            try copyTree(from: source, to: destination) { bytes in
+                done += bytes
+                if Date().timeIntervalSince(lastReport) >= 0.1 {
+                    lastReport = Date()
+                    report(TransferProgress(bytesDone: base + done, bytesTotal: total, name: name))
+                }
+            }
+        } catch {
+            try? fm.removeItem(at: destination)
+            throw error
+        }
+        if move { try fm.removeItem(at: source) }
+        report(TransferProgress(bytesDone: base + size, bytesTotal: total, name: name))
+    }
+
+    /// Copies a folder's files in chunks, calling `copied` with the size of each; throws `CancellationError`
+    /// when the calling task is cancelled.
+    static func copyTree(from source: URL, to destination: URL, copied: (Int64) -> Void) throws {
+        let fm = FileManager.default
+        try fm.createDirectory(at: destination, withIntermediateDirectories: true)
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
+        guard let walker = fm.enumerator(at: source, includingPropertiesForKeys: keys) else { return }
+        let prefix = source.resolvingSymlinksInPath().path + "/"
+        for case let item as URL in walker {
+            try Task.checkCancellation()
+            let path = item.resolvingSymlinksInPath().path
+            let relative = path.hasPrefix(prefix) ? String(path.dropFirst(prefix.count)) : item.lastPathComponent
+            let target = destination.appendingPathComponent(relative)
+            let values = try item.resourceValues(forKeys: Set(keys))
+            if values.isSymbolicLink == true {
+                try fm.createSymbolicLink(atPath: target.path, withDestinationPath: try fm.destinationOfSymbolicLink(atPath: item.path))
+            } else if values.isDirectory == true {
+                try fm.createDirectory(at: target, withIntermediateDirectories: true)
+            } else {
+                try copyFile(from: item, to: target, copied: copied)
+            }
+        }
+    }
+
+    private static func copyFile(from source: URL, to destination: URL, copied: (Int64) -> Void) throws {
+        let fm = FileManager.default
+        guard fm.createFile(atPath: destination.path, contents: nil) else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: destination.path])
+        }
+        let input = try FileHandle(forReadingFrom: source)
+        let output = try FileHandle(forWritingTo: destination)
+        defer { try? input.close(); try? output.close() }
+        while true {
+            try Task.checkCancellation()
+            let chunk = try autoreleasepool { try input.read(upToCount: 4 << 20) } ?? Data()
+            if chunk.isEmpty { break }
+            try output.write(contentsOf: chunk)
+            copied(Int64(chunk.count))
+        }
+        if let attributes = try? fm.attributesOfItem(atPath: source.path) {
+            try? fm.setAttributes(
+                [.posixPermissions: attributes[.posixPermissions] as Any, .modificationDate: attributes[.modificationDate] as Any],
+                ofItemAtPath: destination.path)
+        }
     }
 
     // MARK: Relinking and bringing in
@@ -299,7 +506,9 @@ public enum CorpusLibrary {
     /// there (the original stays where it was) or moved (it leaves its old place). Names, subcorpora and
     /// history are unaffected, as the name is the same.
     @discardableResult
-    public static func bringIn(_ entry: Entry, copy: Bool) throws -> Entry {
+    public static func bringIn(
+        _ entry: Entry, copy: Bool, onProgress: (TransferProgress) -> Void = { _ in }
+    ) throws -> Entry {
         guard case .linked(let target) = entry.origin, !entry.isMissing, isCorpus(target) else {
             throw LibraryError.invalidName("\u{201C}\(entry.name)\u{201D} can\u{2019}t be brought in: its index folder isn\u{2019}t there.")
         }
@@ -308,9 +517,11 @@ public enum CorpusLibrary {
         guard !fm.fileExists(atPath: destination.path) else { throw LibraryError.nameTaken(entry.name) }
         try fm.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
         // Built beside the final place and moved in whole, so a stopped copy never leaves half a corpus listed.
-        let partial = baseDirectory.appendingPathComponent(".bringing-in-\(UUID().uuidString)", isDirectory: true)
+        let partial = try unfinishedFolder(in: baseDirectory, label: "Bringing in \(entry.name)")
+        let total = treeSize(target)
+        defer { clearUnfinishedWork(in: baseDirectory) }
         do {
-            if copy { try fm.copyItem(at: target, to: partial) } else { try fm.moveItem(at: target, to: partial) }
+            try transfer(from: target, to: partial, move: !copy, name: entry.name, base: 0, total: total, report: onProgress)
             try fm.moveItem(at: partial, to: destination)
         } catch {
             try? fm.removeItem(at: partial)
@@ -395,7 +606,8 @@ public enum CorpusLibrary {
         let destination = parent.appendingPathComponent(name, isDirectory: true)
         // The file system ignores case, so a change of capitals goes through a temporary name.
         if caseOnly {
-            let hop = parent.appendingPathComponent(".renaming-\(UUID().uuidString)", isDirectory: true)
+            // Only for a moment, and visible all the same: a corpus is never hidden, even if the app stops here.
+            let hop = parent.appendingPathComponent("\(entry.name) (being renamed)", isDirectory: true)
             try fm.moveItem(at: entry.directory, to: hop)
             try fm.moveItem(at: hop, to: destination)
         } else {
