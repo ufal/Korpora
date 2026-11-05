@@ -1,16 +1,9 @@
-# The old Manatee checkout, no longer used (can be deleted).
-/manatee-open/
-
 # Swift Package Manager build output (anywhere in the tree)
 .build/
 **/.build/
 **/.swiftpm/
 KorporaEngine/.build/
 KorporaEngine/.swiftpm/
-KorporaAssistant/.build/
-KorporaAssistant/.swiftpm/
-KorporaGeneration/.build/
-KorporaGeneration/.swiftpm/
 
 # Throwaway tree scripts/build-release-deps.sh builds into (a pando checkout
 # and its release build). Machine-local, regenerable.

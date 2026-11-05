@@ -50,5 +50,3 @@ them by repo-relative path.
   `ufal/pando` into `~/Developer/pando-work/` (outside the checkout); `sample` and `ud` index test
   corpora there; `test` runs the engine and app tests against it. Tests that need pando skip when
   there is no build. A release bundles its own pando (`scripts/build-release-deps.sh`).
-- `manatee-open/` (an old, untracked checkout inside the working directory) is no longer used and can be
-  deleted.
