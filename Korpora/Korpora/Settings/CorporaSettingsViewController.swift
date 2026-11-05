@@ -71,6 +71,8 @@ final class CorporaSettingsViewController: NSViewController {
     private enum Column: String { case name, tokens, source, size, resident }
 
     private let directoryPathLabel = NSTextField(labelWithString: "")
+    private let resetDirectoryButton = NSButton(title: "Use Standard Folder", target: nil, action: nil)
+    private let changeDirectoryButton = NSButton(title: "Choose\u{2026}", target: nil, action: nil)
     private let engineNoticeLabel = NSTextField(wrappingLabelWithString: "")
     let tableView = CorpusListTableView()
     private let scrollView = NSScrollView()
@@ -103,7 +105,17 @@ final class CorporaSettingsViewController: NSViewController {
         directoryPathLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         directoryPathLabel.font = .systemFont(ofSize: 11)
         directoryPathLabel.textColor = .secondaryLabelColor
-        let chooseDirectoryButton = NSButton(title: "Show in Finder", target: self, action: #selector(showLibraryInFinder))
+        let showInFinderButton = NSButton(title: "Show in Finder", target: self, action: #selector(showLibraryInFinder))
+        let changeDirectoryButton = self.changeDirectoryButton
+        changeDirectoryButton.target = self
+        changeDirectoryButton.action = #selector(chooseCorporaDirectory)
+        changeDirectoryButton.toolTip = "Keep the corpora Korpora builds in another folder, for example on an external disk"
+        resetDirectoryButton.target = self
+        resetDirectoryButton.action = #selector(resetCorporaDirectory)
+        resetDirectoryButton.toolTip = "Go back to the standard folder"
+        let chooseDirectoryButton = NSStackView(views: [resetDirectoryButton, changeDirectoryButton, showInFinderButton])
+        chooseDirectoryButton.orientation = .horizontal
+        chooseDirectoryButton.spacing = 6
         engineNoticeLabel.font = .systemFont(ofSize: 11)
         engineNoticeLabel.textColor = .systemRed
         engineNoticeLabel.isHidden = true
@@ -260,7 +272,7 @@ final class CorporaSettingsViewController: NSViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        directoryPathLabel.stringValue = CorpusLibrary.baseDirectory.path
+        updateDirectoryLabel()
         if let reason = Engines.unavailableReason {
             engineNoticeLabel.stringValue = "The search engine couldn\u{2019}t be loaded, so corpora can\u{2019}t be opened or built: \(reason)"
             engineNoticeLabel.isHidden = false
@@ -300,6 +312,7 @@ final class CorporaSettingsViewController: NSViewController {
         }
         updateRemoveButton()
         updateMemoryBar()
+        updateDirectoryLabel()
         NotificationCenter.default.post(name: AppSettings.corporaDidChangeNotification, object: nil)
     }
 
@@ -378,8 +391,28 @@ final class CorporaSettingsViewController: NSViewController {
     }
 
     @objc private func showLibraryInFinder() {
-        try? FileManager.default.createDirectory(at: CorpusLibrary.baseDirectory, withIntermediateDirectories: true)
-        NSWorkspace.shared.open(CorpusLibrary.baseDirectory)
+        // The standard folder is made when needed; a chosen one that isn't there (a disk that is not connected)
+        // is not made up.
+        if CorpusLibrary.baseDirectoryIsAvailable {
+            try? FileManager.default.createDirectory(at: CorpusLibrary.baseDirectory, withIntermediateDirectories: true)
+            NSWorkspace.shared.open(CorpusLibrary.baseDirectory)
+        } else {
+            showAlert("The corpora folder isn\u{2019}t available",
+                      "\(CorpusLibrary.baseDirectory.path) wasn\u{2019}t found. Is its disk connected?")
+        }
+    }
+
+    /// The folder shown, and in red when a chosen one is not there (its disk is not connected).
+    private func updateDirectoryLabel() {
+        let base = CorpusLibrary.baseDirectory
+        if CorpusLibrary.baseDirectoryIsAvailable {
+            directoryPathLabel.stringValue = base.path
+            directoryPathLabel.textColor = .secondaryLabelColor
+        } else {
+            directoryPathLabel.stringValue = base.path + " \u{2014} not found (is the disk connected?)"
+            directoryPathLabel.textColor = .systemRed
+        }
+        resetDirectoryButton.isHidden = !CorpusLibrary.baseDirectoryIsChosen
     }
 
     @objc private func showAddMenu(_ sender: NSButton) {
@@ -858,7 +891,7 @@ extension CorporaSettingsViewController: NSMenuDelegate {
         }
     }
 
-    private func showAlert(_ title: String, _ text: String) {
+    func showAlert(_ title: String, _ text: String) {
         guard let window = view.window else { return }
         let alert = NSAlert()
         alert.messageText = title
@@ -895,4 +928,119 @@ extension CorporaSettingsViewController: NSMenuDelegate {
 
     @objc private func renameFromMenu() { beginRenamingSelected() }
     @objc private func removeFromMenu() { removeSelectedCorpus() }
+}
+
+// MARK: The folder for built corpora
+
+extension CorporaSettingsViewController {
+    @objc func chooseCorporaDirectory() {
+        guard let window = view.window else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.message = "Choose the folder where Korpora keeps the corpora it builds, for example one on an external disk."
+        panel.prompt = "Choose"
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .OK, let url = panel.url else { return }
+            useCorporaDirectory(url)
+        }
+    }
+
+    @objc func resetCorporaDirectory() {
+        useCorporaDirectory(CorpusLibrary.defaultBaseDirectory, isStandard: true)
+    }
+
+    /// Switches to `folder`; when corpora are in the current folder, first asks whether to move them along or
+    /// leave them where they are.
+    func useCorporaDirectory(_ folder: URL, isStandard: Bool = false) {
+        let current = CorpusLibrary.baseDirectory
+        guard folder.resolvingSymlinksInPath().path != current.resolvingSymlinksInPath().path else { return }
+        do {
+            if isStandard {
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            }
+            try CorpusLibrary.validateNewBaseDirectory(folder, replacing: current)
+        } catch {
+            showAlert("That folder can\u{2019}t be used", "\(error)")
+            return
+        }
+        let existing = CorpusLibrary.baseDirectoryIsAvailable ? CorpusLibrary.builtCorpora(in: current) : []
+        guard !existing.isEmpty, let window = view.window else {
+            switchCorporaDirectory(to: folder, isStandard: isStandard)
+            return
+        }
+        let size = ByteCountFormatter().string(
+            fromByteCount: Int64(existing.reduce(0) { $0 + CorpusMemoryResidency.directorySize($1.directory) }))
+        let alert = NSAlert()
+        alert.messageText = existing.count == 1
+            ? "Move the corpus \u{201C}\(existing[0].name)\u{201D} to the new folder?"
+            : "Move your \(existing.count) corpora to the new folder?"
+        alert.informativeText = "\(existing.count == 1 ? "It is" : "They are") in \(current.path) (\(size)). "
+            + "Moving \(existing.count == 1 ? "it" : "them") to \(folder.path) keeps "
+            + "\(existing.count == 1 ? "it" : "them") in the list; to another disk this can take a while. "
+            + "If you leave \(existing.count == 1 ? "it" : "them"), Korpora stops listing "
+            + "\(existing.count == 1 ? "it" : "them"): \(existing.count == 1 ? "it stays" : "they stay") in the old folder "
+            + "and \(existing.count == 1 ? "comes" : "come") back if you choose that folder again."
+        alert.addButton(withTitle: "Move")
+        alert.addButton(withTitle: "Leave Them")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }
+            switch response {
+            case .alertFirstButtonReturn: moveCorpora(existing, from: current, to: folder, isStandard: isStandard)
+            case .alertSecondButtonReturn: switchCorporaDirectory(to: folder, isStandard: isStandard)
+            default: break
+            }
+        }
+    }
+
+    private func switchCorporaDirectory(to folder: URL, isStandard: Bool) {
+        AppSettings.shared.corporaDirectory = isStandard ? nil : folder
+        reloadCorpora()
+    }
+
+    private func moveCorpora(_ existing: [CorpusLibrary.Entry], from old: URL, to new: URL, isStandard: Bool) {
+        let resident = existing.map(\.name).filter { AppSettings.shared.isKeepResident($0) }
+        for entry in existing where resident.contains(entry.name) {
+            CorpusMemoryResidency.unwarm(directory: entry.directory)
+        }
+        hintLabel.stringValue = "Moving \(existing.count) corpora to \(new.path)\u{2026}"
+        setBusy(true)
+        Task { @MainActor [weak self] in
+            // Moving runs off the main actor: to another disk it copies every index.
+            let result = await Task.detached(priority: .userInitiated) {
+                CorpusLibrary.moveBuiltCorpora(from: old, to: new)
+            }.value
+            guard let self else { return }
+            hintLabel.stringValue = Self.defaultHint
+            setBusy(false)
+            if result.failed.isEmpty {
+                switchCorporaDirectory(to: new, isStandard: isStandard)
+                for name in resident {
+                    guard let directory = CorpusLibrary.directory(forName: name) else { continue }
+                    Task.detached(priority: .utility) { try? await CorpusMemoryResidency.warm(directory: directory) }
+                }
+                if !result.skipped.isEmpty {
+                    showAlert("Some corpora stayed in the old folder",
+                              "The new folder already has \(result.skipped.map { "\u{201C}\($0)\u{201D}" }.joined(separator: ", ")), "
+                              + "so \(result.skipped.count == 1 ? "that one was" : "those were") not moved; the ones in the new folder are used.")
+                }
+            } else {
+                // Stay with the old folder: what could not be moved is still there. What was moved is in the new one.
+                let list = result.failed.map { "\($0.name): \($0.reason)" }.joined(separator: "\n")
+                showAlert("Not all corpora could be moved",
+                          "\(list)\n\nKorpora still uses \(old.path). \(result.moved.count) corpora were moved to "
+                          + "\(new.path) already; choose that folder again to finish.")
+                reloadCorpora()
+            }
+        }
+    }
+
+    private func setBusy(_ busy: Bool) {
+        tableView.isEnabled = !busy
+        resetDirectoryButton.isEnabled = !busy
+        changeDirectoryButton.isEnabled = !busy
+    }
 }

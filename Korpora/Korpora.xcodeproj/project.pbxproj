@@ -48,6 +48,7 @@
 		9706A787B7D8B81891AC6D95 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A2ABBCF839D0C66351D969 /* main.swift */; };
 		97CB75829A78ECC1D477B9CE /* ConcordanceExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB085B52C1CC64F2C18D6D2 /* ConcordanceExporterTests.swift */; };
 		9A58D11670B9CF33508B8FF4 /* DispersionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24BB2E68E54F740A40A1DF52 /* DispersionTests.swift */; };
+		9DA301BAFC5067B031A340A8 /* CorpusDirectorySettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DEA83DD0B055BE11EADCC66 /* CorpusDirectorySettingsTests.swift */; };
 		9E0E01C3DC4DE65D38AB17B9 /* CollocationSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC23CBE793C2ED01EFAE067 /* CollocationSheetController.swift */; };
 		9FEF942A2023A921E3D832A0 /* ConcordanceSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EA20AB3943E5955AFF4F9E1 /* ConcordanceSettingsViewController.swift */; };
 		A1626887D340E9D9566D6217 /* AppearanceSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38F142C472071C00A420ABC5 /* AppearanceSettingsViewController.swift */; };
@@ -114,6 +115,7 @@
 		36AD3505A6B115D835CFF1D6 /* KWICCellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KWICCellView.swift; sourceTree = "<group>"; };
 		38F142C472071C00A420ABC5 /* AppearanceSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettingsViewController.swift; sourceTree = "<group>"; };
 		3E0DDF2767D8F85B6A2A9DAF /* ConcordanceViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConcordanceViewController.swift; sourceTree = "<group>"; };
+		4DEA83DD0B055BE11EADCC66 /* CorpusDirectorySettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusDirectorySettingsTests.swift; sourceTree = "<group>"; };
 		50429E54926CEE548BDD9820 /* UnicodeScriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnicodeScriptTests.swift; sourceTree = "<group>"; };
 		548B42C845A6C7B07CCE870F /* HistoryPopoverController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPopoverController.swift; sourceTree = "<group>"; };
 		54A99C5F88D490DDA3B9D49F /* WindowPrinting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowPrinting.swift; sourceTree = "<group>"; };
@@ -256,6 +258,7 @@
 				5CB085B52C1CC64F2C18D6D2 /* ConcordanceExporterTests.swift */,
 				7F2DB228AD53B0694A7A7C2C /* ConcordanceOperationTests.swift */,
 				2AFEC8D6AECEBADDC1AA8204 /* ConlluDropTests.swift */,
+				4DEA83DD0B055BE11EADCC66 /* CorpusDirectorySettingsTests.swift */,
 				D82D1E7E21D20C5DE4493C5F /* CorpusListLinkTests.swift */,
 				580379B16410CA4C2D7CA4D0 /* CorpusListSettingsTests.swift */,
 				2228F90D33D19B13E69ABAC5 /* CQLAutoPairingTests.swift */,
@@ -461,6 +464,7 @@
 				97CB75829A78ECC1D477B9CE /* ConcordanceExporterTests.swift in Sources */,
 				6A762E1E423B189ABF712D47 /* ConcordanceOperationTests.swift in Sources */,
 				B818723B2057A66196B91F17 /* ConlluDropTests.swift in Sources */,
+				9DA301BAFC5067B031A340A8 /* CorpusDirectorySettingsTests.swift in Sources */,
 				D22D378020B22E07B4909732 /* CorpusListLinkTests.swift in Sources */,
 				A40489B556EC0F24714E0377 /* CorpusListSettingsTests.swift in Sources */,
 				9A58D11670B9CF33508B8FF4 /* DispersionTests.swift in Sources */,

@@ -110,6 +110,23 @@ the corpus has no `upos`/`deprel`) and region forms. Every template is checked a
 Not done: the `;` commands (`count`, `tabulate`, `stats`, `keyness`, `dcoll`), because the app has no
 window for their results yet; completing attribute values. See the aggregates list in the 1.0 notes.
 
+## Corpus list: linked corpora and the corpora folder (2026-11-05)
+
+- A linked corpus whose index folder moved stays in the list, marked "Missing" with a warning icon (it used to
+  disappear: `CorpusLibrary.entries()` only lists folders with a `corpus.info`; `entries(includingMissing: true)`
+  adds the broken links, and everything that searches leaves them out).
+- Double-click on a row opens the corpus's folder in Finder (a missing one asks where it went, the Relink
+  dialog). Renaming is by a click on the name of a selected row, or Return (the Finder convention).
+  The contextual menu has Show in Finder, Rename, Relink... (linked), Bring into Korpora... (linked: copy or
+  move the index into Korpora's folder; the name, subcorpora and history stay) and Remove.
+- The folder for corpora Korpora builds can be chosen in Settings > Corpora (Choose..., "Use Standard Folder"
+  to go back), for example on an external disk. When corpora are in the current folder, a dialog asks whether
+  to move them along (each goes through a hidden name and is renamed into place; an existing corpus of the same
+  name in the new folder is never overwritten) or leave them (they stay in the old folder and are no longer
+  listed). If the chosen folder's disk is not connected, the path shows in red, the list is empty and an
+  import says so instead of making the folder. Linked corpora (small symlinks), subcorpora and the `.Removed`
+  folder are not moved. `KORPORA_CORPORA_DIRECTORY` still overrides everything (tests).
+
 ## Scope for 1.0 (decided 2026-11-03)
 
 In: the pando-only concordancer as it is, with menu commands for every toolbar action and a

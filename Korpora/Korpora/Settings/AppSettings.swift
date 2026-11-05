@@ -26,6 +26,7 @@ final class AppSettings {
         static let usesAlternatingRowBackground = "usesAlternatingRowBackground"
         static let extendedContextDisplayMode = "extendedContextDisplayMode"
         static let allowMultipleExtendedContexts = "allowMultipleExtendedContexts"
+        static let corporaDirectory = "corporaDirectory"
     }
 
     private let defaults: UserDefaults
@@ -35,6 +36,28 @@ final class AppSettings {
     }
 
     /// Every corpus in the library (built and linked).
+    /// The folder the user chose for the corpora Korpora builds (an external disk, say); nil for the default one.
+    /// The library follows it (`CorpusLibrary.customBaseDirectory`) once `applyCorporaDirectory()` has run.
+    var corporaDirectory: URL? {
+        get { defaults.string(forKey: Key.corporaDirectory).map { URL(fileURLWithPath: $0, isDirectory: true) } }
+        set {
+            if let newValue {
+                defaults.set(newValue.path, forKey: Key.corporaDirectory)
+            } else {
+                defaults.removeObject(forKey: Key.corporaDirectory)
+            }
+            applyCorporaDirectory()
+            NotificationCenter.default.post(name: Self.corporaDidChangeNotification, object: nil)
+        }
+    }
+
+    /// Tells the corpus library where the user keeps built corpora. Done at launch and on every change; only for
+    /// the app's own settings, so that tests with their own defaults leave the library alone.
+    func applyCorporaDirectory() {
+        guard self === AppSettings.shared else { return }
+        CorpusLibrary.customBaseDirectory = corporaDirectory
+    }
+
     /// - Parameter includingMissing: also the linked corpora whose index folder is gone (the list shows them with
     ///   a warning); anything that searches leaves them out.
     func corpusLibraryEntries(includingMissing: Bool = false) -> [CorpusLibrary.Entry] {
