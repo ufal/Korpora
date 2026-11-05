@@ -55,15 +55,120 @@ final class PandoConcordanceOperationTests: XCTestCase {
         XCTAssertEqual(total, 5)
     }
 
-    func testAnOperationWorksOnTheFirstHitsUpToTheLimit() async throws {
-        let live = try await cats(limit: 3)
+    // MARK: A result larger than the limit: pando orders it, on all its hits
+
+    /// The same five hits, with a limit of 2: "5 hits is a big result".
+    private func big() async throws -> any ConcordanceHandle { try await cats(limit: 2) }
+
+    func testPandoSortsABigResultOnAllItsHits() async throws {
+        let live = try await big()
+        try await live.sort(SortCriteria(SortLevel(attribute: "form", anchor: .right, span: 1, caseInsensitive: true)))
+        let size = await live.size
+        XCTAssertEqual(size, 5, "every hit, not the first two")
+        let partial = await live.viewIsPartial
+        XCTAssertFalse(partial)
+        let rights = try await live.kwicLines(leftContext: "-1", rightContext: "1", kwicAttr: "form", secondaryAttributes: [])
+            .map(\.right)
+        XCTAssertEqual(rights, ["", "eats", "runs", "sleeps", "Sleeps"], "the order the in-memory sort gives")
+        let window = try await live.kwicLines(range: 1..<3, leftContext: "-1", rightContext: "1", kwicAttr: "form",
+                                              secondaryAttributes: [])
+        XCTAssertEqual(window.map(\.right), ["eats", "runs"], "a window of the sorted result")
+    }
+
+    func testPandoSortsByTheWordToTheLeft() async throws {
+        let live = try await big()
+        try await live.sort(SortCriteria(SortLevel(attribute: "form", anchor: .left, span: 1)))
+        let lefts = try await live.kwicLines(leftContext: "-1", rightContext: "1", kwicAttr: "form", secondaryAttributes: [])
+            .map(\.left)
+        // pando compares by code point (capitals first), where the in-memory sort of a small result uses the
+        // locale's alphabetical order ("big, my, one, Sleeps, small"). %c folds case but is no collation.
+        XCTAssertEqual(lefts, ["Sleeps", "big", "my", "one", "small"])
+    }
+
+    func testASortedBigResultKnowsItsRegionsAndWideContext() async throws {
+        let live = try await big()
+        try await live.sort(SortCriteria(SortLevel(attribute: "form", anchor: .right, span: 1, caseInsensitive: true)))
+        let sorted = try await live.kwicLines(leftContext: "-1", rightContext: "1", kwicAttr: "form", secondaryAttributes: [])
+        let reference = try await cats()
+        try await reference.sort(SortCriteria(SortLevel(attribute: "form", anchor: .right, span: 1, caseInsensitive: true)))
+        let expectedGenres = try await reference.structureValues(attribute: "doc.genre")
+        let genres = try await live.structureValues(attribute: "doc.genre")
+        XCTAssertEqual(genres, expectedGenres)
+        let context = try await live.extendedContext(forViewRow: 1, tokens: 2)
+        XCTAssertEqual(context.match, sorted[1].kwic)
+        let info = try await live.structureInfo(forViewRow: 1)
+        let expectedInfo = try await reference.structureInfo(forViewRow: 1)
+        XCTAssertEqual(info.map { "\($0.structure).\($0.attribute)=\($0.value)" },
+                       expectedInfo.map { "\($0.structure).\($0.attribute)=\($0.value)" })
+    }
+
+    func testPandoShufflesABigResultAndKeepsTheOrderBetweenWindows() async throws {
+        let live = try await big()
         try await live.shuffle()
         let size = await live.size
-        XCTAssertEqual(size, 3, "a sort, shuffle or sample of a larger result covers its first hits only")
-        let lines = try await live.kwicLines()
-        XCTAssertEqual(Set(lines.map(\.position)), [2, 6, 9], "the first hits, in corpus order before shuffling")
+        XCTAssertEqual(size, 5)
+        let all = try await order(live)
+        XCTAssertEqual(Set(all), Set(corpusOrder), "the same hits")
+        let again = try await order(live)
+        XCTAssertEqual(again, all, "one seed: the same order every time")
+        let tail = try await live.kwicLines(range: 3..<5, leftContext: "-1", rightContext: "1", kwicAttr: "form",
+                                            secondaryAttributes: [])
+        XCTAssertEqual(tail.map { "\($0.left)|\($0.kwic)|\($0.right)" }, Array(all[3..<5]), "windows agree with the whole")
+        let genres = try await live.structureValues(attribute: "doc.genre", range: 0..<5)
+        XCTAssertEqual(genres, Array(repeating: "", count: 5), "pando's hit pages carry no region values")
+        do {
+            _ = try await live.structureInfo(forViewRow: 0)
+            XCTFail("the document of a shuffled hit of a big result can't be looked up")
+        } catch { }
+        let context = try await live.extendedContext(forViewRow: 2, tokens: 2)
+        XCTAssertEqual(context.match, "cat")
+    }
+
+    func testPandoSamplesABigResult() async throws {
+        let live = try await big()
+        try await live.sample(lines: 3)
+        let size = await live.size
+        XCTAssertEqual(size, 3)
+        let lines = try await live.kwicLines(leftContext: "-1", rightContext: "1", kwicAttr: "form", secondaryAttributes: [])
+        XCTAssertEqual(lines.count, 3)
+        XCTAssertEqual(lines.map(\.position), lines.map(\.position).sorted(), "a sample keeps corpus order")
+        let again = try await live.kwicLines(leftContext: "-1", rightContext: "1", kwicAttr: "form", secondaryAttributes: [])
+        XCTAssertEqual(again.map(\.position), lines.map(\.position), "one seed: the same hits")
         let total = await live.totalHits
         XCTAssertEqual(total, 5)
+    }
+
+    func testWhatPandoCantDoWorksOnTheFirstHitsOfTheCurrentOrder() async throws {
+        let live = try await big()
+        // Two sort keys: pando sorts one.
+        try await live.sort(SortCriteria(levels: [
+            SortLevel(attribute: "form", anchor: .right, span: 1, caseInsensitive: true),
+            SortLevel(attribute: "form", anchor: .left, span: 1),
+        ]))
+        let size = await live.size
+        XCTAssertEqual(size, 2, "in memory, over the first two hits")
+        let partial = await live.viewIsPartial
+        XCTAssertTrue(partial)
+        let total = await live.totalHits
+        XCTAssertEqual(total, 5)
+        // Line groups too, and after a shuffle they take the shuffled order's first hits.
+        let grouped = try await big()
+        try await grouped.shuffle()
+        let shuffled = try await order(grouped)
+        try await grouped.setLineGroup(rangeStart: 0, rangeLen: 1, group: 1)
+        let afterGroup = try await order(grouped)
+        XCTAssertEqual(afterGroup, Array(shuffled.prefix(2)))
+        let groupCounts = await grouped.lineGroupCounts()
+        XCTAssertEqual(groupCounts, [1: 1])
+    }
+
+    func testASmallResultIsSortedAndShuffledInMemoryWithEveryOption() async throws {
+        let live = try await cats()
+        try await live.sort(SortCriteria(SortLevel(attribute: "form", anchor: .kwic, reverse: true)), unique: false)
+        let size = await live.size
+        XCTAssertEqual(size, 5)
+        let partial = await live.viewIsPartial
+        XCTAssertFalse(partial)
     }
 
     func testRegionValuesAndGroupsOfAWindow() async throws {

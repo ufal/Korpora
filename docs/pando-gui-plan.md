@@ -77,10 +77,13 @@ while a name is being edited.
 
 ### Differences users will notice
 - A search shows every hit, however many: the table reads lines from pando a window at a time as it scrolls (a result of
-  millions of hits needs no more memory than a few screens). Sorting, shuffling, sampling and line groups need the hits in
-  memory, so on a result with more than 100,000 hits (Settings > Concordance, "Sort and shuffle at most") they work on the
-  first 100,000 and the status line says so: pando's C API can't sort or shuffle the whole result yet
-  (docs/pando-issue-c-api-options.md).
+  millions of hits needs no more memory than a few screens). A result up to 100,000 hits (Settings > Concordance, "Full
+  sorting options up to") is sorted, shuffled, sampled and grouped in memory with every option. On a bigger one pando does
+  one-key sorts (`sort`, paged with `cat`), shuffles and samples itself, on all hits (pando 0.4.2); several sort keys,
+  retrograde, unique and line groups work on the first 100,000 hits of the current order and the status line says so.
+  pando sorts in code-point order (capitals first, `%c` only folds case), where the in-memory sort follows the language's
+  alphabet; the region column and "Document Info" are blank/unavailable for shuffled or sampled hits of a big result (pando's
+  hit pages carry no region values).
 - Words around a hit show their spelling only (no lemma/tag under context words; sorting by left/right words is by spelling).
 - No positive/negative filter, no sentence view mode, no `.subc`-style typed subcorpus expressions.
 - Subcorpora are picks of document properties, saved per corpus; they restrict every search in them.
@@ -187,3 +190,10 @@ replaces the target. The issue to file with pando is docs/pando-issue-c-api-opti
 
 Asks for pando: sorted paging with the sort cached per handle (or `Last`/a named set as a page source), and `shuffle`,
 `sample`, `seed` (and `sentence`) in the C API options.
+
+### Update (2026-11-05, pando v0.4.2-0.4.4)
+pando answered the asks within a day: `sentence`, `shuffle`, `sample`, `seed` in `pando_query` and `sentence` in `pando_run`;
+`cat M from to` pages a sorted set (4.6 s for the first sort of 4.3 M hits on UD, then milliseconds; shuffle 0.1 s at
+offset 0, 1.7 s at offset 3 M); CoNLL-U metadata values with spaces are kept; MIT licence. `PandoConcordance` uses them for
+results larger than the in-memory limit (see "Differences users will notice"). Still missing, to ask for: region attribute
+values in hit pages (`attrs` accepts only token attributes), a sort order by language (collation), several sort keys.

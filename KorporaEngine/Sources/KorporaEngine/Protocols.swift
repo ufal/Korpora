@@ -42,12 +42,12 @@ extension CorpusHandle {
 /// A running query whose hits can be read a window at a time, and sorted,
 /// sampled, grouped and analysed in place.
 ///
-/// Until the first operation (sort, shuffle, sample, line group) the view is
-/// every hit in corpus order, and lines are read from the engine a window at a
-/// time, so a result of any size can be scrolled. An operation needs the hits
-/// in memory: it works on the first `limit` hits (see
-/// `CorpusEngine.openConcordance`), so for a larger result the view shrinks to
-/// those (`size < totalHits`). `size` counts the hits in the current view,
+/// Lines are read from the engine a window at a time, so a result of any size
+/// can be scrolled. Sorting by one key, shuffling and sampling of a big result
+/// are done by the engine too, on all its hits. Anything else (several sort
+/// keys, line groups, ...) needs the hits in memory: it works on the first
+/// `limit` hits (see `CorpusEngine.openConcordance`) and the view shrinks to
+/// those (`viewIsPartial`). `size` counts the hits in the current view,
 /// `totalHits` all hits in the corpus.
 public protocol ConcordanceHandle: Actor {
     /// Number of hits in the current view (all hits until an operation; then the loaded ones,
@@ -56,6 +56,10 @@ public protocol ConcordanceHandle: Actor {
 
     /// Number of hits the query has in the corpus, loaded or not.
     var totalHits: Int { get async }
+
+    /// An operation could only work on the first hits of a result too big to hold in memory, so the
+    /// view is shorter than what the operations asked for.
+    var viewIsPartial: Bool { get async }
 
     /// Hits per equal stretch of the corpus, by start position.
     func hitHistogram(bins: Int, corpusSize: Int) async throws -> [Int]
@@ -106,6 +110,8 @@ extension ConcordanceHandle {
         let count = await size
         return try await structureValues(attribute: attribute, range: 0..<count)
     }
+
+    public var viewIsPartial: Bool { get async { false } }
 
     public func lineGroupCounts() async -> [Int: Int] { [:] }
 

@@ -8,13 +8,16 @@ import Foundation
 /// *Windowed* (until the first operation): the view is every hit in corpus
 /// order and lines are read from pando a window at a time (`offset`/`limit`),
 /// so a result of millions of hits can be scrolled to its end; nothing is kept.
+/// On a result larger than `limit`, pando orders it, too: a sort of one key
+/// (`sort`, paged with `cat`), a shuffle or a random sample (its `shuffle`,
+/// `sample` and `seed` options) leave the view windowed.
 ///
 /// *Loaded* (after a sort, shuffle, sample or line group): the first `limit`
 /// hits are loaded once - each with the attributes of its match tokens and some
 /// tokens of context - and the view is an ordering and subset of them that the
-/// operations change, all in memory. For a result larger than `limit` that is
-/// the first `limit` hits only: pando's C API sorts the whole result on every
-/// call (seconds for millions of hits) and has no shuffle or sample.
+/// operations change, all in memory. Every operation pando can't do on a big
+/// result (several sort keys, retrograde, unique, line groups, a sort of a
+/// sample) works that way on the first `limit` hits of the current view.
 ///
 /// Collocations, frequencies and region attributes are separate pando programs
 /// on the same query.
@@ -79,17 +82,59 @@ public actor PandoConcordance: ConcordanceHandle {
 
     deinit { library.close(handle) }
 
-    /// No operation yet: the view is every hit, in corpus order, read from pando as needed.
+    /// No in-memory operation yet: the view is read from pando as needed.
     private var windowed = true
 
+    /// How pando orders the windowed view. Only a result larger than `limit` leaves corpus order
+    /// that way; a smaller one is sorted, shuffled and sampled in memory, with every option.
+    private enum Order { case corpus, sorted, shuffled }
+    private var order = Order.corpus
+    /// A random sample of this many hits (pando's `sample`), in corpus order or shuffled.
+    private var sampleSize: Int?
+    /// Fixes the shuffle and the sample, so every window and reload sees the same hits.
+    private var seed = PandoConcordance.newSeed()
+    /// The name the sorted hits have in the engine handle's session (for `cat`).
+    private static let sortedSet = "KorporaHits"
+    private static func newSeed() -> UInt32 { UInt32.random(in: 1...UInt32.max) }
+
+    /// pando orders it (a result larger than the in-memory limit).
+    private var pandoOrders: Bool { totalHits > limit }
+
+    /// Hits the windowed view has.
+    private var windowedSize: Int { min(sampleSize ?? totalHits, totalHits) }
+
+    /// How many hits were loaded when the view went into memory, and whether that is fewer than the view had.
+    private var loadedCount = 0
+    public private(set) var viewIsPartial = false
+
     public var size: Int {
-        windowed ? totalHits : view.count
+        windowed ? windowedSize : view.count
     }
 
-    /// The index into `lines` of view row `row`, or (windowed) the hit number itself.
+    /// The index into `lines` of view row `row`, or (windowed) the row itself: the hit's number in the
+    /// view's own order.
     private func sourceIndex(forRow row: Int) -> Int? {
-        if windowed { return (0..<totalHits).contains(row) ? row : nil }
+        if windowed { return (0..<windowedSize).contains(row) ? row : nil }
         return view.indices.contains(row) ? view[row] : nil
+    }
+
+    /// `count` hits of the view's own order (corpus, sorted by pando, shuffled, sampled) from `offset`.
+    private func hitPage(offset: Int, count: Int, context: Int, attrs: [String]) throws -> [[String: Any]] {
+        let object: [String: Any]
+        if order == .sorted {
+            object = try library.result(library.run(
+                handle, "cat \(Self.sortedSet) \(offset) \(offset + count - 1)",
+                PandoLibrary.json(["context": context, "attrs": attrs])))
+        } else {
+            var options: [String: Any] = [
+                "limit": count, "offset": offset, "total": false, "context": context, "attrs": attrs,
+            ]
+            if let sampleSize { options["sample"] = sampleSize }
+            if order == .shuffled { options["shuffle"] = true }
+            if order == .shuffled || sampleSize != nil { options["seed"] = Int(seed) }
+            object = try library.result(library.query(handle, query, PandoLibrary.json(options)))
+        }
+        return object["hits"] as? [[String: Any]] ?? []
     }
 
     // MARK: Loading
@@ -131,13 +176,14 @@ public actor PandoConcordance: ConcordanceHandle {
     private func ensureLoaded(window: Int) throws {
         let wanted = max(window, Self.minimumWindow)
         if loadedWindow >= wanted { return }
-        let count = min(totalHits, limit)
+        if windowed {
+            loadedCount = min(windowedSize, limit)
+            viewIsPartial = loadedCount < windowedSize
+        }
+        let count = loadedCount
         var fresh: [Line] = []
         if count > 0 {
-            let object = try library.result(library.query(handle, query, PandoLibrary.json([
-                "limit": count, "offset": 0, "total": false, "context": wanted, "attrs": attributes,
-            ])))
-            fresh = parse(object["hits"] as? [[String: Any]] ?? [])
+            fresh = parse(try hitPage(offset: 0, count: count, context: wanted, attrs: attributes))
         }
         if loadedWindow == 0 || fresh.count != lines.count {
             view = Array(fresh.indices)
@@ -180,11 +226,8 @@ public actor PandoConcordance: ConcordanceHandle {
         if windowed {
             var attrs = secondaryAttributes
             if !attrs.contains(kwicAttr) { attrs.append(kwicAttr) }
-            let object = try library.result(library.query(handle, query, PandoLibrary.json([
-                "limit": rows.count, "offset": rows.lowerBound, "total": false,
-                "context": max(left, right), "attrs": attrs,
-            ])))
-            return parse(object["hits"] as? [[String: Any]] ?? []).map {
+            let hits = try hitPage(offset: rows.lowerBound, count: rows.count, context: max(left, right), attrs: attrs)
+            return parse(hits).map {
                 kwicLine($0, left: left, right: right, kwicAttr: kwicAttr, secondaryAttributes: secondaryAttributes)
             }
         }
@@ -214,7 +257,34 @@ public actor PandoConcordance: ConcordanceHandle {
         return key
     }
 
-    public func sort(_ criteria: SortCriteria, unique: Bool) throws {
+    /// pando's own `sort` for what it can do on a big result: one key, ascending, no retrograde, not unique.
+    private func pandoSort(_ criteria: SortCriteria, unique: Bool) -> String? {
+        guard criteria.levels.count == 1, let level = criteria.levels.first, !level.reverse, !unique else { return nil }
+        var sort = "sort \(Self.sortedSet) by \(PandoNames.attribute(level.attribute))"
+        if level.caseInsensitive { sort += " %c" }
+        switch level.anchor {
+        case .kwic: break
+        case .left: sort += " on match[-1]..match[-\(level.span)]"
+        case .right: sort += " on matchend[1]..matchend[\(level.span)]"
+        }
+        return sort
+    }
+
+    public func sort(_ criteria: SortCriteria, unique: Bool) async throws {
+        if windowed, pandoOrders, sampleSize == nil, let sort = pandoSort(criteria, unique: unique) {
+            // pando sorts the whole result once (seconds for millions of hits; a cancel reaches it from
+            // another thread) and then pages it with `cat` in milliseconds.
+            let program = "\(Self.sortedSet) = \(query); \(sort)"
+            let library = library, handle = handle
+            _ = try await withTaskCancellationHandler {
+                try library.result(library.run(handle, program, PandoLibrary.json(["limit": 1])))
+            } onCancel: {
+                library.cancel(handle)
+            }
+            try Task.checkCancellation()
+            order = .sorted
+            return
+        }
         try ensureLoaded(window: Self.minimumWindow)
         let levels = criteria.levels
         let locale = Locale.current
@@ -240,11 +310,21 @@ public actor PandoConcordance: ConcordanceHandle {
     }
 
     public func shuffle() throws {
+        if windowed, pandoOrders {
+            order = .shuffled
+            seed = Self.newSeed()
+            return
+        }
         try ensureLoaded(window: Self.minimumWindow)
         view.shuffle()
     }
 
     public func sample(lines count: Int) throws {
+        if windowed, pandoOrders, order != .sorted {
+            guard count < windowedSize else { return }
+            sampleSize = max(count, 0)
+            return
+        }
         try ensureLoaded(window: Self.minimumWindow)
         guard count < view.count else { return }
         let chosen = Set(view.indices.shuffled().prefix(max(count, 0)))
@@ -310,8 +390,17 @@ public actor PandoConcordance: ConcordanceHandle {
 
     // MARK: Region attributes and wide context
 
-    private func tabulate(offset: Int, count: Int, fields: [String]) throws -> [[String]] {
-        let program = "\(query); tabulate Last \(offset) \(count) " + fields.map { "match.\($0)" }.joined(separator: ", ")
+    /// Region values of `count` hits of the view's own order from `offset`; nil when pando can't give them
+    /// for this order (the hits of a big result that pando shuffled or sampled: its hit pages carry no region
+    /// values, and a hit's number in corpus order isn't known).
+    private func tabulate(offset: Int, count: Int, fields: [String]) throws -> [[String]]? {
+        let columns = fields.map { "match.\($0)" }.joined(separator: ", ")
+        let program: String
+        switch (order, sampleSize) {
+        case (.sorted, _): program = "tabulate \(Self.sortedSet) \(offset) \(count) \(columns)"
+        case (.corpus, nil): program = "\(query); tabulate Last \(offset) \(count) \(columns)"
+        default: return nil
+        }
         let object = try library.result(library.run(handle, program, "{}"))
         return (object["rows"] as? [[Any]] ?? []).map { $0.map { "\($0)" } }
     }
@@ -320,11 +409,14 @@ public actor PandoConcordance: ConcordanceHandle {
         let rows = range.clamped(to: 0..<size)
         guard !rows.isEmpty else { return [] }
         let name = PandoNames.attribute(attribute)
+        let blank = [String](repeating: "", count: rows.count)
         if windowed {
-            return try tabulate(offset: rows.lowerBound, count: rows.count, fields: [name]).map { $0.first ?? "" }
+            return try tabulate(offset: rows.lowerBound, count: rows.count, fields: [name])
+                .map { $0.map { $0.first ?? "" } } ?? blank
         }
         if regionValues[name] == nil {
-            regionValues[name] = try tabulate(offset: 0, count: lines.count, fields: [name]).map { $0.first ?? "" }
+            regionValues[name] = try tabulate(offset: 0, count: lines.count, fields: [name])
+                .map { $0.map { $0.first ?? "" } } ?? [String](repeating: "", count: lines.count)
         }
         let values = regionValues[name] ?? []
         return rows.map { values.indices.contains(view[$0]) ? values[view[$0]] : "" }
@@ -338,7 +430,10 @@ public actor PandoConcordance: ConcordanceHandle {
         }
         guard !wanted.isEmpty else { return [] }
         let fields = wanted.map { PandoNames.attribute("\($0.structure).\($0.attribute)") }
-        guard let values = try tabulate(offset: index, count: 1, fields: fields).first else { return [] }
+        guard let rows = try tabulate(offset: index, count: 1, fields: fields) else {
+            throw PandoError.unsupported("The document of a shuffled or sampled hit in a result this large")
+        }
+        guard let values = rows.first else { return [] }
         return zip(wanted, values).compactMap { entry, value in
             value.isEmpty || value == "_" ? nil : (entry.structure, entry.attribute, value)
         }
@@ -346,10 +441,8 @@ public actor PandoConcordance: ConcordanceHandle {
 
     public func extendedContext(forViewRow row: Int, tokens: Int) throws -> (before: String, match: String, after: String) {
         guard let index = sourceIndex(forRow: row) else { throw PandoError.failure("That hit isn\u{2019}t there any more.") }
-        let object = try library.result(library.query(handle, query, PandoLibrary.json([
-            "limit": 1, "offset": index, "total": false, "context": tokens, "attrs": ["form"],
-        ])))
-        guard let hit = (object["hits"] as? [[String: Any]])?.first, let context = hit["context"] as? [String: Any] else {
+        guard let hit = try hitPage(offset: index, count: 1, context: tokens, attrs: ["form"]).first,
+              let context = hit["context"] as? [String: Any] else {
             throw PandoError.failure("pando returned no context for that hit.")
         }
         return (context["left"] as? String ?? "", context["match"] as? String ?? "", context["right"] as? String ?? "")

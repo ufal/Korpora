@@ -26,7 +26,7 @@ final class ConcordanceSettingsViewController: NSViewController {
         let contextLabel = NSTextField(labelWithString: "Default context width:")
         let leftLabel = NSTextField(labelWithString: "Left:")
         let rightLabel = NSTextField(labelWithString: "Right:")
-        let viewModeLabel = NSTextField(labelWithString: "Sort and shuffle at most (hits):")
+        let viewModeLabel = NSTextField(labelWithString: "Full sorting options up to (hits):")
         let extendedLabel = NSTextField(labelWithString: "Extended context tokens:")
         let extendedDisplayLabel = NSTextField(labelWithString: "Extended context display:")
 
@@ -34,9 +34,10 @@ final class ConcordanceSettingsViewController: NSViewController {
         rightContextField.delegate = self
         extendedContextField.delegate = self
         maxLinesField.delegate = self
-        maxLinesField.toolTip = "Searches show every hit, however many. Sorting, shuffling, sampling and line groups "
-            + "need the hits in memory, so on a result with more hits they work on the first ones only (pando can\u{2019}t "
-            + "yet do them on a whole large result)."
+        maxLinesField.toolTip = "Searches show every hit, however many. A result up to this size is sorted, shuffled and "
+            + "grouped in memory with every option (several sort keys, retrograde, unique, alphabetical order of the "
+            + "language, line groups). pando sorts one key, shuffles and samples a bigger result itself, in code-point "
+            + "order; several keys, retrograde, unique and line groups then work on the first hits only."
         extendedContextDisplayControl.segmentStyle = .texturedRounded
         extendedContextDisplayControl.target = self
         extendedContextDisplayControl.action = #selector(extendedContextDisplayModeChanged)

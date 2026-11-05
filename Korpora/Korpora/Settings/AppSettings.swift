@@ -157,8 +157,9 @@ final class AppSettings {
 
     /// Seeds `ConcordanceDocument.viewMode` for a brand-new document -
     /// see `ConcordanceViewMode`.
-    /// How many hits sorting, shuffling, sampling and line groups work on at most. Searches show every
-    /// hit; an operation on a larger result covers its first hits only (the status line says so).
+    /// Up to how many hits a result is sorted, shuffled and grouped in memory, with every option. Searches
+    /// show every hit; on a bigger result pando sorts one key, shuffles and samples, and what it can't do
+    /// (several keys, line groups, ...) works on the first hits only (the status line says so).
     var maxConcordanceLines: Int {
         get {
             let value = defaults.integer(forKey: Key.maxConcordanceLines)

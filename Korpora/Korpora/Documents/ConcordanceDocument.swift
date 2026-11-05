@@ -572,7 +572,8 @@ final class ConcordanceDocument: NSDocument {
                 totalHits = await live.totalHits
                 status = Self.statusLine(
                     shown: rowCount, total: totalHits, corpusTokens: info.sizeTokens, corpusName: corpusName,
-                    subcorpus: subcorpus, operationLimit: operations.isEmpty ? nil : loadLimit)
+                    subcorpus: subcorpus, operationLimit: await live.viewIsPartial ? loadLimit : nil,
+                    sampled: operations.contains { if case .sample = $0 { return true } else { return false } })
             } catch {
                 guard generation == replayGeneration else { return }
                 setRows([], count: 0, source: nil)
@@ -591,15 +592,17 @@ final class ConcordanceDocument: NSDocument {
     /// "12 hits in the 38,181,322-token corpus UD", or for a big result "10,000 of 3,978,146 hits (the
     /// first ones; see Settings > Concordance) in ...".
     static func statusLine(shown: Int, total: Int, corpusTokens: Int, corpusName: String, subcorpus: Subcorpus?,
-                           operationLimit: Int? = nil) -> String {
+                           operationLimit: Int? = nil, sampled: Bool = false) -> String {
         let hits: String
-        // An operation (sort, shuffle, sample, line group) ran on a result too big to hold: it covers the
-        // first hits only, because pando's C API can't sort or shuffle the whole of it.
+        // An operation pando can't do on a result too big to hold in memory (several sort keys, line groups,
+        // a sort of a sample) worked on the first hits only.
         var note = ""
         if total > shown, let operationLimit {
             hits = "\(shown.formatted()) of \(total.formatted()) hits"
-            note = " (sorting, shuffling and sampling cover only the first \(operationLimit.formatted()) hits: "
-                + "pando can\u{2019}t yet do them on a result this large)"
+            note = " (this works on the first \(operationLimit.formatted()) hits only: pando can\u{2019}t yet "
+                + "sort by several keys or group lines on a result this large)"
+        } else if total > shown, sampled {
+            hits = "\(shown.formatted()) of \(total.formatted()) hits (a random sample)"
         } else if total > shown {
             hits = "\(shown.formatted()) of \(total.formatted()) hits (the first ones)"
         } else {

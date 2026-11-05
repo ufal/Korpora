@@ -67,8 +67,12 @@ final class PandoRealCorpusTests: XCTestCase {
         let readable = await verbs.size
         XCTAssertEqual(readable, verbCount, "every hit can be read, millions or not")
         try await verbs.shuffle()
+        let shuffled = await verbs.size
+        XCTAssertEqual(shuffled, verbCount, "pando shuffles all of a big result")
+        try await verbs.sort(SortCriteria(levels: [
+            SortLevel(attribute: "form", anchor: .kwic), SortLevel(attribute: "form", anchor: .left)]))
         let loaded = await verbs.size
-        XCTAssertEqual(loaded, ConcordanceLimit.defaultLimit, "an operation works on the first hits only")
+        XCTAssertEqual(loaded, ConcordanceLimit.defaultLimit, "what pando can't do works on the first hits")
         let page = try await engine.openConcordance(query: #"[lemma="house" & upos="NOUN"]"#, in: corpus)
         let lines = try await page.kwicLines()
         XCTAssertFalse(lines.isEmpty)

@@ -39,6 +39,7 @@ private actor FakeConcordance: ConcordanceHandle {
         self.recorder = recorder; self.total = total; self.loaded = loaded; hits = total
     }
     private func operate() { hits = min(hits, loaded) }
+    var viewIsPartial: Bool { get async { hits < total && hits == loaded } }
     var size: Int { get async { hits } }
     var totalHits: Int { get async { total } }
     func hitHistogram(bins: Int, corpusSize: Int) async throws -> [Int] { [hits] + Array(repeating: 0, count: bins - 1) }
@@ -164,7 +165,7 @@ private struct FakeEngine: CorpusEngine {
         #expect(document.row(at: 5)?.line.kwic == "hit994")
     }
 
-    @Test func sortingABigResultCoversItsFirstHitsAndTheStatusSaysWhy() async {
+    @Test func whatPandoCantDoOnABigResultCoversItsFirstHitsAndTheStatusSaysWhy() async {
         let document = document(engine: FakeEngine(recorder: recorder, total: 3_978_146, loaded: 100))
         document.runQuery("[]")
         await settle(document)
@@ -173,8 +174,14 @@ private struct FakeEngine: CorpusEngine {
         #expect(document.rowCount == 100)
         #expect(document.totalHits == 3_978_146)
         #expect(document.status.hasPrefix("100 of 3,978,146 hits in the"), "\(document.status)")
-        #expect(document.status.contains("cover only the first \(AppSettings.shared.maxConcordanceLines.formatted()) hits"), "\(document.status)")
+        #expect(document.status.contains("first \(AppSettings.shared.maxConcordanceLines.formatted()) hits only"), "\(document.status)")
         #expect(document.status.contains("pando"), "\(document.status)")
+    }
+
+    @Test func aSampleOfABigResultSaysSo() {
+        #expect(ConcordanceDocument.statusLine(shown: 500, total: 4_000_000, corpusTokens: 12, corpusName: "C",
+                                               subcorpus: nil, sampled: true)
+                == "500 of 4,000,000 hits (a random sample) in the 12-token corpus \u{201C}C\u{201D}")
     }
 
     @Test func theStatusLineWordsEachCase() {
