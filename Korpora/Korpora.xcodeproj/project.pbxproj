@@ -28,6 +28,7 @@
 		470EB5A8AA5C7EB0446D755D /* LegacyDefaultsMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE1B3764D995C534F371A028 /* LegacyDefaultsMigration.swift */; };
 		4AB1276625BB1338E6EEFCA0 /* UnicodeScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC4BF85C4540BAB954E61CCC /* UnicodeScript.swift */; };
 		4B12DE00ECB62CF1B94A5E85 /* ExtendedContextWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20A93E62192681E88BFE51B2 /* ExtendedContextWindowController.swift */; };
+		4EACCC5BFE236FE4B27AACC1 /* TransferProgressSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99E96AB4BAFAEB74DFB6DDF1 /* TransferProgressSheetController.swift */; };
 		5460A66C8408B07767556999 /* SamplePopoverController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B1A2B39864F42D3B7BF38A7 /* SamplePopoverController.swift */; };
 		576BE606702264D7FF969666 /* Engines.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A3E3632E8CB4A221956BA5 /* Engines.swift */; };
 		59997812E5187B68B3AB9863 /* SortableTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F115CEAC930466168A9217 /* SortableTableView.swift */; };
@@ -140,6 +141,7 @@
 		8DE414BB1705FBC35C5E276F /* ContextPopoverController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextPopoverController.swift; sourceTree = "<group>"; };
 		8EA20AB3943E5955AFF4F9E1 /* ConcordanceSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConcordanceSettingsViewController.swift; sourceTree = "<group>"; };
 		91CE8F8CB611E321AAA51650 /* SubcorpusValuePickerModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubcorpusValuePickerModelTests.swift; sourceTree = "<group>"; };
+		99E96AB4BAFAEB74DFB6DDF1 /* TransferProgressSheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransferProgressSheetController.swift; sourceTree = "<group>"; };
 		9BC23CBE793C2ED01EFAE067 /* CollocationSheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollocationSheetController.swift; sourceTree = "<group>"; };
 		AB308D76FA5C93BE1B12F54A /* SettingsFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsFlowTests.swift; sourceTree = "<group>"; };
 		AC4BF85C4540BAB954E61CCC /* UnicodeScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnicodeScript.swift; sourceTree = "<group>"; };
@@ -227,6 +229,7 @@
 				6B1A2B39864F42D3B7BF38A7 /* SamplePopoverController.swift */,
 				8D4005D8384BD2DA78535DA1 /* SortPopoverController.swift */,
 				AD2EE2396662652C35562289 /* SubcorpusValuePickerModel.swift */,
+				99E96AB4BAFAEB74DFB6DDF1 /* TransferProgressSheetController.swift */,
 			);
 			path = Controllers;
 			sourceTree = "<group>";
@@ -532,6 +535,7 @@
 				59997812E5187B68B3AB9863 /* SortableTableView.swift in Sources */,
 				7493A2B00E35294C4A83B5DF /* SubcorpusValuePickerModel.swift in Sources */,
 				C9273B1C6C8F464645CCBFE4 /* TableChartContainerView.swift in Sources */,
+				4EACCC5BFE236FE4B27AACC1 /* TransferProgressSheetController.swift in Sources */,
 				4AB1276625BB1338E6EEFCA0 /* UnicodeScript.swift in Sources */,
 				BE963D7E5B3A307F7B3242BD /* WindowPrinting.swift in Sources */,
 				9706A787B7D8B81891AC6D95 /* main.swift in Sources */,

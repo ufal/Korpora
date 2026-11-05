@@ -71,7 +71,7 @@ final class CorporaSettingsViewController: NSViewController {
     private enum Column: String { case name, tokens, source, size, resident }
 
     private let directoryPathLabel = NSTextField(labelWithString: "")
-    private let resetDirectoryButton = NSButton(title: "Use Standard Folder", target: nil, action: nil)
+    private let resetDirectoryButton = NSButton(title: "Reset to Default", target: nil, action: nil)
     private let changeDirectoryButton = NSButton(title: "Choose\u{2026}", target: nil, action: nil)
     private let engineNoticeLabel = NSTextField(wrappingLabelWithString: "")
     let tableView = CorpusListTableView()
@@ -112,7 +112,7 @@ final class CorporaSettingsViewController: NSViewController {
         changeDirectoryButton.toolTip = "Keep the corpora Korpora builds in another folder, for example on an external disk"
         resetDirectoryButton.target = self
         resetDirectoryButton.action = #selector(resetCorporaDirectory)
-        resetDirectoryButton.toolTip = "Go back to the standard folder"
+        resetDirectoryButton.toolTip = "Go back to the default folder"
         let chooseDirectoryButton = NSStackView(views: [resetDirectoryButton, changeDirectoryButton, showInFinderButton])
         chooseDirectoryButton.orientation = .horizontal
         chooseDirectoryButton.spacing = 6
@@ -870,24 +870,55 @@ extension CorporaSettingsViewController: NSMenuDelegate {
             CorpusMemoryResidency.unwarm(directory: row.entry.directory.resolvingSymlinksInPath())
         }
         let entry = row.entry
-        hintLabel.stringValue = "\(copy ? "Copying" : "Moving") \u{201C}\(row.name)\u{201D} into Korpora\u{2026}"
-        tableView.isEnabled = false
-        Task { @MainActor [weak self] in
-            // The copy runs off the main actor; a big index takes a while.
-            let outcome: Result<CorpusLibrary.Entry, Error> = await Task.detached(priority: .userInitiated) {
-                Result { try CorpusLibrary.bringIn(entry, copy: copy) }
-            }.value
+        runWithProgress(
+            headline: "\(copy ? "Copying" : "Moving") \u{201C}\(row.name)\u{201D} into Korpora",
+            work: { report in try CorpusLibrary.bringIn(entry, copy: copy, onProgress: report) }
+        ) { [weak self] outcome in
             guard let self else { return }
-            hintLabel.stringValue = Self.defaultHint
-            tableView.isEnabled = true
-            if case .failure(let error) = outcome {
+            switch outcome {
+            case .failure(let error) where error is CancellationError:
+                break  // stopped by the user: nothing was changed
+            case .failure(let error):
                 showAlert("\u{201C}\(row.name)\u{201D} couldn\u{2019}t be brought into Korpora", "\(error)")
-            } else if AppSettings.shared.isKeepResident(row.name),
-                      case .success(let built) = outcome {
-                let directory = built.directory
-                Task.detached(priority: .utility) { try? await CorpusMemoryResidency.warm(directory: directory) }
+            case .success(let built):
+                if AppSettings.shared.isKeepResident(row.name) {
+                    let directory = built.directory
+                    Task.detached(priority: .utility) { try? await CorpusMemoryResidency.warm(directory: directory) }
+                }
             }
             reloadCorpora()
+        }
+    }
+
+    /// Runs `work` off the main actor with a progress sheet (Cancel stops it), shown only if it takes more than a
+    /// moment: a move within one disk is instant. `work` gets a function to report progress to.
+    func runWithProgress<T: Sendable>(
+        headline: String,
+        work: @escaping @Sendable (@escaping @Sendable (CorpusLibrary.TransferProgress) -> Void) throws -> T,
+        completion: @escaping (Result<T, Error>) -> Void
+    ) {
+        let sheet = TransferProgressSheetController(headline: headline)
+        var presented = false
+        var finished = false
+        setBusy(true)
+        let report: @Sendable (CorpusLibrary.TransferProgress) -> Void = { progress in
+            DispatchQueue.main.async { MainActor.assumeIsolated { sheet.update(progress) } }
+        }
+        let task = Task.detached(priority: .userInitiated) { Result { try work(report) } }
+        sheet.onCancel = { task.cancel() }
+        let present = DispatchWorkItem { [weak self] in
+            guard let self, !finished else { return }
+            presented = true
+            presentAsSheet(sheet)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: present)
+        Task { @MainActor [weak self] in
+            let outcome = await task.value
+            finished = true
+            present.cancel()
+            if presented { sheet.dismiss(nil) }
+            self?.setBusy(false)
+            completion(outcome)
         }
     }
 
@@ -1006,17 +1037,12 @@ extension CorporaSettingsViewController {
         for entry in existing where resident.contains(entry.name) {
             CorpusMemoryResidency.unwarm(directory: entry.directory)
         }
-        hintLabel.stringValue = "Moving \(existing.count) corpora to \(new.path)\u{2026}"
-        setBusy(true)
-        Task { @MainActor [weak self] in
-            // Moving runs off the main actor: to another disk it copies every index.
-            let result = await Task.detached(priority: .userInitiated) {
-                CorpusLibrary.moveBuiltCorpora(from: old, to: new)
-            }.value
-            guard let self else { return }
-            hintLabel.stringValue = Self.defaultHint
-            setBusy(false)
-            if result.failed.isEmpty {
+        runWithProgress(
+            headline: "Moving \(existing.count == 1 ? "the corpus" : "\(existing.count) corpora") to \(new.lastPathComponent)",
+            work: { report in CorpusLibrary.moveBuiltCorpora(from: old, to: new, onProgress: report) }
+        ) { [weak self] outcome in
+            guard let self, case .success(let result) = outcome else { return }
+            if result.failed.isEmpty && !result.cancelled {
                 switchCorporaDirectory(to: new, isStandard: isStandard)
                 for name in resident {
                     guard let directory = CorpusLibrary.directory(forName: name) else { continue }
@@ -1028,10 +1054,11 @@ extension CorporaSettingsViewController {
                               + "so \(result.skipped.count == 1 ? "that one was" : "those were") not moved; the ones in the new folder are used.")
                 }
             } else {
-                // Stay with the old folder: what could not be moved is still there. What was moved is in the new one.
-                let list = result.failed.map { "\($0.name): \($0.reason)" }.joined(separator: "\n")
-                showAlert("Not all corpora could be moved",
-                          "\(list)\n\nKorpora still uses \(old.path). \(result.moved.count) corpora were moved to "
+                // Stay with the old folder: what was not moved is still there. What was moved is in the new one.
+                let why = result.cancelled
+                    ? "Stopped. " : result.failed.map { "\($0.name): \($0.reason)" }.joined(separator: "\n") + "\n\n"
+                showAlert(result.cancelled ? "The move was stopped" : "Not all corpora could be moved",
+                          "\(why)Korpora still uses \(old.path). \(result.moved.count) corpora were moved to "
                           + "\(new.path) already; choose that folder again to finish.")
                 reloadCorpora()
             }

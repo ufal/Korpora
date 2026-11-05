@@ -119,12 +119,20 @@ window for their results yet; completing attribute values. See the aggregates li
   dialog). Renaming is by a click on the name of a selected row, or Return (the Finder convention).
   The contextual menu has Show in Finder, Rename, Relink... (linked), Bring into Korpora... (linked: copy or
   move the index into Korpora's folder; the name, subcorpora and history stay) and Remove.
-- The folder for corpora Korpora builds can be chosen in Settings > Corpora (Choose..., "Use Standard Folder"
+- Nothing Korpora makes is hidden (the user's rule, memory `no-invisible-files`): removed-but-kept corpora go to
+  "Removed Corpora"; work in progress (an import being indexed, a corpus being copied) is kept in "Unfinished
+  Work" in the corpora folder (on the same disk) and removed when done; hidden folders from early versions
+  (`.Removed`, `.importing-...`) are made visible at launch, nothing deleted.
+- Copying or moving corpora (Bring into Korpora, changing the corpora folder) shows a progress sheet with a
+  progress bar, bytes done, an estimate of the time left (after a few seconds) and Cancel. Files are copied in
+  chunks and a cancel removes the partial copy and leaves the original; the sheet only appears if the job takes
+  more than a moment (within one disk it is a rename).
+- The folder for corpora Korpora builds can be chosen in Settings > Corpora (Choose..., "Reset to Default"
   to go back), for example on an external disk. When corpora are in the current folder, a dialog asks whether
   to move them along (each goes through a hidden name and is renamed into place; an existing corpus of the same
   name in the new folder is never overwritten) or leave them (they stay in the old folder and are no longer
   listed). If the chosen folder's disk is not connected, the path shows in red, the list is empty and an
-  import says so instead of making the folder. Linked corpora (small symlinks), subcorpora and the `.Removed`
+  import says so instead of making the folder. Linked corpora (small symlinks), subcorpora and the "Removed Corpora"
   folder are not moved. `KORPORA_CORPORA_DIRECTORY` still overrides everything (tests).
 
 ## Scope for 1.0 (decided 2026-11-03)
