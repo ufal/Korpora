@@ -31,7 +31,7 @@ import Testing
         defer { window.orderOut(nil) }
         #expect(window.styleMask.contains(.resizable))
         let designed: [SettingsWindowController.Pane: NSSize] = [
-            .corpora: NSSize(width: 680, height: 440),
+            .corpora: NSSize(width: 840, height: 470),
             .appearance: NSSize(width: 460, height: 520),
             .concordance: NSSize(width: 460, height: 290),
         ]
@@ -58,7 +58,7 @@ import Testing
         let name = try #require(widths["name"])
         #expect(name >= 220, "Name has \(name)")
         let others = widths.filter { $0.key != "name" }.values.reduce(0, +)
-        #expect(name > others * 0.6, "Name \(name) vs the other columns together \(others)")
+        #expect(name > others * 0.4, "Name \(name) vs the other columns together \(others)")
         let longName = NSAttributedString(string: "Czech National Corpus SYN2025", attributes: [.font: NSFont.systemFont(ofSize: 12)])
         #expect(longName.size().width + 12 < name, "a long corpus name is not cut off")
         #expect(widths["resident"] ?? 999 <= 110, "the In Memory column is no wider than it needs")
@@ -74,7 +74,7 @@ import Testing
         defer { window.orderOut(nil) }
         SettingsWindowController.shared.showPane(.corpora)
         layOut(window)
-        #expect(window.contentView?.frame.width == 680, "\(window.contentView?.frame.width ?? 0)")
+        #expect(window.contentView?.frame.width == 840, "\(window.contentView?.frame.width ?? 0)")
     }
 
     /// Regression: AppKit turns a non-zero `preferredContentSize` into
@@ -103,7 +103,7 @@ import Testing
         let list = try #require(controller.tableView.enclosingScrollView)
         let before = list.frame
 
-        window.setContentSize(NSSize(width: 900, height: 740))
+        window.setContentSize(NSSize(width: 1020, height: 740))
         layOut(window)
         #expect(list.frame.height >= before.height + 250, "list went from \(before.height) to \(list.frame.height)")
         #expect(list.frame.width >= before.width + 180, "list went from \(before.width) to \(list.frame.width)")
@@ -148,7 +148,7 @@ import Testing
 
         check("opening size")
         let opening = widths()
-        window.setContentSize(NSSize(width: 900, height: 500))
+        window.setContentSize(NSSize(width: 1020, height: 500))
         layOut(window)
         check("wider")
         let wider = widths()
@@ -156,7 +156,7 @@ import Testing
         #expect(Array(wider.dropFirst()) == Array(opening.dropFirst()), "the other columns keep their widths")
 
         window.setContentSize(controller.view.frame.size)
-        window.setContentSize(NSSize(width: 680, height: 440))
+        window.setContentSize(NSSize(width: 840, height: 470))
         layOut(window)
         check("back at the minimum")
         #expect(widths() == opening, "same layout at the same size")

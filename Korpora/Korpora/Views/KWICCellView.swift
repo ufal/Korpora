@@ -13,6 +13,7 @@ final class KWICCellView: NSTableCellView {
     private var displayLine = KWICDisplayLine(segments: [], tokenTooltips: [])
     private var alignment: NSTextAlignment = .left
     private var style: Style = .plain
+    private var language: String?
     private var trackingArea: NSTrackingArea?
 
     override init(frame frameRect: NSRect) {
@@ -58,14 +59,15 @@ final class KWICCellView: NSTableCellView {
     /// (non-bold) base font regardless of `style`, so an inline attribute
     /// reads as clearly secondary even in the bold/accent-colored KWIC
     /// column.
-    func configure(displayLine: KWICDisplayLine, alignment: NSTextAlignment, style: Style) {
+    func configure(displayLine: KWICDisplayLine, alignment: NSTextAlignment, style: Style, language: String? = nil) {
         wantsLayer = false
         layer?.backgroundColor = nil
         label.alignment = alignment
         label.lineBreakMode = alignment == .right ? .byTruncatingHead : .byTruncatingTail
         label.attributedStringValue = Self.attributedString(
-            for: displayLine.segments, alignment: alignment, style: style)
+            for: displayLine.segments, alignment: alignment, style: style, language: language)
 
+        self.language = language
         self.displayLine = displayLine
         self.alignment = alignment
         self.style = style
@@ -74,14 +76,14 @@ final class KWICCellView: NSTableCellView {
     /// `text` (tokens separated by spaces) with each word in its script's font and size, the way a line of the
     /// table is drawn: a word of digits or punctuation takes the script of the word before it.
     static func styledText(
-        _ text: String, bold: Bool, color: NSColor, paragraphStyle: NSParagraphStyle? = nil
+        _ text: String, bold: Bool, color: NSColor, paragraphStyle: NSParagraphStyle? = nil, language: String? = nil
     ) -> NSAttributedString {
         let words = text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
         let segments = words.map { KWICDisplaySegment(text: $0, kind: .word) }
         let scripts = wordScripts(of: segments)
         let result = NSMutableAttributedString()
         for (index, word) in words.enumerated() {
-            let (font, language) = ScriptFontResolver.shared.font(for: scripts[index], sample: word, language: nil, bold: bold)
+            let (font, language) = ScriptFontResolver.shared.font(for: scripts[index], sample: word, language: language, bold: bold)
             var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
             if let paragraphStyle { attributes[.paragraphStyle] = paragraphStyle }
             if let language { attributes[.languageIdentifier] = language }
@@ -102,7 +104,7 @@ final class KWICCellView: NSTableCellView {
     /// part of a normal sentence rather than as three disconnected
     /// fragments. Lives here (not on the overlay field itself) purely to
     /// reuse this file's font/color conventions.
-    static func extendedContextParagraph(before: String, match: String, after: String) -> NSAttributedString {
+    static func extendedContextParagraph(before: String, match: String, after: String, language: String? = nil) -> NSAttributedString {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineBreakMode = .byWordWrapping
         paragraphStyle.alignment = .left
@@ -114,7 +116,7 @@ final class KWICCellView: NSTableCellView {
                 result.append(NSAttributedString(
                     string: " ", attributes: [.font: AppSettings.shared.resultsFont, .paragraphStyle: paragraphStyle]))
             }
-            result.append(styledText(text, bold: bold, color: color, paragraphStyle: paragraphStyle))
+            result.append(styledText(text, bold: bold, color: color, paragraphStyle: paragraphStyle, language: language))
         }
         append(before, bold: false, color: .labelColor)
         append(match, bold: true, color: .controlAccentColor)
@@ -187,7 +189,7 @@ final class KWICCellView: NSTableCellView {
         let labelWidth = max(bounds.width - Self.labelInset * 2, 0)
         toolTip = Self.tokenTooltip(
             for: displayLine, alignment: alignment, style: style,
-            labelWidth: labelWidth, at: point.x - Self.labelInset)?.text
+            labelWidth: labelWidth, at: point.x - Self.labelInset, language: language)?.text
     }
 
     /// Locates whichever token (if any) covers horizontal position `x`
@@ -205,12 +207,12 @@ final class KWICCellView: NSTableCellView {
     /// never drawn.
     static func tokenTooltip(
         for displayLine: KWICDisplayLine, alignment: NSTextAlignment, style: Style,
-        labelWidth: CGFloat, at x: CGFloat
+        labelWidth: CGFloat, at x: CGFloat, language: String? = nil
     ) -> (text: String, rect: CGRect)? {
         guard !displayLine.tokenTooltips.isEmpty else { return nil }
 
         let scripts = wordScripts(of: displayLine.segments)
-        let segmentWidths = displayLine.segments.indices.map { width(of: displayLine.segments[$0], script: scripts[$0], style: style) }
+        let segmentWidths = displayLine.segments.indices.map { width(of: displayLine.segments[$0], script: scripts[$0], style: style, language: language) }
         var segmentStartX: [CGFloat] = []
         var cursor: CGFloat = 0
         for segmentWidth in segmentWidths {
@@ -236,9 +238,9 @@ final class KWICCellView: NSTableCellView {
         return nil
     }
 
-    private static func width(of segment: KWICDisplaySegment, script: UnicodeScript, style: Style) -> CGFloat {
+    private static func width(of segment: KWICDisplaySegment, script: UnicodeScript, style: Style, language: String?) -> CGFloat {
         let font: NSFont = segment.kind == .secondaryAttribute
-            ? AppSettings.shared.resultsFont : wordFont(for: segment, script: script, style: style).font
+            ? AppSettings.shared.resultsFont : wordFont(for: segment, script: script, style: style, language: language).font
         return NSAttributedString(string: segment.text, attributes: [.font: font]).size().width
     }
 
@@ -265,10 +267,10 @@ final class KWICCellView: NSTableCellView {
     /// The font of a token (not of a secondary attribute): the one the settings give its script, at that
     /// script's size, and the language tag to put on it. `ScriptFontResolver` keeps the fonts, so this is a
     /// lookup, not a font creation, per token.
-    private static func wordFont(for segment: KWICDisplaySegment, script: UnicodeScript, style: Style)
+    private static func wordFont(for segment: KWICDisplaySegment, script: UnicodeScript, style: Style, language: String?)
         -> (font: NSFont, language: String?) {
         ScriptFontResolver.shared.font(
-            for: script, sample: segment.text, language: nil, bold: style == .highlighted)
+            for: script, sample: segment.text, language: language, bold: style == .highlighted)
     }
 
     /// NSTextField.attributedStringValue does NOT pick up the field's own
@@ -280,7 +282,7 @@ final class KWICCellView: NSTableCellView {
     /// 2026-09-07). Baking the paragraph style into the string itself,
     /// rather than relying on the field's properties, is the fix.
     private static func attributedString(
-        for segments: [KWICDisplaySegment], alignment: NSTextAlignment, style: Style
+        for segments: [KWICDisplaySegment], alignment: NSTextAlignment, style: Style, language: String? = nil
     ) -> NSAttributedString {
         let baseFont = AppSettings.shared.resultsFont
         let scripts = wordScripts(of: segments)
@@ -296,7 +298,7 @@ final class KWICCellView: NSTableCellView {
                 attributes[.font] = baseFont
                 attributes[.foregroundColor] = AppSettings.shared.positionalAttributeColor
             } else {
-                let (font, language) = wordFont(for: segment, script: scripts[index], style: style)
+                let (font, language) = wordFont(for: segment, script: scripts[index], style: style, language: language)
                 attributes[.font] = font
                 attributes[.foregroundColor] = wordColor
                 if let language { attributes[.languageIdentifier] = language }

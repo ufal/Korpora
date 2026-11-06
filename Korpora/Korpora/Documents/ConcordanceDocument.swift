@@ -318,6 +318,33 @@ final class ConcordanceDocument: NSDocument {
     /// setting the bug aside.
     var onResultsChanged: ((_ animated: Bool) -> Void)?
 
+    // MARK: - Typography of the corpus (docs/typography.md)
+
+    /// The row height and language for this corpus's table: the standard ones until `refreshTypography` has
+    /// asked the settings and the corpus's word list.
+    private(set) var typography = EffectiveTypography.standard
+    var onTypographyChanged: (() -> Void)?
+    private var corpusTokens = 0
+    private var typographyTask: Task<Void, Never>?
+
+    /// Works out the row height and language again (a new corpus, or a setting changed) and tells the window
+    /// when they differ. The scan of the corpus runs in the background on the first open.
+    func refreshTypography(settings: AppSettings = .shared) {
+        let name = corpusName.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return }
+        let attribute = textAttribute, tokens = corpusTokens
+        typographyTask?.cancel()
+        typographyTask = Task { @MainActor in
+            let directory = settings.corpusLibraryEntries(includingMissing: false)
+                .first { $0.name == name }?.directory.resolvingSymlinksInPath()
+            let result = await CorpusTypographyService.effective(
+                corpus: name, directory: directory, attribute: attribute, tokens: tokens, settings: settings)
+            guard !Task.isCancelled, result != typography else { return }
+            typography = result
+            onTypographyChanged?()
+        }
+    }
+
     private weak var windowController: ConcordanceWindowController?
 
     override class var autosavesInPlace: Bool { true }
@@ -577,6 +604,7 @@ final class ConcordanceDocument: NSDocument {
                 let info = try await corpus.info()
                 // A saved document (or an older one) may name an attribute this corpus doesn't have.
                 textAttribute = info.defaultAttribute
+                corpusTokens = info.sizeTokens
                 attributeNames = info.attributes
                 if !info.attributes.contains(kwicAttr) { kwicAttr = info.defaultAttribute }
                 inlineAttributes = inlineAttributes.filter(info.attributes.contains)
@@ -591,6 +619,7 @@ final class ConcordanceDocument: NSDocument {
                 guard generation == replayGeneration else { return }
                 setRows(first.rows, count: first.count, source: first.source)
                 liveConcordance = live
+                refreshTypography()
                 totalHits = await live.totalHits
                 status = Self.statusLine(
                     shown: rowCount, total: totalHits, corpusTokens: info.sizeTokens, corpusName: corpusName,

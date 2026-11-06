@@ -143,6 +143,9 @@ final class ConcordanceViewController: NSViewController {
 
         document.onResultsChanged = { [weak self] animated in self?.refresh(animated: animated) }
         document.onRowsLoaded = { [weak self] range in self?.rowsArrived(range) }
+        // The corpus's row height and language (docs/typography.md): known once its word list has been read.
+        document.onTypographyChanged = { [weak self] in self?.applyTypography() }
+        applyTypography()
         refresh()
 
         NotificationCenter.default.addObserver(
@@ -156,6 +159,9 @@ final class ConcordanceViewController: NSViewController {
     /// setting that lives on the table view itself rather than being read
     /// fresh per-cell.
     @objc private func settingsDidChange() {
+        // The fonts first: the resolver also hears this notification, but not necessarily before this window does.
+        ScriptFontResolver.shared.reset()
+        document.refreshTypography()
         tableView.usesAlternatingRowBackgroundColors = AppSettings.shared.usesAlternatingRowBackground
         // `allowMultipleExtendedContexts` (6.6a) can be toggled while this
         // window is open: show/hide the triangle column to match, and if
@@ -171,6 +177,15 @@ final class ConcordanceViewController: NSViewController {
 
     private func runQuery() {
         document.runQuery(queryField.text)
+    }
+
+    /// The table's row height and the cells' language follow the corpus (a fixed height, so that a result of millions
+    /// of hits needs no height per row).
+    private func applyTypography() {
+        let height = CGFloat(document.typography.rowHeight)
+        guard tableView.rowHeight != height else { tableView.reloadData(); return }
+        tableView.rowHeight = height
+        tableView.reloadData()
     }
 
     // MARK: - Toolbar actions
@@ -694,7 +709,7 @@ final class ConcordanceViewController: NSViewController {
         func configure(_ tokens: [KWICToken], alignment: NSTextAlignment, style: KWICCellView.Style) {
             let displayLine = KWICFormatter.displayLine(
                 for: tokens, inlineAttributes: inlineAttributes, tooltipAttributes: tooltipAttributes)
-            cell.configure(displayLine: displayLine, alignment: alignment, style: style)
+            cell.configure(displayLine: displayLine, alignment: alignment, style: style, language: document.typography.language)
         }
         switch kind {
         case .group:
@@ -854,7 +869,7 @@ final class ConcordanceViewController: NSViewController {
         }
         let overlay = existing ?? makeOverlayField(in: rowView)
         overlay.attributedStringValue = KWICCellView.extendedContextParagraph(
-            before: context.before, match: context.match, after: context.after)
+            before: context.before, match: context.match, after: context.after, language: document.typography.language)
         // Re-applied on every call, not just at creation: the structural
         // attribute column can be shown/hidden or dragged wider at any
         // time, and a recycled overlay carries the previous row's inset.
@@ -1034,7 +1049,7 @@ final class ConcordanceViewController: NSViewController {
                     if !allowsMultipleExtendedContexts {
                         closeExtendedContextWindows()
                     }
-                    show(ExtendedContextWindowController(info: info, before: before, match: match, after: after, context: self.document.printContext("Extended context")))
+                    show(ExtendedContextWindowController(info: info, before: before, match: match, after: after, context: self.document.printContext("Extended context"), language: self.document.typography.language))
                 } catch {
                     self.showErrorAlert(error)
                 }
@@ -1092,7 +1107,7 @@ extension ConcordanceViewController: NSTableViewDelegate {
             return tableView.rowHeight
         }
         let paragraph = KWICCellView.extendedContextParagraph(
-            before: context.before, match: context.match, after: context.after)
+            before: context.before, match: context.match, after: context.after, language: document.typography.language)
         let available = tableView.bounds.width - overlayLeadingInset() - 8
         let height = KWICCellView.extendedContextHeight(for: paragraph, width: max(available, 100))
         return max(tableView.rowHeight, height + 8)

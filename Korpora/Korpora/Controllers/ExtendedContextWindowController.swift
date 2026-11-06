@@ -16,9 +16,9 @@ import KorporaEngine
 /// window belongs to which line.
 final class ExtendedContextWindowController: NSWindowController {
     convenience init(info: ConcordanceDocument.ExtendedContextInfo, before: String, match: String, after: String,
-                     context: [String] = []) {
+                     context: [String] = [], language: String? = nil) {
         let viewController = ExtendedContextDetailViewController(
-            info: info, before: before, match: match, after: after, context: context)
+            info: info, before: before, match: match, after: after, context: context, language: language)
         let window = NSWindow(contentViewController: viewController)
         window.setContentSize(NSSize(width: 520, height: 340))
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
@@ -32,10 +32,11 @@ private final class ExtendedContextDetailViewController: NSViewController {
     private let attributedText: NSAttributedString
     private let context: [String]
 
-    init(info: ConcordanceDocument.ExtendedContextInfo, before: String, match: String, after: String, context: [String]) {
+    init(info: ConcordanceDocument.ExtendedContextInfo, before: String, match: String, after: String, context: [String],
+         language: String? = nil) {
         self.context = context
         self.info = info
-        attributedText = Self.makeAttributedString(before: before, match: match, after: after)
+        attributedText = Self.makeAttributedString(before: before, match: match, after: after, language: language)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -99,16 +100,16 @@ private final class ExtendedContextDetailViewController: NSViewController {
         WindowPrinting.run(page, jobTitle: view.window?.title ?? "Extended Context", header: header, in: view.window)
     }
 
-    private static func makeAttributedString(before: String, match: String, after: String) -> NSAttributedString {
+    private static func makeAttributedString(before: String, match: String, after: String, language: String?) -> NSAttributedString {
         let result = NSMutableAttributedString()
         if !before.isEmpty {
-            result.append(KWICCellView.styledText(before, bold: false, color: .labelColor))
+            result.append(KWICCellView.styledText(before, bold: false, color: .labelColor, language: language))
             result.append(NSAttributedString(string: " ", attributes: [.font: AppSettings.shared.resultsFont]))
         }
-        result.append(KWICCellView.styledText(match, bold: true, color: .controlAccentColor))
+        result.append(KWICCellView.styledText(match, bold: true, color: .controlAccentColor, language: language))
         if !after.isEmpty {
             result.append(NSAttributedString(string: " ", attributes: [.font: AppSettings.shared.resultsFont]))
-            result.append(KWICCellView.styledText(after, bold: false, color: .labelColor))
+            result.append(KWICCellView.styledText(after, bold: false, color: .labelColor, language: language))
         }
         return result
     }

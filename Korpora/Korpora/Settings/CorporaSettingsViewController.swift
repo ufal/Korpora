@@ -68,7 +68,7 @@ final class CorporaSettingsViewController: NSViewController {
         var name: String { entry.name }
     }
 
-    private enum Column: String { case name, tokens, source, size, resident }
+    private enum Column: String { case name, tokens, source, size, resident, rowHeight, language }
 
     private let directoryPathLabel = NSTextField(labelWithString: "")
     private let resetDirectoryButton = NSButton(title: "Reset to Default", target: nil, action: nil)
@@ -79,6 +79,9 @@ final class CorporaSettingsViewController: NSViewController {
     private let memoryBar = MemoryBarView()
     private let memoryLabel = NSTextField(labelWithString: "")
     private let minimumFreeField = NSTextField(string: "")
+    private let globalRowHeightCheckbox = NSButton(
+        checkboxWithTitle: "Use one row height for every corpus:", target: nil, action: nil)
+    private let globalRowHeightField = NSTextField(string: "")
     private let hintLabel = NSTextField(labelWithString: "")
     private static let defaultHint =
         "+ imports annotated text (CoNLL-U) or adds an index folder. Return renames."
@@ -94,7 +97,7 @@ final class CorporaSettingsViewController: NSViewController {
     private var pendingRename: DispatchWorkItem?
 
     override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 680, height: 440))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 840, height: 470))
         // Follow the window when it's resized; without this Auto Layout pins the
         // view to the size it was created with.
         root.autoresizingMask = [.width, .height]
@@ -154,14 +157,28 @@ final class CorporaSettingsViewController: NSViewController {
         residentColumn.minWidth = 95
         residentColumn.width = 95
         residentColumn.resizingMask = .userResizingMask
-        for column in [nameColumn, tokensColumn, sourceColumn, sizeColumn, residentColumn] {
+        // The row height and the language of a corpus's table (docs/typography.md): found by looking at the corpus
+        // the first time it is opened (shown grey), or typed here.
+        let rowHeightColumn = NSTableColumn(identifier: .init(Column.rowHeight.rawValue))
+        rowHeightColumn.title = "Row height"
+        rowHeightColumn.headerToolTip = "The height of a line in this corpus\u{2019}s tables, in points. Empty: worked out from the scripts the corpus contains"
+        rowHeightColumn.minWidth = 92
+        rowHeightColumn.width = 92
+        rowHeightColumn.resizingMask = .userResizingMask
+        let languageColumn = NSTableColumn(identifier: .init(Column.language.rawValue))
+        languageColumn.title = "Language"
+        languageColumn.headerToolTip = "The language of the text (zh-Hans, zh-Hant, zh-HK, ja, ko, ...), which picks the glyph forms of Chinese, Japanese and Korean characters. Empty: worked out from the corpus"
+        languageColumn.minWidth = 80
+        languageColumn.width = 85
+        languageColumn.resizingMask = .userResizingMask
+        for column in [nameColumn, tokensColumn, sourceColumn, sizeColumn, residentColumn, rowHeightColumn, languageColumn] {
             tableView.addTableColumn(column)
         }
         // Name is the flexible column: `fitNameColumn()` gives it the width the others leave.
         tableView.columnAutoresizingStyle = .noColumnAutoresizing
         // The widths the user drags the columns to are remembered. (Not under test: the tests would share them.)
         if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
-            tableView.autosaveName = "CorporaTable"
+            tableView.autosaveName = "CorporaTable2"
             tableView.autosaveTableColumns = true
         }
         tableView.dataSource = self
@@ -203,12 +220,19 @@ final class CorporaSettingsViewController: NSViewController {
         let minimumFreeSuffix = NSTextField(labelWithString: "GB")
         minimumFreeField.target = self
         minimumFreeField.action = #selector(minimumFreeChanged)
+        globalRowHeightCheckbox.target = self
+        globalRowHeightCheckbox.action = #selector(globalRowHeightToggled)
+        globalRowHeightCheckbox.toolTip = "Ignore the row heights above and use this one in every concordance window"
+        globalRowHeightField.target = self
+        globalRowHeightField.action = #selector(globalRowHeightEdited)
+        let globalRowHeightSuffix = NSTextField(labelWithString: "pt")
 
         let views: [NSView] = [
             directoryLabel, directoryPathLabel, chooseDirectoryButton, engineNoticeLabel,
             scrollView, importButton, removeButton, addHint,
             memoryTitle, memoryBar, memoryLabel,
             minimumFreeLabel, minimumFreeField, minimumFreeSuffix,
+            globalRowHeightCheckbox, globalRowHeightField, globalRowHeightSuffix,
         ]
         for v in views {
             v.translatesAutoresizingMaskIntoConstraints = false
@@ -217,6 +241,7 @@ final class CorporaSettingsViewController: NSViewController {
         importButton.widthAnchor.constraint(equalToConstant: 28).isActive = true
         removeButton.widthAnchor.constraint(equalToConstant: 28).isActive = true
         minimumFreeField.widthAnchor.constraint(equalToConstant: 60).isActive = true
+        globalRowHeightField.widthAnchor.constraint(equalToConstant: 50).isActive = true
         memoryBar.heightAnchor.constraint(equalToConstant: 12).isActive = true
 
         NSLayoutConstraint.activate([
@@ -248,7 +273,14 @@ final class CorporaSettingsViewController: NSViewController {
             addHint.leadingAnchor.constraint(equalTo: removeButton.trailingAnchor, constant: 10),
             addHint.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -20),
 
-            memoryTitle.topAnchor.constraint(equalTo: importButton.bottomAnchor, constant: 20),
+            globalRowHeightCheckbox.topAnchor.constraint(equalTo: importButton.bottomAnchor, constant: 14),
+            globalRowHeightCheckbox.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20),
+            globalRowHeightField.centerYAnchor.constraint(equalTo: globalRowHeightCheckbox.centerYAnchor),
+            globalRowHeightField.leadingAnchor.constraint(equalTo: globalRowHeightCheckbox.trailingAnchor, constant: 6),
+            globalRowHeightSuffix.centerYAnchor.constraint(equalTo: globalRowHeightCheckbox.centerYAnchor),
+            globalRowHeightSuffix.leadingAnchor.constraint(equalTo: globalRowHeightField.trailingAnchor, constant: 4),
+
+            memoryTitle.topAnchor.constraint(equalTo: globalRowHeightCheckbox.bottomAnchor, constant: 16),
             memoryTitle.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20),
             memoryBar.centerYAnchor.constraint(equalTo: memoryTitle.centerYAnchor),
             memoryBar.leadingAnchor.constraint(equalTo: memoryTitle.trailingAnchor, constant: 8),
@@ -267,7 +299,7 @@ final class CorporaSettingsViewController: NSViewController {
         ])
 
         view = root
-        preferredContentSize = NSSize(width: 680, height: 440)
+        preferredContentSize = NSSize(width: 840, height: 470)
     }
 
     override func viewDidLoad() {
@@ -278,6 +310,7 @@ final class CorporaSettingsViewController: NSViewController {
             engineNoticeLabel.isHidden = false
         }
         minimumFreeField.stringValue = String(AppSettings.shared.minimumFreeMemoryAfterResidency / 1_000_000_000)
+        updateGlobalRowHeightControls()
         reloadCorpora()
     }
 
@@ -513,6 +546,7 @@ final class CorporaSettingsViewController: NSViewController {
         guard renamed.name != old else { return renamed }
         let wasResident = AppSettings.shared.isKeepResident(old)
         AppSettings.shared.renameKeepResident(from: old, to: renamed.name)
+        AppSettings.shared.renameTypography(from: old, to: renamed.name)
         SubcorpusLibrary.rename(corpus: old, to: renamed.name)
         QueryHistoryStore.renameCorpus(from: old, to: renamed.name)
         reloadCorpora()
@@ -527,6 +561,17 @@ final class CorporaSettingsViewController: NSViewController {
     /// A name typed into the list was committed: rename, or say why not and put the old name back.
     func controlTextDidEndEditing(_ obj: Notification) {
         guard let field = obj.object as? NSTextField, rows.indices.contains(field.tag) else { return }
+        switch field.identifier?.rawValue {
+        case "rowHeight":
+            setRowHeight(field.stringValue, forCorpus: rows[field.tag].name)
+            tableView.reloadData(forRowIndexes: [field.tag], columnIndexes: IndexSet(0..<tableView.numberOfColumns))
+            return
+        case "language":
+            setLanguage(field.stringValue, forCorpus: rows[field.tag].name)
+            tableView.reloadData(forRowIndexes: [field.tag], columnIndexes: IndexSet(0..<tableView.numberOfColumns))
+            return
+        default: break
+        }
         field.isEditable = false  // editing starts only by a slow click on the selected name, or Return
         let old = rows[field.tag].name
         do {
@@ -616,7 +661,7 @@ final class CorporaSettingsViewController: NSViewController {
             CorpusMemoryResidency.unwarm(directory: row.entry.directory.resolvingSymlinksInPath())
         }
         // Saved subcorpora go with the data; with the data kept, they stay for when it comes back.
-        if deleteData { SubcorpusLibrary.deleteAll(of: row.name) }
+        if deleteData { SubcorpusLibrary.deleteAll(of: row.name); AppSettings.shared.forgetTypography(for: row.name) }
         let entry = row.entry
         Task { @MainActor [weak self] in
             // The removal itself runs off the main actor; only its outcome comes back here.
@@ -685,6 +730,57 @@ extension CorporaSettingsViewController: NSTableViewDataSource, NSTableViewDeleg
             + "or choose Relink\u{2026} in the contextual menu."
     }
 
+    private static func editableCell(identifier: String, row: Int, delegate: NSTextFieldDelegate) -> NSTextField {
+        let field = NSTextField(string: "")
+        field.identifier = NSUserInterfaceItemIdentifier(identifier)
+        field.isEditable = true
+        field.isBordered = false
+        field.drawsBackground = false
+        field.font = .systemFont(ofSize: 12)
+        field.delegate = delegate
+        field.tag = row
+        return field
+    }
+
+    static func formatPoints(_ value: Double) -> String { value == value.rounded() ? String(Int(value)) : String(value) }
+
+    private func updateGlobalRowHeightControls() {
+        let global = AppSettings.shared.globalRowHeight
+        globalRowHeightCheckbox.state = global == nil ? .off : .on
+        globalRowHeightField.stringValue = Self.formatPoints(global ?? AppSettings.shared.lastGlobalRowHeight)
+        globalRowHeightField.isEnabled = global != nil
+    }
+
+    @objc private func globalRowHeightToggled() {
+        AppSettings.shared.globalRowHeight = globalRowHeightCheckbox.state == .on ? AppSettings.shared.lastGlobalRowHeight : nil
+        updateGlobalRowHeightControls()
+        tableView.reloadData()
+    }
+
+    @objc private func globalRowHeightEdited() {
+        if let value = Double(globalRowHeightField.stringValue.replacingOccurrences(of: ",", with: ".")), globalRowHeightCheckbox.state == .on {
+            AppSettings.shared.globalRowHeight = min(max(value, CorpusTypographyRules.minimumRowHeight), CorpusTypographyRules.maximumRowHeight)
+        }
+        updateGlobalRowHeightControls()
+    }
+
+    /// A row height typed into a corpus's row: empty goes back to automatic; text that is not a number is put back.
+    func setRowHeight(_ text: String, forCorpus name: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty || trimmed.lowercased().hasPrefix("auto") {
+            AppSettings.shared.updateTypography(for: name) { $0.rowHeight = nil }
+        } else if let value = Double(trimmed.replacingOccurrences(of: ",", with: ".")) {
+            let clamped = min(max(value, CorpusTypographyRules.minimumRowHeight), CorpusTypographyRules.maximumRowHeight)
+            AppSettings.shared.updateTypography(for: name) { $0.rowHeight = clamped }
+        }
+    }
+
+    /// A language typed into a corpus's row: empty or `auto` goes back to automatic.
+    func setLanguage(_ text: String, forCorpus name: String) {
+        let language = CorpusTypographyRules.normalizedLanguage(text)
+        AppSettings.shared.updateTypography(for: name) { $0.language = language }
+    }
+
     static func sourceDetail(_ origin: CorpusLibrary.Origin) -> String {
         switch origin {
         case .built: return "Built by Korpora from annotated text."
@@ -736,6 +832,27 @@ extension CorporaSettingsViewController: NSTableViewDataSource, NSTableViewDeleg
             let field = NSTextField(labelWithString: corpus.entry.isMissing
                 ? "\u{2014}" : ByteCountFormatter().string(fromByteCount: Int64(corpus.sizeBytes)))
             field.font = .systemFont(ofSize: 12)
+            return field
+        case .rowHeight:
+            let typography = AppSettings.shared.typography(for: corpus.name)
+            let field = Self.editableCell(identifier: "rowHeight", row: row, delegate: self)
+            field.stringValue = typography.rowHeight.map(Self.formatPoints) ?? ""
+            if let global = AppSettings.shared.globalRowHeight {
+                field.isEnabled = false
+                field.placeholderString = "global \(Self.formatPoints(global))"
+            } else {
+                let automatic = CorpusTypographyService.automaticRowHeight(for: typography)
+                field.placeholderString = automatic.map { "auto (\(Self.formatPoints($0)))" } ?? "auto"
+            }
+            field.toolTip = "Points per line in this corpus\u{2019}s tables. Empty: from the scripts the corpus contains."
+            return field
+        case .language:
+            let typography = AppSettings.shared.typography(for: corpus.name)
+            let field = Self.editableCell(identifier: "language", row: row, delegate: self)
+            field.stringValue = typography.language ?? ""
+            field.placeholderString = typography.scan?.language.map { "auto (\($0))" } ?? "auto"
+            field.toolTip = "The language (zh-Hans, zh-Hant, zh-HK, ja, ko, ...) that picks the glyph forms of Chinese, Japanese "
+                + "and Korean characters. Empty: worked out from the corpus."
             return field
         case .resident:
             let checkbox = NSButton(checkboxWithTitle: "", target: self, action: #selector(keepResidentToggled(_:)))

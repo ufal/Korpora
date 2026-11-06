@@ -30,7 +30,7 @@ final class AppSettings {
         static let corporaDirectory = "corporaDirectory"
     }
 
-    private let defaults: UserDefaults
+    let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults

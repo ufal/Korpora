@@ -53,8 +53,8 @@ final class AppearanceSettingsViewController: NSViewController {
 
         let scriptColumn = NSTableColumn(identifier: .init("script"))
         scriptColumn.title = "Script"
-        scriptColumn.width = 130
-        scriptColumn.minWidth = 90
+        scriptColumn.width = 165
+        scriptColumn.minWidth = 120
         let fontColumn = NSTableColumn(identifier: .init("font"))
         fontColumn.title = "Font"
         fontColumn.minWidth = 120
