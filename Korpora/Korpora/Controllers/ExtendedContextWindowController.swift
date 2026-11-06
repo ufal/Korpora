@@ -100,18 +100,15 @@ private final class ExtendedContextDetailViewController: NSViewController {
     }
 
     private static func makeAttributedString(before: String, match: String, after: String) -> NSAttributedString {
-        let font = AppSettings.shared.resultsFont
-        let boldFont = NSFontManager.shared.convert(font, toHaveTrait: .boldFontMask)
         let result = NSMutableAttributedString()
         if !before.isEmpty {
-            result.append(NSAttributedString(
-                string: before + " ", attributes: [.font: font, .foregroundColor: NSColor.labelColor]))
+            result.append(KWICCellView.styledText(before, bold: false, color: .labelColor))
+            result.append(NSAttributedString(string: " ", attributes: [.font: AppSettings.shared.resultsFont]))
         }
-        result.append(NSAttributedString(
-            string: match, attributes: [.font: boldFont, .foregroundColor: NSColor.controlAccentColor]))
+        result.append(KWICCellView.styledText(match, bold: true, color: .controlAccentColor))
         if !after.isEmpty {
-            result.append(NSAttributedString(
-                string: " " + after, attributes: [.font: font, .foregroundColor: NSColor.labelColor]))
+            result.append(NSAttributedString(string: " ", attributes: [.font: AppSettings.shared.resultsFont]))
+            result.append(KWICCellView.styledText(after, bold: false, color: .labelColor))
         }
         return result
     }

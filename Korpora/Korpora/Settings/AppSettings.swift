@@ -21,6 +21,7 @@ final class AppSettings {
         static let defaultViewMode = "defaultViewMode"
         static let defaultExtendedContextTokens = "defaultExtendedContextTokens"
         static let scriptFontOverrides = "scriptFontOverrides"
+        static let scriptFonts = "scriptFonts"
         static let positionalAttributeColor = "positionalAttributeColor"
         static let structuralAttributeColor = "structuralAttributeColor"
         static let usesAlternatingRowBackground = "usesAlternatingRowBackground"
@@ -91,28 +92,26 @@ final class AppSettings {
         keepResidentCorpora = names
     }
 
-    var resultsFontName: String {
-        get { defaults.string(forKey: Key.resultsFontName) ?? "Menlo" }
-        set {
-            defaults.set(newValue, forKey: Key.resultsFontName)
-            NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
-        }
-    }
-
-    var resultsFontSize: Double {
+    /// The font and size for each script (`ScriptFonts`); there is no global font. A table saved by an older
+    /// version (one results font and a font name per coarse script) becomes this one the first time it is read.
+    var scriptFonts: [String: ScriptFont] {
         get {
-            let value = defaults.double(forKey: Key.resultsFontSize)
-            return value > 0 ? value : 12
+            if let data = defaults.data(forKey: Key.scriptFonts),
+               let table = try? JSONDecoder().decode([String: ScriptFont].self, from: data) { return table }
+            return ScriptFonts.migrated(
+                resultsFontName: defaults.string(forKey: Key.resultsFontName),
+                resultsFontSize: defaults.object(forKey: Key.resultsFontSize) as? Double,
+                overrides: defaults.dictionary(forKey: Key.scriptFontOverrides) as? [String: String] ?? [:])
         }
         set {
-            defaults.set(newValue, forKey: Key.resultsFontSize)
+            defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.scriptFonts)
             NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
         }
     }
 
+    /// The Latin font: what labels the app draws in the results style (secondary attributes, extended context) use.
     var resultsFont: NSFont {
-        NSFont(name: resultsFontName, size: CGFloat(resultsFontSize))
-            ?? .monospacedSystemFont(ofSize: CGFloat(resultsFontSize), weight: .regular)
+        ScriptFontResolver.shared.font(for: .latin).font
     }
 
     /// Minimum free memory (bytes) a corpus's "Keep in Memory" toggle must
@@ -218,18 +217,6 @@ final class AppSettings {
         get { defaults.bool(forKey: Key.allowMultipleExtendedContexts) }
         set {
             defaults.set(newValue, forKey: Key.allowMultipleExtendedContexts)
-            NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
-        }
-    }
-
-    /// Per-script concordance font overrides (Unicode script `rawValue` →
-    /// font name - see `UnicodeScript`), for a corpus mixing scripts where
-    /// `resultsFont` alone isn't ideal for all of them. A script with no
-    /// entry here just keeps using `resultsFont`.
-    var scriptFontOverrides: [String: String] {
-        get { defaults.dictionary(forKey: Key.scriptFontOverrides) as? [String: String] ?? [:] }
-        set {
-            defaults.set(newValue, forKey: Key.scriptFontOverrides)
             NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
         }
     }

@@ -1,62 +1,76 @@
 import Foundation
 
-/// A coarse Unicode script classification, for picking a per-script
-/// concordance font override (Phase 6.5) when one font's glyph coverage
-/// isn't ideal for every script a corpus's text might contain (a
-/// multilingual corpus, or loanwords/citations in a different script).
-/// Deliberately dependency-free (plain code-point ranges, not ICU/CoreText
-/// script detection) - covers the scripts most likely to actually show up
-/// in a corpus-linguistics tool; anything else falls into `.other`.
-enum UnicodeScript: String, CaseIterable {
-    case latin
-    case cyrillic
-    case greek
-    case hebrew
-    case arabic
-    case cjk
-    case other
+/// A Unicode script (Latin, Cyrillic, Han, ...), for choosing a font and size per script
+/// (docs/typography.md). Detection is a binary search in `UnicodeScriptData`, which is generated from
+/// Unicode's `Scripts.txt`, so every script Unicode names is known (177 in Unicode 18).
+struct UnicodeScript: Hashable, Sendable {
+    /// The name as Unicode writes it: `Latin`, `Han`, `Old_Italic`. This is what the settings store.
+    let name: String
 
-    var displayName: String {
-        switch self {
-        case .latin: return "Latin"
-        case .cyrillic: return "Cyrillic"
-        case .greek: return "Greek"
-        case .hebrew: return "Hebrew"
-        case .arabic: return "Arabic"
-        case .cjk: return "CJK"
-        case .other: return "Other"
-        }
+    static let latin = UnicodeScript(name: "Latin")
+    static let cyrillic = UnicodeScript(name: "Cyrillic")
+    static let greek = UnicodeScript(name: "Greek")
+    static let hebrew = UnicodeScript(name: "Hebrew")
+    static let arabic = UnicodeScript(name: "Arabic")
+    static let han = UnicodeScript(name: "Han")
+    static let hiragana = UnicodeScript(name: "Hiragana")
+    static let katakana = UnicodeScript(name: "Katakana")
+    static let hangul = UnicodeScript(name: "Hangul")
+    static let bopomofo = UnicodeScript(name: "Bopomofo")
+    /// Digits, punctuation, spaces and symbols used by many scripts. Not a writing system.
+    static let common = UnicodeScript(name: "Common")
+    /// Combining marks, which take the script of the letter they follow. Not a writing system.
+    static let inherited = UnicodeScript(name: "Inherited")
+    static let unknown = UnicodeScript(name: "Unknown")
+
+    var displayName: String { name.replacingOccurrences(of: "_", with: " ") }
+
+    /// Common, Inherited and Unknown: they say nothing about which font a token needs.
+    var isNeutral: Bool { self == .common || self == .inherited || self == .unknown }
+
+    /// The font group a script belongs to: the CJK scripts share one font setting until one of them
+    /// is given its own (`ScriptFonts`).
+    var group: UnicodeScript? { Self.cjk.contains(self) ? .cjkGroup : nil }
+    static let cjkGroup = UnicodeScript(name: "CJK")
+    static let cjk: Set<UnicodeScript> = [.han, .hiragana, .katakana, .hangul, .bopomofo]
+
+    /// Every script Unicode names, by name, without the neutral ones.
+    static let all: [UnicodeScript] = UnicodeScriptData.names.map(UnicodeScript.init(name:)).filter { !$0.isNeutral }
+
+    /// A letter of the script, for asking the system which font it uses for it: the first of the script's
+    /// first range, except for Han, whose first range holds radicals.
+    var representative: Unicode.Scalar? {
+        if self == .han { return "\u{4E00}" }
+        guard let name = UnicodeScriptData.names.firstIndex(of: name) else { return nil }
+        guard let range = UnicodeScriptData.scriptIndex.firstIndex(of: UInt16(name)) else { return nil }
+        return Unicode.Scalar(UnicodeScriptData.starts[range])
     }
 
-    /// `token`'s dominant script - its first scalar that resolves to a
-    /// non-`.other` script, or `.other` if none do (e.g. a token made
-    /// entirely of digits/punctuation, or a single inter-token space).
-    /// Per-token granularity, not per-character - a token mixing scripts
-    /// (rare) is classified by whichever comes first.
+    // MARK: Detection
+
+    /// The script of one code point. Code points outside every range are `.unknown`.
+    static func of(_ scalar: Unicode.Scalar) -> UnicodeScript {
+        let value = scalar.value
+        // Basic Latin letters are the common case.
+        if value < 0x80 { return (0x41...0x5A).contains(value) || (0x61...0x7A).contains(value) ? .latin : .common }
+        let starts = UnicodeScriptData.starts
+        var low = 0, high = starts.count - 1, found = -1
+        while low <= high {
+            let mid = (low + high) / 2
+            if starts[mid] <= value { found = mid; low = mid + 1 } else { high = mid - 1 }
+        }
+        guard found >= 0, value <= UnicodeScriptData.ends[found] else { return .unknown }
+        return UnicodeScript(name: UnicodeScriptData.names[Int(UnicodeScriptData.scriptIndex[found])])
+    }
+
+    /// `token`'s script: that of its first scalar that is not neutral, or `.common` for a token made of
+    /// digits and punctuation only. Per token, not per character; a token mixing scripts is classified
+    /// by whichever comes first.
     static func dominant(in token: String) -> UnicodeScript {
         for scalar in token.unicodeScalars {
-            let script = classify(scalar)
-            if script != .other { return script }
+            let script = of(scalar)
+            if !script.isNeutral { return script }
         }
-        return .other
-    }
-
-    private static func classify(_ scalar: Unicode.Scalar) -> UnicodeScript {
-        switch scalar.value {
-        case 0x0041...0x005A, 0x0061...0x007A, 0x00C0...0x024F, 0x1E00...0x1EFF:
-            return .latin
-        case 0x0370...0x03FF, 0x1F00...0x1FFF:
-            return .greek
-        case 0x0400...0x04FF, 0x0500...0x052F:
-            return .cyrillic
-        case 0x0590...0x05FF:
-            return .hebrew
-        case 0x0600...0x06FF, 0x0750...0x077F:
-            return .arabic
-        case 0x3040...0x30FF, 0x4E00...0x9FFF, 0xAC00...0xD7AF:
-            return .cjk
-        default:
-            return .other
-        }
+        return .common
     }
 }

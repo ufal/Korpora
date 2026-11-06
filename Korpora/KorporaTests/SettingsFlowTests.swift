@@ -83,67 +83,85 @@ import Testing
         return controller
     }
 
-    @Test func aScriptFontCanBeChangedLater() throws {
+    @Test func theTableStartsWithLatinAndEndsWithAllOtherScripts() throws {
         let settings = freshSettings()
-        settings.scriptFontOverrides = ["greek": "Times-Roman", "cyrillic": "Helvetica"]
         let controller = appearance(settings)
-        #expect(controller.scriptOverrideRows.map(\.script) == [.cyrillic, .greek])
+        #expect(controller.scriptRows.map(\.key) == ["Latin", "Other"])
+        #expect(controller.scriptRows[0].font == ScriptFonts.defaultLatin, "Menlo 12 until it is changed")
+        #expect(controller.scriptRows[1].font == nil, "the system's font for the script")
 
-        let greek = try #require(controller.scriptOverrideRows.firstIndex { $0.script == .greek })
+        settings.scriptFonts = ["Latin": ScriptFont(name: "Menlo-Regular", size: 12), "Han": ScriptFont(name: "Courier", size: 16),
+                                "Cyrillic": ScriptFont(name: "Helvetica", size: 12)]
+        let again = appearance(settings)
+        #expect(again.scriptRows.map(\.key) == ["Latin", "Cyrillic", "Han", "Other"], "the rest by name")
+    }
+
+    @Test func aScriptFontAndSizeCanBeChangedLater() throws {
+        let settings = freshSettings()
+        settings.scriptFonts = ["Latin": ScriptFonts.defaultLatin, "Greek": ScriptFont(name: "Times-Roman", size: 12),
+                                "Cyrillic": ScriptFont(name: "Helvetica", size: 12)]
+        let controller = appearance(settings)
+        let greek = try #require(controller.scriptRows.firstIndex { $0.key == "Greek" })
         controller.scriptTableView.selectRowIndexes([greek], byExtendingSelection: false)
         #expect(controller.changeScriptFontButton.isEnabled && controller.removeScriptFontButton.isEnabled)
 
-        let newFont = try #require(NSFont(name: "Courier", size: 12))
-        controller.applyFont(newFont, to: .greek)
-        #expect(settings.scriptFontOverrides["greek"] == "Courier")
-        #expect(settings.scriptFontOverrides["cyrillic"] == "Helvetica", "others unchanged")
-        #expect(controller.scriptOverrideRows.first { $0.script == .greek }?.fontName == "Courier")
-        // The selection stays on the row that was changed.
-        #expect(controller.scriptTableView.selectedRow == controller.scriptOverrideRows.firstIndex { $0.script == .greek })
+        controller.apply(try #require(NSFont(name: "Courier", size: 15)), forKey: "Greek")
+        #expect(settings.scriptFonts["Greek"] == ScriptFont(name: "Courier", size: 15), "the Font Panel sets the size too")
+        #expect(settings.scriptFonts["Cyrillic"] == ScriptFont(name: "Helvetica", size: 12), "others unchanged")
+        #expect(controller.scriptTableView.selectedRow == controller.scriptRows.firstIndex { $0.key == "Greek" },
+                "the selection stays on the row that was changed")
 
-        // Changing it again (the Font Panel keeps sending changes) is applied too.
-        controller.applyFont(try #require(NSFont(name: "Menlo-Regular", size: 12)), to: .greek)
-        #expect(settings.scriptFontOverrides["greek"] == "Menlo-Regular")
+        controller.applySize(20, forKey: "Greek")
+        #expect(settings.scriptFonts["Greek"] == ScriptFont(name: "Courier", size: 20), "a typed size keeps the font")
+        controller.applySize(500, forKey: "Greek")
+        #expect(settings.scriptFonts["Greek"]?.size == ScriptFonts.maximumSize)
+        controller.applySize(1, forKey: "Greek")
+        #expect(settings.scriptFonts["Greek"]?.size == ScriptFonts.minimumSize)
     }
 
     @Test func theChangeButtonAndDoubleClickAreWired() throws {
         let settings = freshSettings()
-        settings.scriptFontOverrides = ["greek": "Times-Roman"]
+        settings.scriptFonts = ["Latin": ScriptFonts.defaultLatin, "Greek": ScriptFont(name: "Times-Roman", size: 12)]
         let controller = appearance(settings)
         #expect(!controller.changeScriptFontButton.isEnabled, "nothing selected")
         #expect(controller.changeScriptFontButton.title == "Change Font\u{2026}")
         #expect(controller.changeScriptFontButton.action == controller.scriptTableView.doubleAction,
                 "double-clicking a row does what the button does")
-        controller.scriptTableView.selectRowIndexes([0], byExtendingSelection: false)
+        controller.scriptTableView.selectRowIndexes([1], byExtendingSelection: false)
         #expect(controller.changeScriptFontButton.isEnabled)
-        // It points the Font Panel at that script.
         controller.changeScriptFontButton.performClick(nil)
-        #expect(controller.pendingScript == .greek)
+        #expect(controller.pendingKey == "Greek", "it points the Font Panel at that script")
         #expect(NSFontManager.shared.target === controller)
         NSFontPanel.shared.orderOut(nil)
     }
 
     @Test func theFontPanelFollowsTheSelectedRow() throws {
         let settings = freshSettings()
-        settings.scriptFontOverrides = ["greek": "Times-Roman", "hebrew": "Helvetica"]
+        settings.scriptFonts = ["Latin": ScriptFonts.defaultLatin, "Greek": ScriptFont(name: "Times-Roman", size: 12),
+                                "Hebrew": ScriptFont(name: "Helvetica", size: 12)]
         let controller = appearance(settings)
-        controller.scriptTableView.selectRowIndexes([0], byExtendingSelection: false)
-        controller.changeScriptFontButton.performClick(nil)
-        let first = controller.pendingScript
         controller.scriptTableView.selectRowIndexes([1], byExtendingSelection: false)
-        #expect(controller.pendingScript != first && controller.pendingScript != nil)
+        controller.changeScriptFontButton.performClick(nil)
+        let first = controller.pendingKey
+        controller.scriptTableView.selectRowIndexes([2], byExtendingSelection: false)
+        #expect(controller.pendingKey != first && controller.pendingKey != nil)
         NSFontPanel.shared.orderOut(nil)
     }
 
-    @Test func removingTheSelectedScriptFontForgetsIt() throws {
+    @Test func removingARowForgetsItButLatinStays() throws {
         let settings = freshSettings()
-        settings.scriptFontOverrides = ["greek": "Times-Roman"]
+        settings.scriptFonts = ["Latin": ScriptFonts.defaultLatin, "Greek": ScriptFont(name: "Times-Roman", size: 12),
+                                "Other": ScriptFont(name: "Helvetica", size: 14)]
         let controller = appearance(settings)
         controller.scriptTableView.selectRowIndexes([0], byExtendingSelection: false)
+        #expect(!controller.removeScriptFontButton.isEnabled, "Latin is the default and can't go")
+        controller.scriptTableView.selectRowIndexes([1], byExtendingSelection: false)
         controller.removeScriptFontButton.performClick(nil)
-        #expect(settings.scriptFontOverrides.isEmpty)
-        #expect(controller.scriptOverrideRows.isEmpty)
-        #expect(!controller.changeScriptFontButton.isEnabled)
+        #expect(settings.scriptFonts.keys.sorted() == ["Latin", "Other"])
+        controller.scriptTableView.selectRowIndexes([controller.scriptRows.firstIndex { $0.key == "Other" }!], byExtendingSelection: false)
+        controller.removeScriptFontButton.performClick(nil)
+        #expect(settings.scriptFonts.keys.sorted() == ["Latin"], "All other scripts goes back to the system font")
+        #expect(controller.scriptRows.map(\.key) == ["Latin", "Other"], "and the row stays")
     }
 
     // MARK: Helpers

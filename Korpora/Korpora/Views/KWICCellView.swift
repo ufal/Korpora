@@ -71,6 +71,30 @@ final class KWICCellView: NSTableCellView {
         self.style = style
     }
 
+    /// `text` (tokens separated by spaces) with each word in its script's font and size, the way a line of the
+    /// table is drawn: a word of digits or punctuation takes the script of the word before it.
+    static func styledText(
+        _ text: String, bold: Bool, color: NSColor, paragraphStyle: NSParagraphStyle? = nil
+    ) -> NSAttributedString {
+        let words = text.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        let segments = words.map { KWICDisplaySegment(text: $0, kind: .word) }
+        let scripts = wordScripts(of: segments)
+        let result = NSMutableAttributedString()
+        for (index, word) in words.enumerated() {
+            let (font, language) = ScriptFontResolver.shared.font(for: scripts[index], sample: word, language: nil, bold: bold)
+            var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+            if let paragraphStyle { attributes[.paragraphStyle] = paragraphStyle }
+            if let language { attributes[.languageIdentifier] = language }
+            if index > 0 {
+                var space = attributes
+                space[.languageIdentifier] = nil
+                result.append(NSAttributedString(string: " ", attributes: space))
+            }
+            result.append(NSAttributedString(string: word, attributes: attributes))
+        }
+        return result
+    }
+
     /// The inline "Extended Context" display mode (see
     /// `ConcordanceViewController`'s row-view overlay) needs one
     /// continuous, word-wrapped paragraph spanning the whole row - not
@@ -79,24 +103,22 @@ final class KWICCellView: NSTableCellView {
     /// fragments. Lives here (not on the overlay field itself) purely to
     /// reuse this file's font/color conventions.
     static func extendedContextParagraph(before: String, match: String, after: String) -> NSAttributedString {
-        let baseFont = AppSettings.shared.resultsFont
-        let boldFont = NSFontManager.shared.convert(baseFont, toHaveTrait: .boldFontMask)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineBreakMode = .byWordWrapping
         paragraphStyle.alignment = .left
 
         let result = NSMutableAttributedString()
-        func append(_ text: String, font: NSFont, color: NSColor) {
+        func append(_ text: String, bold: Bool, color: NSColor) {
             guard !text.isEmpty else { return }
             if result.length > 0 {
-                result.append(NSAttributedString(string: " ", attributes: [.font: baseFont, .paragraphStyle: paragraphStyle]))
+                result.append(NSAttributedString(
+                    string: " ", attributes: [.font: AppSettings.shared.resultsFont, .paragraphStyle: paragraphStyle]))
             }
-            result.append(NSAttributedString(
-                string: text, attributes: [.font: font, .foregroundColor: color, .paragraphStyle: paragraphStyle]))
+            result.append(styledText(text, bold: bold, color: color, paragraphStyle: paragraphStyle))
         }
-        append(before, font: baseFont, color: .labelColor)
-        append(match, font: boldFont, color: .controlAccentColor)
-        append(after, font: baseFont, color: .labelColor)
+        append(before, bold: false, color: .labelColor)
+        append(match, bold: true, color: .controlAccentColor)
+        append(after, bold: false, color: .labelColor)
         return result
     }
 
@@ -187,7 +209,8 @@ final class KWICCellView: NSTableCellView {
     ) -> (text: String, rect: CGRect)? {
         guard !displayLine.tokenTooltips.isEmpty else { return nil }
 
-        let segmentWidths = displayLine.segments.map { width(of: $0, style: style) }
+        let scripts = wordScripts(of: displayLine.segments)
+        let segmentWidths = displayLine.segments.indices.map { width(of: displayLine.segments[$0], script: scripts[$0], style: style) }
         var segmentStartX: [CGFloat] = []
         var cursor: CGFloat = 0
         for segmentWidth in segmentWidths {
@@ -213,24 +236,39 @@ final class KWICCellView: NSTableCellView {
         return nil
     }
 
-    private static func width(of segment: KWICDisplaySegment, style: Style) -> CGFloat {
-        let baseFont = AppSettings.shared.resultsFont
-        let font: NSFont = segment.kind == .secondaryAttribute ? baseFont : wordFont(for: segment, baseFont: baseFont, style: style)
+    private static func width(of segment: KWICDisplaySegment, script: UnicodeScript, style: Style) -> CGFloat {
+        let font: NSFont = segment.kind == .secondaryAttribute
+            ? AppSettings.shared.resultsFont : wordFont(for: segment, script: script, style: style).font
         return NSAttributedString(string: segment.text, attributes: [.font: font]).size().width
     }
 
-    /// `.word`-kind segments (actual token text, not a secondary-attribute
-    /// suffix) get a per-script font override if `AppSettings.shared
-    /// .scriptFontOverrides` has one for that segment's dominant script
-    /// (see `UnicodeScript`) - e.g. a corpus mixing Latin and Cyrillic text
-    /// where one font's glyph coverage isn't ideal for both. Falls back to
-    /// `baseFont` (`resultsFont`) with no override configured, same as
-    /// before this setting existed.
-    private static func wordFont(for segment: KWICDisplaySegment, baseFont: NSFont, style: Style) -> NSFont {
-        let script = UnicodeScript.dominant(in: segment.text)
-        let overrideName = AppSettings.shared.scriptFontOverrides[script.rawValue]
-        let resolvedBase = overrideName.flatMap { NSFont(name: $0, size: baseFont.pointSize) } ?? baseFont
-        return style == .highlighted ? NSFontManager.shared.convert(resolvedBase, toHaveTrait: .boldFontMask) : resolvedBase
+    /// The script each segment is drawn in. A token of digits or punctuation takes the script of the token before
+    /// it, or after it at the start of a line, so a `\u{FF0C}` or a year inside Chinese text is not drawn at the Latin
+    /// size. Secondary attributes (lemma, tag) are always Latin.
+    static func wordScripts(of segments: [KWICDisplaySegment]) -> [UnicodeScript] {
+        var own: [UnicodeScript?] = segments.map { segment in
+            guard segment.kind != .secondaryAttribute else { return nil }
+            let script = UnicodeScript.dominant(in: segment.text)
+            return script.isNeutral ? nil : script
+        }
+        var last: UnicodeScript?
+        for index in own.indices where segments[index].kind != .secondaryAttribute {
+            if let script = own[index] { last = script } else { own[index] = last }
+        }
+        var next: UnicodeScript?
+        for index in own.indices.reversed() where segments[index].kind != .secondaryAttribute {
+            if let script = own[index] { next = script } else { own[index] = next }
+        }
+        return own.map { $0 ?? .latin }
+    }
+
+    /// The font of a token (not of a secondary attribute): the one the settings give its script, at that
+    /// script's size, and the language tag to put on it. `ScriptFontResolver` keeps the fonts, so this is a
+    /// lookup, not a font creation, per token.
+    private static func wordFont(for segment: KWICDisplaySegment, script: UnicodeScript, style: Style)
+        -> (font: NSFont, language: String?) {
+        ScriptFontResolver.shared.font(
+            for: script, sample: segment.text, language: nil, bold: style == .highlighted)
     }
 
     /// NSTextField.attributedStringValue does NOT pick up the field's own
@@ -245,19 +283,25 @@ final class KWICCellView: NSTableCellView {
         for segments: [KWICDisplaySegment], alignment: NSTextAlignment, style: Style
     ) -> NSAttributedString {
         let baseFont = AppSettings.shared.resultsFont
+        let scripts = wordScripts(of: segments)
         let wordColor: NSColor = style == .highlighted ? .controlAccentColor : .labelColor
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineBreakMode = alignment == .right ? .byTruncatingHead : .byTruncatingTail
         paragraphStyle.alignment = alignment
 
         let attributed = NSMutableAttributedString()
-        for segment in segments {
-            let (font, color): (NSFont, NSColor) = segment.kind == .secondaryAttribute
-                ? (baseFont, AppSettings.shared.positionalAttributeColor)
-                : (wordFont(for: segment, baseFont: baseFont, style: style), wordColor)
-            attributed.append(NSAttributedString(
-                string: segment.text,
-                attributes: [.font: font, .foregroundColor: color, .paragraphStyle: paragraphStyle]))
+        for (index, segment) in segments.enumerated() {
+            var attributes: [NSAttributedString.Key: Any] = [.paragraphStyle: paragraphStyle]
+            if segment.kind == .secondaryAttribute {
+                attributes[.font] = baseFont
+                attributes[.foregroundColor] = AppSettings.shared.positionalAttributeColor
+            } else {
+                let (font, language) = wordFont(for: segment, script: scripts[index], style: style)
+                attributes[.font] = font
+                attributes[.foregroundColor] = wordColor
+                if let language { attributes[.languageIdentifier] = language }
+            }
+            attributed.append(NSAttributedString(string: segment.text, attributes: attributes))
         }
         return attributed
     }
