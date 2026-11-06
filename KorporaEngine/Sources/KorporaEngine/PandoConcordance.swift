@@ -426,10 +426,17 @@ public actor PandoConcordance: ConcordanceHandle {
         let rows = range.clamped(to: 0..<size)
         guard !rows.isEmpty else { return [] }
         let name = PandoNames.attribute(attribute)
-        let blank = [String](repeating: "", count: rows.count)
         if windowed {
-            return try tabulate(offset: rows.lowerBound, count: rows.count, fields: [name])
-                .map { $0.map { $0.first ?? "" } } ?? blank
+            if let table = try tabulate(offset: rows.lowerBound, count: rows.count, fields: [name]) {
+                return table.map { $0.first ?? "" }
+            }
+            // A shuffled or sampled big result: pando has no cheap lookup of a hit's region, but a hit page names
+            // the document (the text region's id, for corpora built from several files) with every hit.
+            if name == "text_id" {
+                return try hitPage(offset: rows.lowerBound, count: rows.count, context: 0, attrs: ["form"])
+                    .map { $0["doc_id"] as? String ?? "" }
+            }
+            throw PandoError.unsupported("Region values of shuffled or sampled hits in a result this large")
         }
         if regionValues[name] == nil {
             regionValues[name] = try tabulate(offset: 0, count: lines.count, fields: [name])

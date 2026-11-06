@@ -89,4 +89,20 @@ final class PandoRealCorpusTests: XCTestCase {
         XCTAssertEqual(top.count, 5)
         XCTAssertTrue(top.map(\.value).contains("NOUN"))
     }
+
+    /// A shuffled big result: the text id still comes (from the hit page), other region values don't.
+    func testFullUDShuffledResultGivesTextIdOnly() async throws {
+        let engine = try engine()
+        let corpus = try await engine.openCorpus(name: try corpusPath("KORPORA_PANDO_UD"))
+        let live = try await engine.openConcordance(query: #"[upos="PROPN"] < [deprel="root"]"#, in: corpus)
+        let inOrder = try await live.structureValues(attribute: "text.treebank", range: 0..<3)
+        XCTAssertFalse(inOrder.contains(""), "\(inOrder)")
+        try await live.shuffle()
+        let files = try await live.structureValues(attribute: "text.id", range: 0..<5)
+        XCTAssertTrue(files.allSatisfy { $0.hasSuffix(".conllu") }, "\(files)")
+        do {
+            _ = try await live.structureValues(attribute: "text.treebank", range: 0..<5)
+            XCTFail("pando has no cheap lookup of the region of a shuffled hit")
+        } catch is PandoError {}
+    }
 }

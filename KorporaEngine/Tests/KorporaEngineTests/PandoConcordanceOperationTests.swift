@@ -114,8 +114,10 @@ final class PandoConcordanceOperationTests: XCTestCase {
         let tail = try await live.kwicLines(range: 3..<5, leftContext: "-1", rightContext: "1", kwicAttr: "form",
                                             secondaryAttributes: [])
         XCTAssertEqual(tail.map { "\($0.left)|\($0.kwic)|\($0.right)" }, Array(all[3..<5]), "windows agree with the whole")
-        let genres = try await live.structureValues(attribute: "doc.genre", range: 0..<5)
-        XCTAssertEqual(genres, Array(repeating: "", count: 5), "pando's hit pages carry no region values")
+        do {
+            _ = try await live.structureValues(attribute: "doc.genre", range: 0..<5)
+            XCTFail("pando's hit pages carry no region values")
+        } catch is PandoError {}
         do {
             _ = try await live.structureInfo(forViewRow: 0)
             XCTFail("the document of a shuffled hit of a big result can't be looked up")

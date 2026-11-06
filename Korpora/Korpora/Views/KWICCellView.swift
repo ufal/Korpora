@@ -300,5 +300,9 @@ final class KWICCellView: NSTableCellView {
         label.font = .systemFont(ofSize: 11)
         label.textColor = AppSettings.shared.structuralAttributeColor
         label.stringValue = value
+        toolTip = value == ConcordanceDocument.regionUnavailable
+            ? "pando can\u{2019}t yet look up this value for shuffled or sampled hits of a result this large. "
+                + "Sort the result, or leave it in order, to see it."
+            : nil
     }
 }

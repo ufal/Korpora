@@ -198,7 +198,13 @@ final class ConcordanceDocument: NSDocument {
             kwicAttr: source.kwicAttr, secondaryAttributes: source.secondaryAttributes)
         var regionValues: [String] = []
         if let attribute = source.structuralAttribute {
-            regionValues = (try? await source.live.structureValues(attribute: attribute, range: engineRange)) ?? []
+            do {
+                regionValues = try await source.live.structureValues(attribute: attribute, range: engineRange)
+            } catch {
+                // Not available (pando can't look up the regions of shuffled hits in a big result): say so
+                // in the column instead of leaving it blank.
+                regionValues = [String](repeating: Self.regionUnavailable, count: lines.count)
+            }
         }
         if source.descending {
             lines.reverse()
@@ -217,6 +223,9 @@ final class ConcordanceDocument: NSDocument {
         }
         return rows
     }
+
+    /// What the region column shows when the engine can't give the value.
+    static let regionUnavailable = "n/a"
 
     /// The first screens of rows from `live`, fetched before the result is shown (`setRows` shows them).
     private func firstRows(live: any ConcordanceHandle, descending: Bool) async throws
