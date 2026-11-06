@@ -30,7 +30,7 @@ variable:
 | `CORPORA_COMPILED_CORPORA_DIRECTORY` | `KORPORA_COMPILED_CORPORA_DIRECTORY` |
 | `~/Library/Application Support/Corpora/` | `~/Library/Application Support/Korpora/` |
 
-The GitHub repo followed too (`stranak/mac-corpora` → `stranak/Korpora`);
+The GitHub repo followed too (`stranak/mac-corpora` → `stranak/Korpora` → `ufal/Korpora` (moved into the UFAL organisation, 2026-11));
 the local checkout directory is `korpora/`.
 
 So every "Corpora" that meant *the app* is now "Korpora". "Corpora" as the
@@ -136,7 +136,7 @@ agent's purpose-built tools instead.)
 Three places hold parts of this work; know which before assuming something
 is "done":
 
-- **`github.com/stranak/Korpora`, branch `main`** (was `mac-corpora`,
+- **`github.com/ufal/Korpora`, branch `main`** (was `mac-corpora`,
   renamed with the app) — the pushed baseline.
   Holds only the pre-Phase-0 engine: `.gitignore`, `ManateeKit/Package.swift`,
   `ManateeKit/Sources/CManatee/{include/mtcbridge.h,mtcbridge.cc}`,
@@ -2352,7 +2352,7 @@ narrowed further and closed as a known, accepted, non-blocking issue:**
   relative to the time already invested.
 - **Update 2026-09-29:** the user confirms this is a real bug that is
   still there on macOS 27 (0.2), not a beta artefact. Tracked as
-  [issue #11](https://github.com/stranak/Korpora/issues/11), which lists
+  [issue #11](https://github.com/ufal/Korpora/issues/11), which lists
   everything ruled out above and what hasn't been tried.
 - **Update 2026-11-03: gone.** After the toolbar moved to standard segmented
   `NSToolbarItemGroup`s (and the pando work around it), the user finds that tooltips
@@ -3896,7 +3896,7 @@ Same pattern as every prior phase in this project:
 ## Goal — Ship a signed GitHub release (done — v0.1 released 2026-09-26)
 
 Raised 2026-09-25 as its own goal, separate from the feature phases: put a
-`Korpora.dmg` on `github.com/stranak/Korpora/releases` that a normal Mac
+`Korpora.dmg` on `github.com/ufal/Korpora/releases` that a normal Mac
 user can download and launch — no Terminal, no Homebrew, no right-click
 → Open workaround, no "app is damaged" dialog. This section is the
 measured analysis of what that takes; each step below is written so it
@@ -4307,7 +4307,7 @@ can be verified on its own.
    `gh release create`. GitHub Actions CI (with cert/API-key secrets) is
    a later convenience, not v1 — get the manual pipeline green once
    first.
-   **Status (2026-09-26): done — [Korpora 0.1](https://github.com/stranak/Korpora/releases/tag/v0.1).**
+   **Status (2026-09-26): done — [Korpora 0.1](https://github.com/ufal/Korpora/releases/tag/v0.1).**
    Tag `v0.1` → `e060d43` (merge of #5). The DMG was built from
    `9d60330`; the only differences up to the tag are
    `docs/project-plan.md` and `scripts/release-smoke-vm.sh`, so the tagged
@@ -4394,7 +4394,7 @@ To cut the release:
 
 Built from `9ba315f` with `scripts/make-release.sh` (full, notarized);
 `Korpora 0.2 (2)`. Tests: app 94, ManateeKit 82, all passing.
-**Published 2026-09-29: [Korpora 0.2](https://github.com/stranak/Korpora/releases/tag/v0.2)**,
+**Published 2026-09-29: [Korpora 0.2](https://github.com/ufal/Korpora/releases/tag/v0.2)**,
 tag `v0.2` → `9ba315f`. Assets: the DMG, its `.sha256`, and
 `Korpora-0.2.dSYM.zip` (for symbolicating crash reports; the shipped binary
 is stripped). The published DMG was re-downloaded and checked: checksum,

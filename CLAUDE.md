@@ -37,7 +37,7 @@ them by repo-relative path.
 ## Repos and setup
 
 - `KorporaEngine/`, `Korpora/`, `scripts/` — this repo
-  (`github.com/stranak/Korpora`, renamed from `mac-corpora` along with the
+  (`github.com/ufal/Korpora`, renamed from `mac-corpora` along with the
   app). The local checkout directory is `korpora/`.
   - **The bundle identifier is `cz.cuni.mff.ufal.korpora`** (since the
     first release; it was `cz.cuni.mff.ufal.mac-corpora.dev` before).
