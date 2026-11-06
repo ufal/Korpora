@@ -35,6 +35,10 @@ struct CQLAutoPairingTests {
     @Test func parensAndAngleBracketsPairToo() {
         #expect(typing("(", atEndOf: "") == .insert(text: "()", caretOffset: 1))
         #expect(typing("<", atEndOf: "") == .insert(text: "<>", caretOffset: 1))
+        #expect(typing("<", atEndOf: "[] ") == .passThrough, "a dependency arrow, not a tag")
+        #expect(typing("<", atEndOf: "[]") == .passThrough)
+        #expect(typing("<", atEndOf: "[] !") == .passThrough)
+        #expect(typing("<", atEndOf: "[freq ") == .passThrough, "a comparison")
     }
 
     // MARK: - stepping over a closer

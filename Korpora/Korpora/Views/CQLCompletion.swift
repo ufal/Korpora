@@ -362,9 +362,21 @@ enum CQLAutoPairing {
         }
 
         if let close = pairs[character] {
+            // `<` opens a structure tag (`<s>`) only where an operand can start. After an operand it is an
+            // operator - a dependency (`[] < []`, `!<`, `<<`) or a comparison (`[freq < 5]`) - so no `>` follows.
+            if character == "<", followsOperand(text: ns, caret: caret) { return .passThrough }
             return .insert(text: "\(character)\(close)", caretOffset: 1)
         }
         return .passThrough
+    }
+
+    /// Whether the last non-blank character before the caret ends an operand: a bracket, quote, word, number,
+    /// or an operator half such as `!`.
+    private static func followsOperand(text: NSString, caret: Int) -> Bool {
+        var i = caret - 1
+        while i >= 0, let c = Character(utf16: text.character(at: i)), c == " " || c == "\t" { i -= 1 }
+        guard i >= 0, let c = Character(utf16: text.character(at: i)) else { return false }
+        return c == "]" || c == ")" || c == "\"" || c == "!" || c == "<" || c == ">" || c.isLetter || c.isNumber
     }
 
     /// Whether backspace should delete both halves of an empty pair - the
