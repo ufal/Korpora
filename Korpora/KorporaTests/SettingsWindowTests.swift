@@ -109,6 +109,25 @@ import Testing
         #expect(list.frame.width >= before.width + 180, "list went from \(before.width) to \(list.frame.width)")
     }
 
+    /// Like the corpus list, the table of fonts takes the extra width too, and it is the Font column that widens.
+    @Test func theTableOfFontsGrowsInWidthWithTheWindow() throws {
+        let window = try shownWindow()
+        defer { window.orderOut(nil) }
+        SettingsWindowController.shared.showPane(.appearance)
+        layOut(window)
+        let controller = try #require(window.contentViewController as? AppearanceSettingsViewController)
+        let list = try #require(controller.scriptTableView.enclosingScrollView)
+        let before = list.frame.width
+        let columns = controller.scriptTableView.tableColumns.map(\.width)
+
+        window.setContentSize(NSSize(width: 900, height: 700))
+        layOut(window)
+        #expect(list.frame.width >= before + 400, "list went from \(before) to \(list.frame.width)")
+        let after = controller.scriptTableView.tableColumns.map(\.width)
+        #expect(after[1] > columns[1] + 350, "the Font column took the width: \(columns) -> \(after)")
+        #expect(after[0] == columns[0] && after[2] == columns[2], "Script and Size keep theirs")
+    }
+
     @Test func theAppearanceListGrowsWithTheWindow() throws {
         let window = try shownWindow()
         defer { window.orderOut(nil) }
@@ -168,8 +187,7 @@ import Testing
     @Test func formPanesStayCenteredWhenTheWindowIsWider() throws {
         let window = try shownWindow()
         defer { window.orderOut(nil) }
-        for (pane, width) in [(SettingsWindowController.Pane.concordance, CGFloat(460)),
-                              (.appearance, CGFloat(460))] {
+        for (pane, width) in [(SettingsWindowController.Pane.concordance, CGFloat(460))] {
             SettingsWindowController.shared.showPane(pane)
             layOut(window)
             window.setContentSize(NSSize(width: 900, height: 700))

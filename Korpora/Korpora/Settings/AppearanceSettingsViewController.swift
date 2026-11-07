@@ -41,6 +41,8 @@ final class AppearanceSettingsViewController: NSViewController {
 
     override func loadView() {
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 460, height: 520))
+        // Follow the window when it's resized, like the Corpora pane: the table of fonts takes the extra width and height.
+        root.autoresizingMask = [.width, .height]
 
         let scriptTitle = NSTextField(labelWithString: "Fonts by script:")
         scriptTitle.font = .boldSystemFont(ofSize: 12)
@@ -63,7 +65,12 @@ final class AppearanceSettingsViewController: NSViewController {
         sizeColumn.width = 50
         sizeColumn.minWidth = 40
         sizeColumn.maxWidth = 70
+        // The Font column takes whatever room there is; Script and Size stay as wide as they need.
+        scriptColumn.resizingMask = .userResizingMask
+        sizeColumn.resizingMask = .userResizingMask
+        fontColumn.resizingMask = [.autoresizingMask, .userResizingMask]
         for column in [scriptColumn, fontColumn, sizeColumn] { scriptTableView.addTableColumn(column) }
+        scriptTableView.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         scriptTableView.headerView = NSTableHeaderView()
         scriptTableView.target = self
         scriptTableView.doubleAction = #selector(changeSelectedFont)
@@ -157,8 +164,7 @@ final class AppearanceSettingsViewController: NSViewController {
             alternatingRowCheckbox.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -20),
         ])
 
-        // A centered column; the per-script list in it takes extra height.
-        view = SettingsLayout.centeredRoot(around: root, width: 460)
+        view = root
         preferredContentSize = NSSize(width: 460, height: 520)
         reloadRows()
     }
