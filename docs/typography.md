@@ -104,7 +104,10 @@ height but not the language); when both are typed it does not run.
 
 **The default language.** Kana in the corpus means `ja`, Hangul means `ko`. Han-only text goes through
 `NLLanguageRecognizer` on a sample of sentences. When it is unsure the language stays automatic, which is today's
-behaviour. A corpus that mixes Chinese, Japanese and Korean (UD) has no single language, so it stays automatic.
+behaviour. A corpus that mixes Chinese, Japanese and Korean (UD) has no single language; then
+every line is told its own: kana mean `ja`, Hangul `ko`, and Han alone goes through `NLLanguageRecognizer` (about
+40 µs a line, so 8 ms for a chunk of 200 rows) and is tagged only when it is at least 70% sure. A language typed for
+the corpus is used for every line instead.
 
 **Why a fixed row height, not per line.** `NSTableView` places rows from their heights; with variable heights it
 has to ask for every one. A result of millions of hits, with its rows loaded a window at a time, needs the fixed
