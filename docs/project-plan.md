@@ -4482,6 +4482,15 @@ hardware.
 - `Corpora/` — the Xcode project and all AppKit sources; `project.yml` for
   xcodegen; `scripts/build-dev-corpus.sh` for the dev-only test corpus
 
+### Release 0.4.1 - planned (version bumped 2026-11-07), not built
+
+`Korpora 0.4.1 (5)`: a fix release on 0.4 (0.4 was published as a notarized build on 2026-11-06). Since 0.4: the
+dependency-arrow `<` no longer auto-closes; the Document column on a shuffled or sampled big result shows
+`text.id` and `n/a` instead of nothing; a font and a size for each script, a row height and a language for each
+corpus, and language-tagged glyph forms for Chinese, Japanese and Korean text (docs/typography.md); the repository
+moved to `ufal/Korpora`. To release: `scripts/make-release.sh`, tag `v0.4.1`, GitHub release with the DMG,
+`.sha256` and dSYM zip.
+
 ### Release 0.4 - build and test record (2026-11-03) - built, not yet published
 
 `Korpora 0.4 (4)`: the first pando-only release, built with `scripts/make-release.sh` (full, notarized)
