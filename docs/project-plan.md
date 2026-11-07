@@ -4482,14 +4482,22 @@ hardware.
 - `Corpora/` — the Xcode project and all AppKit sources; `project.yml` for
   xcodegen; `scripts/build-dev-corpus.sh` for the dev-only test corpus
 
-### Release 0.4.1 - planned (version bumped 2026-11-07), not built
+### Release 0.4.1 - published 2026-11-07
 
-`Korpora 0.4.1 (5)`: a fix release on 0.4 (0.4 was published as a notarized build on 2026-11-06). Since 0.4: the
-dependency-arrow `<` no longer auto-closes; the Document column on a shuffled or sampled big result shows
-`text.id` and `n/a` instead of nothing; a font and a size for each script, a row height and a language for each
-corpus, and language-tagged glyph forms for Chinese, Japanese and Korean text (docs/typography.md); the repository
-moved to `ufal/Korpora`. To release: `scripts/make-release.sh`, tag `v0.4.1`, GitHub release with the DMG,
-`.sha256` and dSYM zip.
+`Korpora 0.4.1 (5)`: a fix release on 0.4 (published 2026-11-06), built with `scripts/make-release.sh` from `main`
+at 5fde9f5, pando a7dbe56 (v0.4.4) bundled. Notarization submissions `8f879637-...` (app) and `63e219de-...`
+(DMG), both accepted and stapled; Gatekeeper accepts a quarantined copy. `Korpora-0.4.1.dmg` SHA-256
+`cbef725e...b4880`. GitHub release `v0.4.1` with the DMG, `.sha256` and dSYM zip.
+
+Since 0.4: the dependency-arrow `<` no longer auto-closes; the Document column on a shuffled or sampled big result
+shows `text.id` and `n/a` instead of nothing; a font and a size for each script, a row height and a language for
+each corpus, and language-tagged glyph forms for Chinese, Japanese and Korean text (docs/typography.md); the
+repository moved to `ufal/Korpora`.
+
+Smoke test on a fresh clone of the Cirrus macOS 15.7.7 image (`korpora-smoke-041`, Gatekeeper on, no earlier
+install): scripted install checks 9/9, exec checks 6/6. The user did the first launch from Finder, imported
+`smoke.conllu`, searched, checked the Fonts by script table and the Row height and Language columns, and
+relaunched: all fine. Not tested: an upgrade from 0.4 (the settings migration is covered by unit tests only).
 
 ### Release 0.4 - build and test record (2026-11-03) - built, not yet published
 
