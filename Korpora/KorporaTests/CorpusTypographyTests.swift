@@ -198,6 +198,19 @@ import Testing
         #expect(LineLanguage.language(forCode: nil, in: simplified) == "zh-Hans")
     }
 
+    @Test func theSimplifiedEditionOfGsdIsSimplifiedWhateverTheTextSays() {
+        func line(_ text: String) -> KWICLine {
+            KWICLine(leftTokens: [], kwicTokens: [KWICToken(word: text, secondaryAttributes: [:])], rightTokens: [], position: 0)
+        }
+        let short = line("3月")  // too short for the recognizer to be sure
+        #expect(LineLanguage.language(forCode: "zh", treebank: "gsdsimp", in: short) == "zh-Hans")
+        #expect(LineLanguage.language(forCode: "zh", treebank: "GSDSimp", in: short) == "zh-Hans", "UD writes it in lower case; be lenient")
+        #expect(LineLanguage.language(forCode: "zh", treebank: "gsd", in: line("南洋商業銀行轉換新形象，以往是紅色，寫上中英文全名的招牌")) == "zh-Hant")
+        #expect(LineLanguage.language(forCode: "ja", treebank: "gsdsimp", in: short) == "ja", "the table is keyed by code and treebank")
+        #expect(LineLanguage.treebankAttribute(in: [StructureInfo(name: "text", attributes: ["id", "treebank"])]) == "text.treebank")
+        #expect(LineLanguage.treebankAttribute(in: [StructureInfo(name: "doc", attributes: ["id"])]) == nil)
+    }
+
     @Test func theLanguageAttributeIsTheFirstTheCorpusHas() {
         func structures(_ pairs: [(String, [String])]) -> [StructureInfo] { pairs.map { StructureInfo(name: $0.0, attributes: $0.1) } }
         #expect(LineLanguage.languageAttribute(in: structures([("text", ["id", "langcode", "lang"]), ("doc", ["langcode"])])) == "text.langcode")

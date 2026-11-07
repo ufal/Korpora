@@ -196,6 +196,15 @@ struct EffectiveTypography: Equatable, Sendable {
 /// The language of one line of a corpus that mixes several: kana mean Japanese, Hangul Korean, and Han alone is
 /// told Simplified from Traditional by `NLLanguageRecognizer` (about 40 µs a line), when it is sure.
 enum LineLanguage {
+    /// UD treebanks whose language needs more than the code: `zh` is Traditional in most treebanks, but the
+    /// simplified-characters edition of GSD is `zh_gsdsimp`. Keys are `<code>_<treebank>`, as UD names its files.
+    static let treebankLanguages = ["zh_gsdsimp": "zh-Hans"]
+
+    /// The region attribute that holds the treebank of a line (UD: `text.treebank`), when the corpus has one.
+    static func treebankAttribute(in structures: [StructureInfo]) -> String? {
+        structures.contains { $0.name == "text" && $0.attributes.contains("treebank") } ? "text.treebank" : nil
+    }
+
     /// The region attribute that holds a language, first of these that the corpus has.
     static func languageAttribute(in structures: [StructureInfo]) -> String? {
         for candidate in ["text.langcode", "doc.langcode", "text.lang", "doc.lang"] {
@@ -208,8 +217,9 @@ enum LineLanguage {
     /// The tag for a line the corpus calls `code` (a UD language code: `ja`, `ko`, `zh`, `lzh`, `yue`, ...): the
     /// code decides for Japanese and Korean, Classical Chinese is Traditional and Cantonese is Hong Kong; `zh` does
     /// not say Simplified or Traditional, so the text does. With no code (or `_`) the text decides.
-    static func language(forCode code: String?, in line: KWICLine) -> String? {
+    static func language(forCode code: String?, treebank: String? = nil, in line: KWICLine) -> String? {
         let code = code?.lowercased()
+        if let code, let treebank, let known = treebankLanguages["\(code)_\(treebank.lowercased())"] { return known }
         switch code {
         case nil, "", "_": return detect(in: line)
         case "ja"?, "ko"?: return code

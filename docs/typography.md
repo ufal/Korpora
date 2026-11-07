@@ -108,7 +108,8 @@ behaviour. A corpus that mixes Chinese, Japanese and Korean (UD) has no single l
 every line is told its own. The corpus's own language code comes first when it has one (`text.langcode`,
 `doc.langcode`, `text.lang` or `doc.lang`: for UD it comes from the file names): `ja` and `ko` are used as they are,
 `lzh` (Classical Chinese) is `zh-Hant`, `yue` is `zh-HK`, and `zh` does not say Simplified or Traditional, so the
-text does. Where there is no code (a shuffled result of millions of hits, an empty value, a corpus without one) the
+text does, except for the one UD treebank known to be Simplified, `zh_gsdsimp` (a small table,
+`LineLanguage.treebankLanguages`, read through `text.treebank`). Where there is no code (a shuffled result of millions of hits, an empty value, a corpus without one) the
 text decides: kana mean `ja`, Hangul `ko`, and Han alone goes through `NLLanguageRecognizer` (about
 40 µs a line, so 8 ms for a chunk of 200 rows) and is tagged only when it is at least 70% sure. A language typed for
 the corpus is used for every line instead.

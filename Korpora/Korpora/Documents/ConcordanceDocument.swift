@@ -90,6 +90,9 @@ final class ConcordanceDocument: NSDocument {
     /// The region attribute that holds the language of the text around a hit (`text.langcode`, `doc.langcode`, ...),
     /// when the corpus has one: UD's comes from the file names. Read when a search runs.
     private(set) var languageAttribute: String?
+    /// Where the corpus records the treebank a line comes from (UD's `text.treebank`), for the few treebanks whose
+    /// language the code alone doesn't give (`LineLanguage.treebankLanguages`).
+    private(set) var treebankAttribute: String?
     /// Additional positional attributes (e.g. "lemma", "tag") shown
     /// alongside `kwicAttr` per token - see `KWICFormatter`. Independent,
     /// not an either/or mode: an attribute can be in both lists at once
@@ -148,6 +151,7 @@ final class ConcordanceDocument: NSDocument {
         let perLineLanguage: Bool
         /// Where the corpus records the language of a line (see `ConcordanceDocument.languageAttribute`).
         let languageAttribute: String?
+        let treebankAttribute: String?
         /// A descending sort shows the engine's view backwards: row `i` is view row `count - 1 - i`.
         let descending: Bool
     }
@@ -219,14 +223,18 @@ final class ConcordanceDocument: NSDocument {
         }
         // The language the corpus says each line is in; where it can't say (a shuffled result of millions of hits,
         // a region without a value), the line's own text decides.
-        var languageCodes: [String] = []
+        var languageCodes: [String] = [], treebanks: [String] = []
         if source.perLineLanguage, let attribute = source.languageAttribute {
             languageCodes = (try? await source.live.structureValues(attribute: attribute, range: engineRange)) ?? []
+            if let treebank = source.treebankAttribute {
+                treebanks = (try? await source.live.structureValues(attribute: treebank, range: engineRange)) ?? []
+            }
         }
         if source.descending {
             lines.reverse()
             regionValues.reverse()
             languageCodes.reverse()
+            treebanks.reverse()
         }
         var rows: [ConcordanceRow] = []
         rows.reserveCapacity(lines.count)
@@ -239,7 +247,9 @@ final class ConcordanceDocument: NSDocument {
                 id: row, line: line, group: await source.live.linegroup(at: viewRow),
                 structuralAttributeValue: value.isEmpty || value == "_" ? nil : value, viewIndex: viewRow,
                 language: source.perLineLanguage
-                    ? LineLanguage.language(forCode: languageCodes.indices.contains(offset) ? languageCodes[offset] : nil, in: line)
+                    ? LineLanguage.language(
+                        forCode: languageCodes.indices.contains(offset) ? languageCodes[offset] : nil,
+                        treebank: treebanks.indices.contains(offset) ? treebanks[offset] : nil, in: line)
                     : nil))
         }
         return rows
@@ -256,7 +266,8 @@ final class ConcordanceDocument: NSDocument {
             live: live, count: count, leftContext: effectiveLeftContext, rightContext: effectiveRightContext,
             kwicAttr: kwicAttr,
             secondaryAttributes: attributesToFetch, structuralAttribute: structuralAttributeToShow,
-            perLineLanguage: typography.perLineLanguage, languageAttribute: languageAttribute, descending: descending)
+            perLineLanguage: typography.perLineLanguage, languageAttribute: languageAttribute,
+            treebankAttribute: treebankAttribute, descending: descending)
         let first = try await Self.fetchRows(0..<min(count, 2 * Self.rowChunk), from: source)
         try Task.checkCancellation()
         return (first, count, source)
@@ -629,6 +640,7 @@ final class ConcordanceDocument: NSDocument {
                 textAttribute = info.defaultAttribute
                 corpusTokens = info.sizeTokens
                 languageAttribute = LineLanguage.languageAttribute(in: info.structures)
+                treebankAttribute = LineLanguage.treebankAttribute(in: info.structures)
                 attributeNames = info.attributes
                 if !info.attributes.contains(kwicAttr) { kwicAttr = info.defaultAttribute }
                 inlineAttributes = inlineAttributes.filter(info.attributes.contains)
