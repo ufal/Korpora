@@ -105,7 +105,11 @@ height but not the language); when both are typed it does not run.
 **The default language.** Kana in the corpus means `ja`, Hangul means `ko`. Han-only text goes through
 `NLLanguageRecognizer` on a sample of sentences. When it is unsure the language stays automatic, which is today's
 behaviour. A corpus that mixes Chinese, Japanese and Korean (UD) has no single language; then
-every line is told its own: kana mean `ja`, Hangul `ko`, and Han alone goes through `NLLanguageRecognizer` (about
+every line is told its own. The corpus's own language code comes first when it has one (`text.langcode`,
+`doc.langcode`, `text.lang` or `doc.lang`: for UD it comes from the file names): `ja` and `ko` are used as they are,
+`lzh` (Classical Chinese) is `zh-Hant`, `yue` is `zh-HK`, and `zh` does not say Simplified or Traditional, so the
+text does. Where there is no code (a shuffled result of millions of hits, an empty value, a corpus without one) the
+text decides: kana mean `ja`, Hangul `ko`, and Han alone goes through `NLLanguageRecognizer` (about
 40 µs a line, so 8 ms for a chunk of 200 rows) and is tagged only when it is at least 70% sure. A language typed for
 the corpus is used for every line instead.
 

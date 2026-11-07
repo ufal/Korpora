@@ -1,4 +1,5 @@
 import AppKit
+import KorporaEngine
 import Testing
 @testable import Korpora
 
@@ -180,5 +181,27 @@ import Testing
         defer { try? FileManager.default.removeItem(at: latinDirectory) }
         let latin = await CorpusTypographyService.effective(corpus: "en", directory: latinDirectory, attribute: "form", tokens: 2, settings: settings, fonts: resolver())
         #expect(!latin.perLineLanguage, "no CJK script: nothing to detect")
+    }
+
+    @Test func theCorpusSaysWhichLanguageALineIsIn() {
+        func line(_ text: String) -> KWICLine {
+            KWICLine(leftTokens: [], kwicTokens: [KWICToken(word: text, secondaryAttributes: [:])], rightTokens: [], position: 0)
+        }
+        let simplified = line("南洋商业银行转换新形象，以往是红色，写上中英文全名的招牌")
+        #expect(LineLanguage.language(forCode: "ja", in: simplified) == "ja", "the code decides for Japanese, whatever the text looks like")
+        #expect(LineLanguage.language(forCode: "ko", in: simplified) == "ko")
+        #expect(LineLanguage.language(forCode: "lzh", in: simplified) == "zh-Hant", "Classical Chinese")
+        #expect(LineLanguage.language(forCode: "yue", in: simplified) == "zh-HK")
+        #expect(LineLanguage.language(forCode: "zh", in: simplified) == "zh-Hans", "zh does not say which: the text does")
+        #expect(LineLanguage.language(forCode: "en", in: simplified) == nil, "not a CJK language: no tag")
+        #expect(LineLanguage.language(forCode: "_", in: simplified) == "zh-Hans", "no usable code: the text")
+        #expect(LineLanguage.language(forCode: nil, in: simplified) == "zh-Hans")
+    }
+
+    @Test func theLanguageAttributeIsTheFirstTheCorpusHas() {
+        func structures(_ pairs: [(String, [String])]) -> [StructureInfo] { pairs.map { StructureInfo(name: $0.0, attributes: $0.1) } }
+        #expect(LineLanguage.languageAttribute(in: structures([("text", ["id", "langcode", "lang"]), ("doc", ["langcode"])])) == "text.langcode")
+        #expect(LineLanguage.languageAttribute(in: structures([("doc", ["id", "lang"])])) == "doc.lang")
+        #expect(LineLanguage.languageAttribute(in: structures([("s", ["sent_id"]), ("doc", ["id"])])) == nil)
     }
 }

@@ -196,6 +196,30 @@ struct EffectiveTypography: Equatable, Sendable {
 /// The language of one line of a corpus that mixes several: kana mean Japanese, Hangul Korean, and Han alone is
 /// told Simplified from Traditional by `NLLanguageRecognizer` (about 40 µs a line), when it is sure.
 enum LineLanguage {
+    /// The region attribute that holds a language, first of these that the corpus has.
+    static func languageAttribute(in structures: [StructureInfo]) -> String? {
+        for candidate in ["text.langcode", "doc.langcode", "text.lang", "doc.lang"] {
+            let parts = candidate.split(separator: ".").map(String.init)
+            if structures.contains(where: { $0.name == parts[0] && $0.attributes.contains(parts[1]) }) { return candidate }
+        }
+        return nil
+    }
+
+    /// The tag for a line the corpus calls `code` (a UD language code: `ja`, `ko`, `zh`, `lzh`, `yue`, ...): the
+    /// code decides for Japanese and Korean, Classical Chinese is Traditional and Cantonese is Hong Kong; `zh` does
+    /// not say Simplified or Traditional, so the text does. With no code (or `_`) the text decides.
+    static func language(forCode code: String?, in line: KWICLine) -> String? {
+        let code = code?.lowercased()
+        switch code {
+        case nil, "", "_": return detect(in: line)
+        case "ja"?, "ko"?: return code
+        case "lzh"?: return "zh-Hant"
+        case "yue"?: return "zh-HK"
+        case "zh"?, "cmn"?: return detect(in: line)
+        default: return nil  // not a CJK language: no tag
+        }
+    }
+
     static func detect(in line: KWICLine) -> String? {
         var text = ""
         for token in line.leftTokens + line.kwicTokens + line.rightTokens { text += token.word }
