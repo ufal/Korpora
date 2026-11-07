@@ -197,8 +197,10 @@ struct EffectiveTypography: Equatable, Sendable {
 /// told Simplified from Traditional by `NLLanguageRecognizer` (about 40 µs a line), when it is sure.
 enum LineLanguage {
     /// UD treebanks whose language needs more than the code: `zh` is Traditional in most treebanks, but the
-    /// simplified-characters edition of GSD is `zh_gsdsimp`. Keys are `<code>_<treebank>`, as UD names its files.
-    static let treebankLanguages = ["zh_gsdsimp": "zh-Hans"]
+    /// simplified-characters edition of GSD is `zh_gsdsimp`, and the two Hong Kong treebanks (Chinese and Cantonese)
+    /// are written in Traditional characters in Hong Kong's glyph forms. Keys are `<code>_<treebank>`, as UD names
+    /// its files.
+    static let treebankLanguages = ["zh_gsdsimp": "zh-Hans", "zh_hk": "zh-HK", "yue_hk": "zh-HK"]
 
     /// The region attribute that holds the treebank of a line (UD: `text.treebank`), when the corpus has one.
     static func treebankAttribute(in structures: [StructureInfo]) -> String? {
@@ -224,7 +226,10 @@ enum LineLanguage {
         case nil, "", "_": return detect(in: line)
         case "ja"?, "ko"?: return code
         case "lzh"?: return "zh-Hant"
-        case "yue"?: return "zh-HK"
+        case "yue"?:
+            // Cantonese is written in Hong Kong in Traditional characters, in Hong Kong's forms; text in Simplified
+            // characters (as written for Mainland readers) takes the Simplified forms.
+            return detect(in: line) == "zh-Hans" ? "zh-Hans" : "zh-HK"
         case "zh"?, "cmn"?: return detect(in: line)
         default: return nil  // not a CJK language: no tag
         }
