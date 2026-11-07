@@ -153,4 +153,32 @@ import Testing
         settings.globalRowHeight = nil
         #expect(settings.globalRowHeight == nil && settings.lastGlobalRowHeight == 36)
     }
+
+    // MARK: A corpus that mixes languages: each line gets its own
+
+    @Test func aLineIsToldItsLanguageFromItsOwnText() {
+        #expect(LineLanguage.detect(in: "底は大きな板です。") == "ja", "kana")
+        #expect(LineLanguage.detect(in: "그는 중국어를 배운다") == "ko", "Hangul")
+        #expect(LineLanguage.detect(in: "南洋商业银行转换新形象，以往是红色，写上中英文全名的招牌") == "zh-Hans")
+        #expect(LineLanguage.detect(in: "南洋商業銀行轉換新形象，以往是紅色，寫上中英文全名的招牌") == "zh-Hant")
+        #expect(LineLanguage.detect(in: "The quick brown fox") == nil, "no CJK text: nothing to tag")
+        #expect(LineLanguage.detect(in: "") == nil)
+    }
+
+    @Test func aCorpusWithSeveralCjkLanguagesTagsEachLine() async throws {
+        let directory = try corpus(forms: ["他", "说", "とても", "한국어", "the"])
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let settings = freshSettings()
+        let mixed = await CorpusTypographyService.effective(corpus: "ud", directory: directory, attribute: "form", tokens: 5, settings: settings, fonts: resolver())
+        #expect(mixed.language == nil && mixed.perLineLanguage, "kana and Hangul together: no single language")
+
+        settings.updateTypography(for: "ud") { $0.language = "ja" }
+        let typed = await CorpusTypographyService.effective(corpus: "ud", directory: directory, attribute: "form", tokens: 5, settings: settings, fonts: resolver())
+        #expect(typed.language == "ja" && !typed.perLineLanguage, "a language typed for the corpus is used for every line")
+
+        let latinDirectory = try corpus(forms: ["the", "fox"])
+        defer { try? FileManager.default.removeItem(at: latinDirectory) }
+        let latin = await CorpusTypographyService.effective(corpus: "en", directory: latinDirectory, attribute: "form", tokens: 2, settings: settings, fonts: resolver())
+        #expect(!latin.perLineLanguage, "no CJK script: nothing to detect")
+    }
 }

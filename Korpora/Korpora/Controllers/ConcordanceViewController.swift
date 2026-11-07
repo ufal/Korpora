@@ -179,6 +179,11 @@ final class ConcordanceViewController: NSViewController {
         document.runQuery(queryField.text)
     }
 
+    /// The language of a stretch of text from this corpus: its own when the corpus mixes several, else the corpus's.
+    private func contextLanguage(_ text: String) -> String? {
+        document.typography.perLineLanguage ? LineLanguage.detect(in: text) : document.typography.language
+    }
+
     /// The table's row height and the cells' language follow the corpus (a fixed height, so that a result of millions
     /// of hits needs no height per row).
     private func applyTypography() {
@@ -709,7 +714,7 @@ final class ConcordanceViewController: NSViewController {
         func configure(_ tokens: [KWICToken], alignment: NSTextAlignment, style: KWICCellView.Style) {
             let displayLine = KWICFormatter.displayLine(
                 for: tokens, inlineAttributes: inlineAttributes, tooltipAttributes: tooltipAttributes)
-            cell.configure(displayLine: displayLine, alignment: alignment, style: style, language: document.typography.language)
+            cell.configure(displayLine: displayLine, alignment: alignment, style: style, language: row.language ?? document.typography.language)
         }
         switch kind {
         case .group:
@@ -869,7 +874,8 @@ final class ConcordanceViewController: NSViewController {
         }
         let overlay = existing ?? makeOverlayField(in: rowView)
         overlay.attributedStringValue = KWICCellView.extendedContextParagraph(
-            before: context.before, match: context.match, after: context.after, language: document.typography.language)
+            before: context.before, match: context.match, after: context.after,
+            language: contextLanguage(context.before + context.match + context.after))
         // Re-applied on every call, not just at creation: the structural
         // attribute column can be shown/hidden or dragged wider at any
         // time, and a recycled overlay carries the previous row's inset.
@@ -1049,7 +1055,8 @@ final class ConcordanceViewController: NSViewController {
                     if !allowsMultipleExtendedContexts {
                         closeExtendedContextWindows()
                     }
-                    show(ExtendedContextWindowController(info: info, before: before, match: match, after: after, context: self.document.printContext("Extended context"), language: self.document.typography.language))
+                    show(ExtendedContextWindowController(info: info, before: before, match: match, after: after, context: self.document.printContext("Extended context"),
+                        language: self.contextLanguage(before + match + after)))
                 } catch {
                     self.showErrorAlert(error)
                 }
@@ -1107,7 +1114,8 @@ extension ConcordanceViewController: NSTableViewDelegate {
             return tableView.rowHeight
         }
         let paragraph = KWICCellView.extendedContextParagraph(
-            before: context.before, match: context.match, after: context.after, language: document.typography.language)
+            before: context.before, match: context.match, after: context.after,
+            language: contextLanguage(context.before + context.match + context.after))
         let available = tableView.bounds.width - overlayLeadingInset() - 8
         let height = KWICCellView.extendedContextHeight(for: paragraph, width: max(available, 100))
         return max(tableView.rowHeight, height + 8)

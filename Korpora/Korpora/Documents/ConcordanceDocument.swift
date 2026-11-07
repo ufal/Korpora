@@ -12,8 +12,12 @@ struct ConcordanceRow {
     /// this line's enclosing structure - nil if that setting is itself
     /// nil, or if this line's structure has no value for it.
     let structuralAttributeValue: String?
+    /// The language of this line's CJK text, for a corpus that mixes several (nil: the corpus's own, or none).
+    let language: String?
 
-    init(id: Int, line: KWICLine, group: Int, structuralAttributeValue: String? = nil, viewIndex: Int? = nil) {
+    init(id: Int, line: KWICLine, group: Int, structuralAttributeValue: String? = nil, viewIndex: Int? = nil,
+         language: String? = nil) {
+        self.language = language
         self.id = id
         self.viewIndex = viewIndex ?? id
         self.line = line
@@ -137,6 +141,8 @@ final class ConcordanceDocument: NSDocument {
         let kwicAttr: String
         let secondaryAttributes: [String]
         let structuralAttribute: String?
+        /// The corpus mixes CJK languages: each line gets the language of its own text.
+        let perLineLanguage: Bool
         /// A descending sort shows the engine's view backwards: row `i` is view row `count - 1 - i`.
         let descending: Bool
     }
@@ -219,7 +225,8 @@ final class ConcordanceDocument: NSDocument {
             let value = regionValues.indices.contains(offset) ? regionValues[offset] : ""
             rows.append(ConcordanceRow(
                 id: row, line: line, group: await source.live.linegroup(at: viewRow),
-                structuralAttributeValue: value.isEmpty || value == "_" ? nil : value, viewIndex: viewRow))
+                structuralAttributeValue: value.isEmpty || value == "_" ? nil : value, viewIndex: viewRow,
+                language: source.perLineLanguage ? LineLanguage.detect(in: line) : nil))
         }
         return rows
     }
@@ -235,7 +242,7 @@ final class ConcordanceDocument: NSDocument {
             live: live, count: count, leftContext: effectiveLeftContext, rightContext: effectiveRightContext,
             kwicAttr: kwicAttr,
             secondaryAttributes: attributesToFetch, structuralAttribute: structuralAttributeToShow,
-            descending: descending)
+            perLineLanguage: typography.perLineLanguage, descending: descending)
         let first = try await Self.fetchRows(0..<min(count, 2 * Self.rowChunk), from: source)
         try Task.checkCancellation()
         return (first, count, source)
@@ -340,7 +347,9 @@ final class ConcordanceDocument: NSDocument {
             let result = await CorpusTypographyService.effective(
                 corpus: name, directory: directory, attribute: attribute, tokens: tokens, settings: settings)
             guard !Task.isCancelled, result != typography else { return }
+            let rowsNeedLanguages = result.perLineLanguage != typography.perLineLanguage
             typography = result
+            if rowsNeedLanguages { refetchDisplay() }
             onTypographyChanged?()
         }
     }

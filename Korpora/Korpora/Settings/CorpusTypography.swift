@@ -1,4 +1,5 @@
 import Foundation
+import KorporaEngine
 import NaturalLanguage
 
 /// What the app keeps about the typography of one corpus (docs/typography.md): a row height and a language the
@@ -186,7 +187,38 @@ enum CorpusScriptScan {
 struct EffectiveTypography: Equatable, Sendable {
     var rowHeight: Double
     var language: String?
+    /// The corpus has CJK text in more than one language and no language was typed: every line is told its own
+    /// (`LineLanguage`).
+    var perLineLanguage = false
     static let standard = EffectiveTypography(rowHeight: CorpusTypographyRules.defaultRowHeight, language: nil)
+}
+
+/// The language of one line of a corpus that mixes several: kana mean Japanese, Hangul Korean, and Han alone is
+/// told Simplified from Traditional by `NLLanguageRecognizer` (about 40 µs a line), when it is sure.
+enum LineLanguage {
+    static func detect(in line: KWICLine) -> String? {
+        var text = ""
+        for token in line.leftTokens + line.kwicTokens + line.rightTokens { text += token.word }
+        return detect(in: text)
+    }
+
+    static func detect(in text: String) -> String? {
+        var han = false
+        for scalar in text.unicodeScalars where scalar.value >= 0x2E80 {
+            switch UnicodeScript.of(scalar) {
+            case .hiragana, .katakana: return "ja"
+            case .hangul: return "ko"
+            case .han: han = true
+            default: break
+            }
+        }
+        guard han else { return nil }
+        let recognizer = NLLanguageRecognizer()
+        recognizer.languageConstraints = [.simplifiedChinese, .traditionalChinese]
+        recognizer.processString(text)
+        guard let best = recognizer.languageHypotheses(withMaximum: 1).first, best.value >= 0.7 else { return nil }
+        return best.key == .traditionalChinese ? "zh-Hant" : "zh-Hans"
+    }
 }
 
 enum CorpusTypographyService {
@@ -228,7 +260,9 @@ enum CorpusTypographyService {
         } else {
             height = CorpusTypographyRules.defaultRowHeight
         }
+        // Several languages in the corpus: a CJK script is there, but no single language came out of it.
+        let hasCJK = scan.map { s in CorpusTypographyRules.significantScripts(s).contains { UnicodeScript.cjk.contains($0) } } ?? false
         return EffectiveTypography(rowHeight: min(max(height, CorpusTypographyRules.minimumRowHeight), CorpusTypographyRules.maximumRowHeight),
-                                   language: language)
+                                   language: language, perLineLanguage: language == nil && hasCJK)
     }
 }
