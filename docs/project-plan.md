@@ -322,6 +322,21 @@ All Swift/C++ code builds cleanly and all tests pass (`swift test` in
 - **Frequency and collocation by node** (design notes in the conversation of 2026-11-08, not yet a page):
   pick a node as a span in the query text; multi-level `count by a.x, b.y` (pando has it); `coll on <node>`
   (pando has it, tested on UD).
+- **Sparkle 2 for updates** (evaluated 2026-11-08, Sparkle 2.10.1: judged easy enough). Korpora is
+  non-sandboxed, hardened runtime, Developer ID, notarized: the plain Sparkle 2 case. Work: add the Swift package
+  in `project.yml`; `SUFeedURL` and `SUPublicEDKey` in Info.plist; a "Check for Updates..." item (an
+  `SPUStandardUpdaterController`); `make-release.sh` signs Sparkle's nested helpers and the framework inside-out
+  with the hardened runtime (not `--deep`) before the app; a step that signs the DMG (`sign_update`) and writes
+  the appcast (`generate_appcast`). Sparkle takes a notarized DMG as the update archive. Do NOT set the
+  sandbox-only keys (`SUEnableInstallerLauncherService`, `SUEnableDownloaderService`). To settle when building:
+  (1) appcast hosting: the usual choice is a release asset reached through
+  `https://github.com/ufal/Korpora/releases/latest/download/appcast.xml` (HTTPS, a redirect Sparkle follows),
+  not confirmed in Sparkle's own pages; (2) the EdDSA private key lives in the login Keychain, so export a backup
+  once (`generate_keys -x`) and keep it outside the repo; (3) 0.5 is the first build that can update itself, so
+  users of 0.4.x install 0.5 by hand once; (4) remove the two unused XPC services in release builds; (5) check
+  that `make-release.sh`'s own checks (`codesign --verify --deep --strict`, the otool path check) still pass with
+  the framework; (6) with no hidden files in the user's data: Sparkle keeps its state in the app's defaults and
+  the system caches, not next to corpora.
 
 **Feature work on main** (all Phase 6, agreed roadmap):
 1. **6.9** Text-Types-style subcorpus creation: **done, click-tested**, an
