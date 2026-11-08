@@ -92,6 +92,27 @@ import KorporaEngine
         #expect(model.rows[2].kind == .property(attribute: "doc.author"))
     }
 
+    @Test func movingALineToAnotherNodeKeepsTheAttributeAndRefusesADuplicate() {
+        var model = FrequencyComposerModel()
+        model.add(node("a", "lemma")); model.add(node("b", "lemma")); model.add(.property(attribute: "doc.genre"))
+        let first = model.rows[0].id
+        let duplicate = model.setNode("b", for: first)
+        #expect(!duplicate, "b.lemma is already a line")
+        #expect(model.rows[0].kind == node("a", "lemma"))
+        model.add(node("a", "upos"))
+        // The rows are now a.lemma, b.lemma, doc.genre, a.upos, count.
+        let moved = model.setNode("c", for: model.rows[3].id)
+        #expect(moved)
+        #expect(model.rows[3].kind == node("c", "upos"), "the attribute stays")
+        let again = model.setNode("c", for: model.rows[3].id)
+        #expect(again, "the same node again is no change, and no refusal")
+        // Not a node's line: the property and the count have no node to change.
+        let property = model.setNode("a", for: model.rows[2].id)
+        let count = model.setNode("a", for: model.rows.last!.id)
+        #expect(!property && !count)
+        #expect(model.rows.last?.kind == .count)
+    }
+
     @Test func sortCyclesNoneAscendingDescending() {
         var model = FrequencyComposerModel()
         model.add(node("a", "lemma"))

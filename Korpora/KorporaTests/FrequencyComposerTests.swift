@@ -58,6 +58,41 @@ import KorporaEngine
         #expect(c.model.fieldRows.count == 2)
     }
 
+    /// The table inside the sheet, found by its views (it is private to the controller).
+    private func table(in view: NSView) -> NSTableView? {
+        if let table = view as? NSTableView { return table }
+        for sub in view.subviews { if let found = table(in: sub) { return found } }
+        return nil
+    }
+
+    private func popUp(in cell: NSView?) -> NSPopUpButton? {
+        guard let cell else { return nil }
+        if let popUp = cell as? NSPopUpButton { return popUp }
+        for sub in cell.subviews { if let found = popUp(in: sub) { return found } }
+        return nil
+    }
+
+    @Test func aLinesNodeCanBeChangedLikeItsAttribute() async throws {
+        let c = await composer()
+        let table = try #require(table(in: c.view))
+        let pop = try #require(popUp(in: table.view(atColumn: 0, row: 0, makeIfNecessary: true)))
+        #expect(pop.itemTitles == ["a", "b"])
+        #expect(pop.titleOfSelectedItem == "a")
+        pop.selectItem(withTitle: "b")
+        _ = pop.sendAction(pop.action, to: pop.target)
+        #expect(c.model.fields == [FrequencyField(node: "b", attribute: "form")])
+        // The count's line has no node to change.
+        #expect(popUp(in: table.view(atColumn: 0, row: 1, makeIfNecessary: true)) == nil)
+    }
+
+    @Test func aNodeThatWouldDuplicateAnotherLineIsGreyedOut() async throws {
+        let c = await composer()
+        c.pick(node: "b", attribute: "form")
+        let table = try #require(table(in: c.view))
+        let pop = try #require(popUp(in: table.view(atColumn: 0, row: 0, makeIfNecessary: true)))
+        #expect(pop.itemArray.map(\.isEnabled) == [true, false], "b.form is the second line already")
+    }
+
     @Test func theArrowsStepThroughTheHitsAndStopAtTheEnds() async {
         var asked: [Int] = []
         let c = await composer(hits: 3) { [hit] index, _ in asked.append(index); return hit }

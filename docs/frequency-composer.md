@@ -59,7 +59,8 @@ a popover lists the attributes of the corpus, and choosing one adds a **line to 
 - **Colours.** One colour per node, used in four places: the span in the query text, the word in the hit, the dot in the
   table line, and the result column header. Colours come from the system palette and also differ by shape (badge letters), so
   colour is never the only cue.
-- **The table line.** Node (colour dot and badge), attribute (a pop-up), ignore case, sort direction ▲▼ (a stepped icon), a drag handle
+- **The table line.** Node (a pop-up with the colour dot; changing it keeps the attribute, so `a.lemma` becomes `b.lemma` in
+  one step, and a node that would copy another line is greyed out), attribute (a pop-up), ignore case, sort direction ▲▼ (a stepped icon), a drag handle
   to reorder, a remove button. A pseudo-node "Text or document property" keeps what the current sheet does
   (`doc.author`, with its `norm` and ipm), which belongs to no token.
 - **Several lines for one node** are normal (`a.lemma` and `a.upos`).

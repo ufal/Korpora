@@ -8,4 +8,16 @@ enum NodeColors {
     ]
 
     static func color(at index: Int) -> NSColor { palette[index % palette.count] }
+
+    /// A small filled circle in the node's colour, for a menu item. Drawn on demand, so it follows light and dark.
+    static func dot(at index: Int) -> NSImage {
+        let color = color(at: index)
+        let image = NSImage(size: NSSize(width: 10, height: 10), flipped: false) { rect in
+            color.setFill()
+            NSBezierPath(ovalIn: rect.insetBy(dx: 0.5, dy: 0.5)).fill()
+            return true
+        }
+        image.isTemplate = false
+        return image
+    }
 }

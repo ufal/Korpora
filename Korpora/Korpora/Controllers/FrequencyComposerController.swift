@@ -148,7 +148,7 @@ final class FrequencyComposerController: NSViewController, NSTableViewDataSource
 
     private func configureTable() {
         let titles: [Column: (String, CGFloat)] = [
-            .node: ("Node", 90), .attribute: ("Attribute", 240), .ignoreCase: ("Ignore case", 88), .sort: ("Order", 60), .remove: ("", 36),
+            .node: ("Node", 100), .attribute: ("Attribute", 240), .ignoreCase: ("Ignore case", 88), .sort: ("Order", 60), .remove: ("", 36),
         ]
         for column in Column.allCases {
             let tableColumn = NSTableColumn(identifier: .init(column.rawValue))
@@ -270,8 +270,6 @@ final class FrequencyComposerController: NSViewController, NSTableViewDataSource
 
     func numberOfRows(in tableView: NSTableView) -> Int { model.rows.count }
 
-    private func colorIndex(of name: String) -> Int? { nodes.nodes.first { $0.name == name }?.index }
-
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         guard model.rows.indices.contains(row), let id = tableColumn?.identifier.rawValue, let column = Column(rawValue: id) else { return nil }
         let line = model.rows[row]
@@ -301,17 +299,16 @@ final class FrequencyComposerController: NSViewController, NSTableViewDataSource
     private func cell(for column: Column, line: ComposerRow) -> NSView? {
         switch column {
         case .node:
-            let field = NSTextField(labelWithString: "")
             switch line.kind {
-            case .node(let name, _):
-                let color = colorIndex(of: name).map(NodeColors.color(at:)) ?? .secondaryLabelColor
-                let text = NSMutableAttributedString(string: "\u{25CF} ", attributes: [.foregroundColor: color])
-                text.append(NSAttributedString(string: name, attributes: [.font: NSFont.systemFont(ofSize: 12, weight: .medium)]))
-                field.attributedStringValue = text
-            case .property: field.stringValue = "Text/doc"; field.textColor = .secondaryLabelColor
-            case .count: field.stringValue = "Hits"; field.textColor = .secondaryLabelColor
+            case .node(let name, let attribute):
+                return nodePopUp(selected: name, attribute: attribute)
+            case .property:
+                let field = NSTextField(labelWithString: "Text/doc"); field.textColor = .secondaryLabelColor
+                return field
+            case .count:
+                let field = NSTextField(labelWithString: "Hits"); field.textColor = .secondaryLabelColor
+                return field
             }
-            return field
         case .attribute:
             if line.isCount {
                 let field = NSTextField(labelWithString: "number of hits")
@@ -362,9 +359,36 @@ final class FrequencyComposerController: NSViewController, NSTableViewDataSource
         }
     }
 
+    /// The node of a line, changeable like its attribute. The nodes that would make the line a copy of another
+    /// are greyed out.
+    private func nodePopUp(selected: String, attribute: String) -> NSPopUpButton {
+        let popUp = NSPopUpButton(frame: .zero, pullsDown: false)
+        popUp.controlSize = .small
+        popUp.menu?.autoenablesItems = false
+        for node in nodes.nodes where node.isPickable || node.name == selected {
+            let item = NSMenuItem(title: node.name, action: nil, keyEquivalent: "")
+            item.image = NodeColors.dot(at: node.index)
+            let taken = node.name != selected
+                && model.rows.contains { $0.kind == .node(node.name, attribute: attribute) }
+            item.isEnabled = !taken
+            popUp.menu?.addItem(item)
+        }
+        popUp.selectItem(withTitle: selected)
+        popUp.setAccessibilityLabel("Node")
+        popUp.target = self
+        popUp.action = #selector(nodeChanged(_:))
+        return popUp
+    }
+
     private func id(of sender: NSView) -> UUID? {
         let row = table.row(for: sender)
         return model.rows.indices.contains(row) ? model.rows[row].id : nil
+    }
+
+    @objc private func nodeChanged(_ sender: NSPopUpButton) {
+        guard let id = id(of: sender), let name = sender.titleOfSelectedItem else { return }
+        if !model.setNode(name, for: id) { NSSound.beep() }
+        table.reloadData()
     }
 
     @objc private func attributeChanged(_ sender: NSPopUpButton) {

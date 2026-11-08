@@ -90,6 +90,18 @@ struct FrequencyComposerModel: Equatable {
         rows[at].kind = replaced
     }
 
+    /// Moves a node's line to another node, keeping the attribute (`a.lemma` becomes `b.lemma`). Refused when the
+    /// row isn't a node's, or when another row already asks for that. Returns whether it changed.
+    @discardableResult
+    mutating func setNode(_ node: String, for id: UUID) -> Bool {
+        guard let at = rows.firstIndex(where: { $0.id == id }), case .node(let current, let attribute) = rows[at].kind else { return false }
+        guard node != current else { return true }
+        let replaced = ComposerRow.Kind.node(node, attribute: attribute)
+        guard !rows.contains(where: { $0.kind == replaced }) else { return false }
+        rows[at].kind = replaced
+        return true
+    }
+
     mutating func setIgnoreCase(_ on: Bool, for id: UUID) {
         guard let at = rows.firstIndex(where: { $0.id == id }), !rows[at].isCount else { return }
         rows[at].ignoreCase = on
