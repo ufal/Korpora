@@ -319,7 +319,7 @@ All Swift/C++ code builds cleanly and all tests pass (`swift test` in
 - **Sentence tree display** (`docs/trees.md`): a button in Sentence view opens the dependency tree of the
   sentence (arcs and a PDT-style tree, drawn natively, node inspector on click). Waits for pando's C API to
   return the CoNLL-U of a hit's sentence (to be asked for; checked 2026-11-08, pando 0.4.9: not there yet).
-- **Frequency and collocation by node** (design notes in the conversation of 2026-11-08, not yet a page):
+- **Frequency and collocation by node** (design: `docs/frequency-composer.md`):
   pick a node as a span in the query text; multi-level `count by a.x, b.y` (pando has it); `coll on <node>`
   (pando has it, tested on UD).
 - **Sparkle 2 for updates** (evaluated 2026-11-08, Sparkle 2.10.1: judged easy enough). Korpora is
