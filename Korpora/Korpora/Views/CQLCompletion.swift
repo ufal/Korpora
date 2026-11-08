@@ -32,18 +32,23 @@ enum CQLCompletionContext: Equatable {
     /// and offering keywords or attribute names here would be actively
     /// wrong.
     case value
-    /// After `::`, where global conditions go (`:: distance(a,b) < 5`): pando's functions.
+    /// After `::`, where global conditions go (`:: distance(a,b) < 5`): pando's functions and the names given to tokens.
     case globalCondition(prefix: String)
+    /// After `::`, right after a name and a dot (`:: a.le`): that token's attributes.
+    case nodeAttribute(node: String, prefix: String)
+    /// Inside `<` or `</`, where the name of a region goes (`<te`).
+    case regionName(prefix: String)
+    /// Inside a region tag, after its name: the attributes that region has (`<text gen`).
+    case regionAttribute(region: String, prefix: String)
 
     /// Classifies the caret at `partialWordRange` (exactly what
     /// `NSTextView.completions(forPartialWordRange:…)` is handed, i.e.
     /// `rangeForUserCompletion`) within `text`.
     ///
-    /// Everything is decided by scanning *backwards* from the start of the
-    /// partial word rather than by parsing the query as a whole: a query
-    /// being typed is usually not valid CQL yet - `[word=` has an unclosed
-    /// bracket - so there's nothing to parse forwards, and a real CQL
-    /// parser would simply reject it.
+    /// Everything is decided from the tokens *before* the partial word
+    /// (`CQLLexer`, a lenient scanner) rather than by parsing the query as a
+    /// whole: a query being typed is usually not valid CQL yet - `[word=` has
+    /// an unclosed bracket - and a real CQL parser would simply reject it.
     static func at(text: String, partialWordRange: NSRange) -> CQLCompletionContext {
         let ns = text as NSString
         var start = max(0, min(partialWordRange.location, ns.length))
@@ -69,112 +74,58 @@ enum CQLCompletionContext: Equatable {
         let prefix = ns.substring(with: NSRange(location: start, length: length))
         let before = ns.substring(to: start)
 
-        if hasUnclosedQuote(in: before) {
-            return .value
+        // What the caret is in is read from the tokens before it (CQLLexer), the same ones the colouring and
+        // `QueryNodes` see: a quote, a regex and a region tag are decided in one place.
+        let tokens = CQLLexer.tokens(in: before)
+        let last = tokens.last
+        if let last, last.isUnterminated {
+            switch last.kind {
+            case .string, .regex: return .value
+            case .regionTag: return regionContext(tag: ns.substring(with: last.range), prefix: prefix)
+            default: break
+            }
         }
-        guard bracketDepth(before) > 0 else {
+        guard CQLLexer.openDepth(after: tokens) > 0 else {
             // Between tokens. After `::` (and before the next `;`) it is a global condition.
-            let segment = before.split(separator: ";", omittingEmptySubsequences: false).last.map(String.init) ?? before
-            return segment.contains("::") ? .globalCondition(prefix: prefix) : .keyword(prefix: prefix)
+            let statement = tokens.reversed().prefix { $0.kind != .semicolon }
+            if statement.contains(where: { $0.kind == .doubleColon && $0.depth == 0 }) {
+                if let dot = prefix.firstIndex(of: "."), dot != prefix.startIndex {
+                    return .nodeAttribute(node: String(prefix[..<dot]), prefix: String(prefix[prefix.index(after: dot)...]))
+                }
+                return .globalCondition(prefix: prefix)
+            }
+            return .keyword(prefix: prefix)
         }
-        // Inside brackets, position is decided by the last non-space
-        // character before the caret.
-        if endsWithComparisonOperator(before) {
+        // Inside brackets, the position is decided by the last token before the caret.
+        if let last, last.kind == .comparison {
             // `[word=` - the value comes next, so offer nothing rather
             // than a list of attribute names the user can't use here.
             return .value
         }
-        if prefix.isEmpty, let word = lastWord(before) {
+        if prefix.isEmpty, let last, last.kind == .identifier {
+            let word = ns.substring(with: last.range)
             // `[child ` and `[upos="NOUN" & not child `: a `[` comes next.
             if CQLCompletionProvider.restrictionWords.contains(word) { return .value }
             // `[ & not `: another condition or restriction comes next, not an operator.
             if word == "not" { return .attributeName(prefix: prefix) }
         }
-        if prefix.isEmpty, endsWithIdentifier(before) {
+        if prefix.isEmpty, let last, last.kind == .identifier || last.kind == .number {
             // `[word ` - a name was just finished, an operator comes next.
             return .comparisonOperator(prefix: prefix)
         }
         return .attributeName(prefix: prefix)
     }
 
-    /// How many `[` are still open at the end of `before`: nesting counts (`[upos="NOUN" & child
-    /// [upos="DET"] & ` is still inside the outer one), and brackets inside quoted values and
-    /// `/regex/` values don't.
-    private static func bracketDepth(_ before: String) -> Int {
-        var depth = 0
-        var inQuote = false, inSlash = false, escaped = false
-        var previous: Character?
-        for ch in before {
-            if escaped { escaped = false; continue }
-            if ch == "\\" { escaped = true; continue }
-            if inQuote { if ch == "\"" { inQuote = false; previous = ch }; continue }
-            if inSlash { if ch == "/" { inSlash = false; previous = ch }; continue }
-            switch ch {
-            case "\"": inQuote = true
-            case "/" where previous == "=": inSlash = true
-            case "[": depth += 1; previous = ch
-            case "]": depth = max(0, depth - 1); previous = ch
-            case " ", "\t", "\n": break
-            default: previous = ch
-            }
-        }
-        return depth
-    }
-
-    /// The identifier right before the caret, ignoring spaces: `child` in `[… & child `.
-    private static func lastWord(_ before: String) -> String? {
-        let trimmed = before.trimmingCharacters(in: .whitespaces)
-        let word = String(trimmed.reversed().prefix { $0.isLetter || $0.isNumber || $0 == "_" }.reversed())
-        return word.isEmpty ? nil : word
-    }
-
-    /// True when a `"` in `before` is still open. A `\"` doesn't count -
-    /// it's an escaped quote inside a string, not a delimiter.
-    private static func hasUnclosedQuote(in before: String) -> Bool {
-        let ns = before as NSString
-        var open = false
-        var index = 0
-        while index < ns.length {
-            let ch = ns.character(at: index)
-            if ch == UInt16(UnicodeScalar("\\").value) {
-                // Skip the escaped character, whatever it is. Only
-                // meaningful inside a string, but skipping it outside one
-                // is harmless and keeps this a single pass.
-                index += 2
-                continue
-            }
-            if ch == UInt16(UnicodeScalar("\"").value) {
-                open.toggle()
-            }
-            index += 1
-        }
-        return open
-    }
-
-    /// True when `before`, ignoring trailing spaces/tabs, ends in an
-    /// identifier character - so `[word `, `[doc.author ` and `[word` all
-    /// qualify, while `[`, `[word=` and `[word="x" & ` do not.
-    private static func endsWithIdentifier(_ before: String) -> Bool {
-        let ns = before as NSString
-        var index = ns.length - 1
-        while index >= 0, " \t".utf16.contains(ns.character(at: index)) {
-            index -= 1
-        }
-        guard index >= 0 else { return false }
-        return isIdentifierCharacter(ns.character(at: index))
-    }
-
-    /// True when `before`, ignoring trailing spaces/tabs, ends in one of
-    /// the comparison-operator characters - so `[word=`, `[word !=` and
-    /// `[word <` all qualify.
-    private static func endsWithComparisonOperator(_ before: String) -> Bool {
-        let ns = before as NSString
-        var index = ns.length - 1
-        while index >= 0, " \t".utf16.contains(ns.character(at: index)) {
-            index -= 1
-        }
-        guard index >= 0 else { return false }
-        return "=!<>".utf16.contains(ns.character(at: index))
+    /// What goes in a region tag still being typed: its name, or after the name one of its attributes (not in a value).
+    private static func regionContext(tag: String, prefix: String) -> CQLCompletionContext {
+        let body = tag.drop { $0 == "<" || $0 == "/" }
+        let name = body.prefix { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }
+        let afterName = body.dropFirst(name.count)
+        guard afterName.first?.isWhitespace == true else { return .regionName(prefix: prefix) }
+        // `<text genre=` and `<text genre="Bo`: a value, which isn't completed.
+        let trimmed = afterName.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasSuffix("=") || tag.filter({ $0 == "\"" }).count % 2 == 1 { return .value }
+        return .regionAttribute(region: String(name), prefix: prefix)
     }
 
     private static func isIdentifierCharacter(_ ch: unichar) -> Bool {
@@ -198,14 +149,12 @@ enum CQLCompletionContext: Equatable {
 final class CQLCompletionProvider {
     /// pando-CQL's word-like constructs between tokens: region scoping (`within s`, `containing`,
     /// `having`, `containing subtree`) and `not` (`not within`, `not containing`).
-    nonisolated static let regionKeywords = ["within", "containing", "having", "subtree", "not"]
+    nonisolated static let regionKeywords = CQLLexer.regionKeywords
 
     /// The relations written *inside* a token, PML-TQ style: `[upos="NOUN" & child [upos="DET"]]`,
     /// `not child [...]`, `next [...]`. Only directly before a `[` are they relations (an attribute
     /// may also be called `after`), so they are coloured only there.
-    nonisolated static let restrictionWords = [
-        "child", "parent", "ancestor", "descendant", "sibling", "next", "prev", "after", "before",
-    ]
+    nonisolated static let restrictionWords = CQLLexer.restrictionWords
 
     /// The dependency arrows between two tokens: `A > B` (A is the head of B), `A < B` (A depends on
     /// B), `>>` and `<<` for any distance in the tree, `!>` and `!<` negated.
@@ -217,13 +166,6 @@ final class CQLCompletionProvider {
         "lon", "match", "month", "nchildren", "ndescendants", "nvals", "strlen", "tcnt", "week", "year",
     ]
 
-    /// Everything `CQLQueryField` colours as a keyword. `CQLQueryField` colours the same set, so what's
-    /// completed and what's coloured can't drift apart.
-    nonisolated static var keywordPattern: String {
-        #"\b("# + regionKeywords.joined(separator: "|") + #")\b|\b("#
-            + restrictionWords.joined(separator: "|") + #")\b(?=\s*\[)"#
-    }
-
     /// Comparison operators, matching the set `CQLQueryField.recolor`
     /// highlights. Offered right after an attribute name, where they're the
     /// only thing that can legally come next - and where there's no partial
@@ -232,6 +174,8 @@ final class CQLCompletionProvider {
     nonisolated static let comparisonOperators = ["=", "!=", "<", ">"]
 
     private(set) var attributeNames: [String] = []
+    /// The attributes of each region (`text`: genre, title), for the tags `<text gen`.
+    private(set) var structureAttributes: [String: [String]] = [:]
 
     /// For an owner that has to look the corpus up itself (the query bar,
     /// the Filter sheet).
@@ -244,6 +188,11 @@ final class CQLCompletionProvider {
     /// be pure waste.
     init(corpusInfo: CorpusInfo) {
         attributeNames = Self.attributeNames(from: corpusInfo)
+        structureAttributes = Self.structureAttributes(from: corpusInfo)
+    }
+
+    nonisolated static func structureAttributes(from info: CorpusInfo) -> [String: [String]] {
+        Dictionary(info.structures.map { ($0.name, $0.attributes.sorted()) }, uniquingKeysWith: { first, _ in first })
     }
 
     /// Both kinds of attribute name, which is what makes this useful for real queries: the
@@ -261,14 +210,21 @@ final class CQLCompletionProvider {
     }
 
     /// Candidates for `context`, or nil when there's nothing to offer.
-    func candidates(for context: CQLCompletionContext) -> [String]? {
+    /// `nodeNames`: the names the user gave to tokens, which `::` conditions refer to.
+    func candidates(for context: CQLCompletionContext, nodeNames: [String] = []) -> [String]? {
         switch context {
+        case .nodeAttribute(let node, let prefix):
+            return Self.matching(attributeNames, prefix: prefix)?.map { "\(node).\($0)" }
+        case .regionName(let prefix):
+            return Self.matching(structureAttributes.keys.sorted(), prefix: prefix)
+        case .regionAttribute(let region, let prefix):
+            return Self.matching(structureAttributes[region] ?? [], prefix: prefix)
         case .keyword(let prefix):
             return Self.matching(Self.regionKeywords + Self.dependencyArrows, prefix: prefix)
         case .attributeName(let prefix):
             return Self.matching(attributeNames + Self.restrictionWords, prefix: prefix)
         case .globalCondition(let prefix):
-            return Self.matching(Self.globalFunctions, prefix: prefix)
+            return Self.matching(nodeNames + Self.globalFunctions, prefix: prefix)
         case .comparisonOperator(let prefix):
             return Self.matching(Self.comparisonOperators, prefix: prefix)
         case .value:
@@ -297,7 +253,9 @@ final class CQLCompletionProvider {
         Task { @MainActor [weak self] in
             do {
                 let corpus = try await Engines.default.openCorpus(name: corpusName)
-                self?.attributeNames = Self.attributeNames(from: try await corpus.info())
+                let info = try await corpus.info()
+                self?.attributeNames = Self.attributeNames(from: info)
+                self?.structureAttributes = Self.structureAttributes(from: info)
             } catch {
                 // Completion is an optional convenience - a corpus that
                 // can't be opened or read just means no attribute
@@ -370,13 +328,11 @@ enum CQLAutoPairing {
         return .passThrough
     }
 
-    /// Whether the last non-blank character before the caret ends an operand: a bracket, quote, word, number,
-    /// or an operator half such as `!`.
+    /// Whether what is before the caret ends an operand: a token, a value, a name, or an operator half such as `!`
+    /// (so `<<` is not paired). After a region tag or a scoping word (`within `) a `<` opens a tag again.
     private static func followsOperand(text: NSString, caret: Int) -> Bool {
-        var i = caret - 1
-        while i >= 0, let c = Character(utf16: text.character(at: i)), c == " " || c == "\t" { i -= 1 }
-        guard i >= 0, let c = Character(utf16: text.character(at: i)) else { return false }
-        return c == "]" || c == ")" || c == "\"" || c == "!" || c == "<" || c == ">" || c.isLetter || c.isNumber
+        let before = text.substring(to: caret)
+        return CQLLexer.endsOperand(CQLLexer.tokens(in: before).last, text: before)
     }
 
     /// Whether backspace should delete both halves of an empty pair - the

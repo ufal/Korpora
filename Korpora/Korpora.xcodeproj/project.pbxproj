@@ -67,6 +67,7 @@
 		A71069EAF5B4FC51B64D1DE8 /* EngineSeamTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33523E2968DE7282B8143137 /* EngineSeamTests.swift */; };
 		ABB771AD9CD40A0BB1F5332E /* ConcordanceDocument.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BA396783428D5410E30C0F8 /* ConcordanceDocument.swift */; };
 		AEAACF157ADF3C9E631B3A24 /* BarChartTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65D6B6A3CFABE26AD74F85D5 /* BarChartTests.swift */; };
+		AEDD02E8CB49FEDD9B1227A4 /* CQLLexerCompletionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A998DA8E363F315379DD0A /* CQLLexerCompletionTests.swift */; };
 		B185E021B6523F9EDA23520D /* ScriptFontsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB1110D794920D23CFD5CF78 /* ScriptFontsTests.swift */; };
 		B6EEF2C1FAA3E75434B49D69 /* CQLQueryField.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF1FD3479E35618789EA56FC /* CQLQueryField.swift */; };
 		B7E32FAA82095EB4D8CD493F /* NodeStripViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E999B57B0D665098DD4259E /* NodeStripViewTests.swift */; };
@@ -194,6 +195,7 @@
 		EE1B3764D995C534F371A028 /* LegacyDefaultsMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyDefaultsMigration.swift; sourceTree = "<group>"; };
 		F194B5057DE1CD8400800B9E /* ConcordanceDocumentCancelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConcordanceDocumentCancelTests.swift; sourceTree = "<group>"; };
 		F1A3E3632E8CB4A221956BA5 /* Engines.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Engines.swift; sourceTree = "<group>"; };
+		F2A998DA8E363F315379DD0A /* CQLLexerCompletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CQLLexerCompletionTests.swift; sourceTree = "<group>"; };
 		F498141E2902F7FE889DE76F /* NewConcordanceSheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewConcordanceSheetController.swift; sourceTree = "<group>"; };
 		F564FB37D52D1AD65CC90F09 /* Korpora.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Korpora.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F7B4A1DC93D5DF6251665F15 /* CQLPatternTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CQLPatternTests.swift; sourceTree = "<group>"; };
@@ -295,6 +297,7 @@
 				8E1528364F1CEC93B0B5842E /* CorpusTypographyTests.swift */,
 				2228F90D33D19B13E69ABAC5 /* CQLAutoPairingTests.swift */,
 				7EC95A179DFFA46D1C19AA43 /* CQLCompletionContextTests.swift */,
+				F2A998DA8E363F315379DD0A /* CQLLexerCompletionTests.swift */,
 				F7B4A1DC93D5DF6251665F15 /* CQLPatternTests.swift */,
 				24BB2E68E54F740A40A1DF52 /* DispersionTests.swift */,
 				33523E2968DE7282B8143137 /* EngineSeamTests.swift */,
@@ -501,6 +504,7 @@
 				AEAACF157ADF3C9E631B3A24 /* BarChartTests.swift in Sources */,
 				FE3E752BE968D4DE9C1779B1 /* CQLAutoPairingTests.swift in Sources */,
 				C6212C93C0C81D9DD271EBD5 /* CQLCompletionContextTests.swift in Sources */,
+				AEDD02E8CB49FEDD9B1227A4 /* CQLLexerCompletionTests.swift in Sources */,
 				650935436FE97247095EE3DE /* CQLPatternTests.swift in Sources */,
 				C402FCCB69C646D7D3C8E729 /* ConcordanceDocumentCancelTests.swift in Sources */,
 				97CB75829A78ECC1D477B9CE /* ConcordanceExporterTests.swift in Sources */,

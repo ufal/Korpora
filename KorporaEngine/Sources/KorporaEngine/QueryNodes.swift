@@ -48,40 +48,34 @@ public struct QueryNodes: Equatable, Sendable {
 
         struct Found { var nameRange: NSRange?; var userName: String?; var bracket: NSRange }
         var found: [Found] = []
-        var index = 0
-        let length = ns.length
-        func char(_ i: Int) -> Character? {
-            i >= 0 && i < length ? Character(UnicodeScalar(ns.character(at: i)) ?? " ") : nil
-        }
-        outer: while index < length {
-            guard let ch = char(index) else { break }
-            switch ch {
-            case ";":
-                break outer
-            case ":" where char(index + 1) == ":":
-                break outer
-            case "\"":
-                index = Self.endOfQuote(in: ns, from: index)
-            case "<":
-                index = Self.endOfRegion(in: ns, from: index) ?? index + 1
-            case "[":
-                let end = Self.endOfToken(in: ns, from: index)
-                // A name is `identifier:` right before the bracket, and not the second colon of `::`.
+        let tokens = CQLLexer.tokens(in: text)
+        var k = 0
+        scan: while k < tokens.count {
+            let token = tokens[k]
+            switch token.kind {
+            case .semicolon, .doubleColon where token.depth == 0:
+                break scan
+            case .openBracket where token.depth == 0:
+                // To the `]` that closes it (or the end of the text, while it is being typed).
+                var close = k + 1
+                while close < tokens.count, !(tokens[close].kind == .closeBracket && tokens[close].depth == 0) { close += 1 }
+                let end = close < tokens.count ? tokens[close].end : ns.length
+                // A name is `identifier:` right before the bracket, with nothing between.
                 var nameRange: NSRange?
                 var userName: String?
-                if char(index - 1) == ":", char(index - 2) != ":" {
-                    var start = index - 1
-                    while let c = char(start - 1), c.isLetter || c.isNumber || c == "_" { start -= 1 }
-                    if start < index - 1, let c = char(start), !c.isNumber {
-                        nameRange = NSRange(location: start, length: index - start)
-                        userName = ns.substring(with: NSRange(location: start, length: index - 1 - start))
+                if k >= 2, tokens[k - 1].kind == .colon, tokens[k - 1].end == token.range.location,
+                   tokens[k - 2].kind == .identifier, tokens[k - 2].end == tokens[k - 1].range.location {
+                    let name = ns.substring(with: tokens[k - 2].range)
+                    if let first = name.unicodeScalars.first, !CharacterSet.decimalDigits.contains(first) {
+                        nameRange = NSRange(location: tokens[k - 2].range.location, length: token.range.location - tokens[k - 2].range.location)
+                        userName = name
                     }
                 }
                 found.append(Found(nameRange: nameRange, userName: userName,
-                                   bracket: NSRange(location: index, length: end - index)))
-                index = end
+                                   bracket: NSRange(location: token.range.location, length: end - token.range.location)))
+                k = close + 1
             default:
-                index += 1
+                k += 1
             }
         }
 
@@ -101,7 +95,7 @@ public struct QueryNodes: Equatable, Sendable {
         nodes = found.enumerated().map { offset, item in
             let end = item.bracket.location + item.bracket.length
             let start = item.nameRange?.location ?? item.bracket.location
-            let mark = Self.repeatMark(in: ns, at: end)
+            let mark = tokens.first { $0.kind == .repeatMark && $0.range.location == end }.map { ns.substring(with: $0.range) }
             return QueryNode(index: offset,
                              range: NSRange(location: start, length: end - start),
                              bracketRange: item.bracket,
@@ -120,81 +114,5 @@ public struct QueryNodes: Equatable, Sendable {
                                                 with: "\(node.name):") as NSString
         }
         return result as String
-    }
-
-    // MARK: Scanning
-
-    /// The index after the closing quote of the string that opens at `start` (a backslash keeps the next
-    /// character literal).
-    private static func endOfQuote(in ns: NSString, from start: Int) -> Int {
-        var i = start + 1
-        while i < ns.length {
-            let c = ns.character(at: i)
-            if c == 0x5C { i += 2; continue }
-            if c == 0x22 { return i + 1 }
-            i += 1
-        }
-        return ns.length
-    }
-
-    /// The index after the `]` that closes the token opening at `start`.
-    private static func endOfToken(in ns: NSString, from start: Int) -> Int {
-        var depth = 0
-        var i = start
-        var previous: unichar = 0
-        while i < ns.length {
-            let c = ns.character(at: i)
-            if c == 0x5C { i += 2; continue }
-            if c == 0x22 { i = endOfQuote(in: ns, from: i); previous = 0x22; continue }
-            if c == 0x2F, previous == 0x3D {            // `=/regex/`
-                i += 1
-                while i < ns.length {
-                    let r = ns.character(at: i)
-                    if r == 0x5C { i += 2; continue }
-                    if r == 0x2F { break }
-                    i += 1
-                }
-                i += 1; previous = 0x2F; continue
-            }
-            if c == 0x5B { depth += 1 }
-            if c == 0x5D { depth -= 1; if depth == 0 { return i + 1 } }
-            if c != 0x20, c != 0x09, c != 0x0A { previous = c }
-            i += 1
-        }
-        return ns.length
-    }
-
-    /// For `<` that opens a region (`<s>`, `<text genre="Book">`, `</s>`): the index after its `>`.
-    /// A `<` that is a dependency arrow (`[] < []`, `a <b:[...]`) has a `[` or `:` before any `>`.
-    private static func endOfRegion(in ns: NSString, from start: Int) -> Int? {
-        var i = start + 1
-        guard i < ns.length else { return nil }
-        let first = ns.character(at: i)
-        let isLetter = (0x41...0x5A).contains(first) || (0x61...0x7A).contains(first)
-        guard isLetter || first == 0x2F else { return nil }
-        while i < ns.length {
-            let c = ns.character(at: i)
-            if c == 0x22 { i = endOfQuote(in: ns, from: i); continue }
-            if c == 0x5B || c == 0x3A || c == 0x3B { return nil }
-            if c == 0x3E { return i + 1 }
-            i += 1
-        }
-        return nil
-    }
-
-    /// `*`, `+`, `?` or `{n}`, `{n,}`, `{n,m}` right after a token.
-    private static func repeatMark(in ns: NSString, at index: Int) -> String? {
-        guard index < ns.length else { return nil }
-        let c = ns.character(at: index)
-        if c == 0x2A || c == 0x2B || c == 0x3F { return ns.substring(with: NSRange(location: index, length: 1)) }
-        guard c == 0x7B else { return nil }
-        var i = index + 1
-        while i < ns.length {
-            let d = ns.character(at: i)
-            if d == 0x7D { return ns.substring(with: NSRange(location: index, length: i + 1 - index)) }
-            guard (0x30...0x39).contains(d) || d == 0x2C || d == 0x20 else { return nil }
-            i += 1
-        }
-        return nil
     }
 }

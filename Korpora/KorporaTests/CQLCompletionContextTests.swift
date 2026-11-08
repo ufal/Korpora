@@ -285,7 +285,9 @@ struct CQLQueryFieldCompletionTests {
 
     @Test func afterDoubleColonTheGlobalFunctionsAreOffered() {
         #expect(candidates(#"a:[] b:[] :: dist"#) == ["distabs", "distance"])
-        #expect(candidates(#"a:[] :: "#) == CQLCompletionProvider.globalFunctions)
+        // The names the user gave to tokens come first: conditions refer to them.
+        #expect(candidates(#"a:[] :: "#) == ["a"] + CQLCompletionProvider.globalFunctions)
+        #expect(candidates(#"[] :: "#) == CQLCompletionProvider.globalFunctions, "no names, no names offered")
         #expect(candidates(#"a:[] :: ndesc"#) == ["ndescendants"])
         // The language half needs no corpus.
         #expect(candidates(#"a:[] :: str"#, withCorpusSchema: false) == ["strlen"])
@@ -293,15 +295,14 @@ struct CQLQueryFieldCompletionTests {
         #expect(candidates(#"a:[] :: a != b; wit"#) == ["within"])
     }
 
-    /// The restriction words are only coloured as keywords directly before a `[`.
-    @Test func restrictionWordsAreColouredOnlyBeforeABracket() throws {
-        let regex = try NSRegularExpression(pattern: CQLCompletionProvider.keywordPattern)
-        func matches(_ query: String) -> [String] {
+    /// The restriction words are only coloured as keywords directly before a `[` (the tokens decide, not a pattern).
+    @Test func restrictionWordsAreColouredOnlyBeforeABracket() {
+        func keywords(_ query: String) -> [String] {
             let ns = query as NSString
-            return regex.matches(in: query, range: NSRange(location: 0, length: ns.length)).map { ns.substring(with: $0.range) }
+            return CQLQueryField.colorRuns(for: query).filter { $0.color == .systemPurple }.map { ns.substring(with: $0.range) }
         }
-        #expect(matches(#"[upos="NOUN" & child [upos="DET"]]"#) == ["child"])
-        #expect(matches(#"[after="x"]"#).isEmpty)
-        #expect(matches(#"[upos="ADJ" & not next [upos="NOUN"]] within s"#) == ["not", "next", "within"])
+        #expect(keywords(#"[upos="NOUN" & child [upos="DET"]]"#) == ["child"])
+        #expect(keywords(#"[after="x"]"#).isEmpty)
+        #expect(keywords(#"[upos="ADJ" & not next [upos="NOUN"]] within s"#) == ["not", "next", "within"])
     }
 }

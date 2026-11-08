@@ -1,4 +1,5 @@
 import Cocoa
+import KorporaEngine
 
 /// A CQL query editor: an auto-growing, syntax-colored, completion-capable
 /// text field. Used both in the "new concordance" sheet and in a document
@@ -131,16 +132,13 @@ final class CQLQueryField: NSView {
     }
 
     private func recolor() {
-        let text = textView.string as NSString
+        let text = textView.string
         let storage = textView.textStorage!
-        let full = NSRange(location: 0, length: text.length)
+        let full = NSRange(location: 0, length: (text as NSString).length)
         storage.beginEditing()
         storage.removeAttribute(.foregroundColor, range: full)
         storage.addAttribute(.foregroundColor, value: NSColor.labelColor, range: full)
-        Self.color(pattern: #"\"(?:[^\"\\]|\\.)*\"|(?<=[=!]\s?)/(?:[^/\\]|\\.)+/"#, in: text, storage: storage, color: .systemRed)
-        Self.color(pattern: CQLCompletionProvider.keywordPattern, in: text, storage: storage, color: .systemPurple)
-        Self.color(pattern: #"(!=|>=|<=|::|=:|=|<|>|!)"#, in: text, storage: storage, color: .systemOrange)
-        Self.color(pattern: #"</?[a-zA-Z][\w]*[^>]*>"#, in: text, storage: storage, color: .systemTeal)
+        Self.applyColors(to: storage, text: text)
         storage.endEditing()
     }
 
@@ -149,22 +147,42 @@ final class CQLQueryField: NSView {
     /// .printWindowContents`'s printed/PDF'd page header) can match it exactly
     /// without needing a real `NSTextView` to hang it off of.
     static func syntaxColoredAttributedString(for query: String, font: NSFont) -> NSAttributedString {
-        let text = query as NSString
         let storage = NSTextStorage(
             string: query, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
-        Self.color(pattern: #"\"(?:[^\"\\]|\\.)*\"|(?<=[=!]\s?)/(?:[^/\\]|\\.)+/"#, in: text, storage: storage, color: .systemRed)
-        Self.color(pattern: CQLCompletionProvider.keywordPattern, in: text, storage: storage, color: .systemPurple)
-        Self.color(pattern: #"(!=|>=|<=|::|=:|=|<|>|!)"#, in: text, storage: storage, color: .systemOrange)
-        Self.color(pattern: #"</?[a-zA-Z][\w]*[^>]*>"#, in: text, storage: storage, color: .systemTeal)
+        applyColors(to: storage, text: query)
         return storage
     }
 
-    private static func color(pattern: String, in text: NSString, storage: NSTextStorage, color: NSColor) {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return }
-        regex.enumerateMatches(in: text as String, range: NSRange(location: 0, length: text.length)) { match, _, _ in
-            guard let range = match?.range else { return }
-            storage.addAttribute(.foregroundColor, value: color, range: range)
+    /// The colours, from what each piece of the query is (`CQLLexer`): values red, scoping words and the relations
+    /// written inside a token purple, operators and arrows orange, region tags teal. A word inside a quoted value is
+    /// a value, not a keyword.
+    static func colorRuns(for text: String) -> [(range: NSRange, color: NSColor)] {
+        let ns = text as NSString
+        let tokens = CQLLexer.tokens(in: text)
+        var runs: [(NSRange, NSColor)] = []
+        for (index, token) in tokens.enumerated() {
+            switch token.kind {
+            case .string, .regex:
+                runs.append((token.range, .systemRed))
+            case .identifier:
+                let word = ns.substring(with: token.range)
+                let beforeBracket = index + 1 < tokens.count && tokens[index + 1].kind == .openBracket
+                if CQLLexer.regionKeywords.contains(word) || (beforeBracket && CQLLexer.restrictionWords.contains(word)) {
+                    runs.append((token.range, .systemPurple))
+                }
+            case .comparison, .arrow, .negation, .doubleColon, .assignment:
+                runs.append((token.range, .systemOrange))
+            case .regionTag:
+                runs.append((token.range, .systemTeal))
+            default:
+                break
+            }
         }
+        return runs
+    }
+
+    private static func applyColors(to storage: NSTextStorage, text: String) {
+        for run in colorRuns(for: text) { storage.addAttribute(.foregroundColor, value: run.color, range: run.range) }
     }
 
     /// Text view subclass so Enter/Shift-Enter and completion can be intercepted
@@ -220,7 +238,10 @@ final class CQLQueryField: NSView {
         func candidates(forPartialWordRange charRange: NSRange) -> [String]? {
             let context = CQLCompletionContext.at(text: string, partialWordRange: charRange)
             if let provider = (delegate as? CQLQueryField)?.completionProvider {
-                return provider.candidates(for: context)
+                // Only a condition after `::` refers to the names the user gave to tokens.
+                var nodeNames: [String] = []
+                if case .globalCondition = context { nodeNames = QueryNodes(string).nodes.compactMap(\.userName) }
+                return provider.candidates(for: context, nodeNames: nodeNames)
             }
             // No corpus, so no attribute names - but the language half
             // needs nothing from a corpus and still works.
@@ -235,7 +256,8 @@ final class CQLQueryField: NSView {
                     CQLCompletionProvider.comparisonOperators, prefix: prefix)
             case .attributeName(let prefix):
                 return CQLCompletionProvider.matching(CQLCompletionProvider.restrictionWords, prefix: prefix)
-            case .value:
+            case .value, .nodeAttribute, .regionName, .regionAttribute:
+                // Attribute and region names come from a corpus; without one there is nothing to offer.
                 return nil
             }
         }

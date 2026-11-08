@@ -322,7 +322,7 @@ All Swift/C++ code builds cleanly and all tests pass (`swift test` in
 - **Frequency by node: built 2026-11-08, to try by hand**; collocation by node next (design: `docs/frequency-composer.md`):
   pick a node as a span in the query text; multi-level `count by a.x, b.y` (pando has it); `coll on <node>`
   (pando has it, tested on UD).
-- **A shared CQL lexer** (planned 2026-11-08, after the composer): a lenient scanner that gives tokens with ranges and the
+- **A shared CQL lexer** (built 2026-11-08, see `docs/cql-lexer.md`; was planned as follows): a lenient scanner that gives tokens with ranges and the
   state at the caret; `QueryNodes` and the completion and auto-pairing (`CQLCompletion.swift`, now six separate backwards
   checks that disagree about quotes and `/regex/`) are rebuilt on it. Gains: `a.` after `::` completes the attributes of node `a`,
   no completion inside strings and regexes, region-tag attributes, query colouring and error underlines. Its own commit, with the
