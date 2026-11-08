@@ -94,8 +94,8 @@ public struct FrequencyTable: Sendable, Equatable {
     }
 }
 
-/// Why a frequency over nodes could not be asked for.
-public enum FrequencyError: Error, LocalizedError, Equatable {
+/// Why an analysis around the nodes of a query (a frequency, a collocation) could not be asked for.
+public enum QueryNodeError: Error, LocalizedError, Equatable {
     case noFields
     case unsupportedQuery(String)
     case unknownNode(String)
@@ -116,16 +116,31 @@ extension QueryNodes {
     /// The `freq by` program for `fields`: the query with every token named, then the fields. Throws when
     /// a field names a node the query doesn't have, or one that may repeat.
     public func frequencyProgram(for fields: [FrequencyField]) throws -> String {
-        guard !fields.isEmpty else { throw FrequencyError.noFields }
+        guard !fields.isEmpty else { throw QueryNodeError.noFields }
         if let reason = unsupportedReason, fields.contains(where: { $0.node != nil }) {
-            throw FrequencyError.unsupportedQuery(reason)
+            throw QueryNodeError.unsupportedQuery(reason)
         }
         for field in fields {
-            guard let name = field.node else { continue }
-            guard let node = nodes.first(where: { $0.name == name }) else { throw FrequencyError.unknownNode(name) }
-            guard node.isPickable else { throw FrequencyError.notPickable(name) }
+            if let name = field.node { try checkNode(named: name) }
         }
         let query = fields.contains { $0.node != nil } ? textWithNames() : text
         return "\(query); freq by \(fields.map(\.pandoField).joined(separator: ", "))"
+    }
+}
+
+extension QueryNodes {
+    /// Throws unless the query has a node called `name` that is one token, always there.
+    func checkNode(named name: String) throws {
+        guard let node = nodes.first(where: { $0.name == name }) else { throw QueryNodeError.unknownNode(name) }
+        guard node.isPickable else { throw QueryNodeError.notPickable(name) }
+    }
+
+    /// The `coll` program: the query, then `coll by <attribute>` around the whole match, or with `anchor` (a node's
+    /// name) `coll on <node> by <attribute>`, around that token only (the query's tokens are named first).
+    public func collocationProgram(attribute: String, anchor: String?) throws -> String {
+        guard let anchor else { return "\(text); coll by \(attribute)" }
+        if let reason = unsupportedReason { throw QueryNodeError.unsupportedQuery(reason) }
+        try checkNode(named: anchor)
+        return "\(textWithNames()); coll on \(anchor) by \(attribute)"
     }
 }

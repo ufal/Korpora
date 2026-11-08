@@ -359,9 +359,18 @@ final class ConcordanceViewController: NSViewController {
     }
 
     @objc func collocationsTapped(_ sender: Any) {
-        let sheet = CollocationSheetController()
-        sheet.corpusName = document.corpusName
-        sheet.onRun = { [weak self] spec in
+        let composer = CollocationComposerController()
+        composer.infoProvider = { [weak self] in
+            guard let self else { throw CancellationError() }
+            return try await self.document.engine.openCorpus(name: self.document.corpusName).info()
+        }
+        composer.query = document.initialQuery
+        composer.hitCount = document.rowCount
+        composer.hitProvider = { [weak self] row, attributes in
+            guard let self else { throw CancellationError() }
+            return try await self.document.hitNodes(at: row, attributes: attributes)
+        }
+        composer.onRun = { [weak self] spec in
             guard let self else { return }
             Task { @MainActor in
                 do {
@@ -372,7 +381,7 @@ final class ConcordanceViewController: NSViewController {
                 }
             }
         }
-        presentAsSheet(sheet)
+        presentAsSheet(composer)
     }
 
     @objc func frequenciesTapped(_ sender: Any) {

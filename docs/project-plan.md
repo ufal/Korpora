@@ -319,7 +319,7 @@ All Swift/C++ code builds cleanly and all tests pass (`swift test` in
 - **Sentence tree display** (`docs/trees.md`): a button in Sentence view opens the dependency tree of the
   sentence (arcs and a PDT-style tree, drawn natively, node inspector on click). Waits for pando's C API to
   return the CoNLL-U of a hit's sentence (to be asked for; checked 2026-11-08, pando 0.4.9: not there yet).
-- **Frequency by node: built 2026-11-08, to try by hand**; collocation by node next (design: `docs/frequency-composer.md`):
+- **Frequency and collocation by node: built 2026-11-08, to try by hand** (design: `docs/frequency-composer.md`):
   pick a node as a span in the query text; multi-level `count by a.x, b.y` (pando has it); `coll on <node>`
   (pando has it, tested on UD).
 - **A shared CQL lexer** (built 2026-11-08, see `docs/cql-lexer.md`; was planned as follows): a lenient scanner that gives tokens with ranges and the

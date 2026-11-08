@@ -17,24 +17,30 @@ final class FrequencyComposerController: NSViewController, NSTableViewDataSource
     var onRun: ((_ fields: [FrequencyField], _ sortKeys: [FrequencySortKey], _ minFrequency: Int, _ nodes: QueryNodes) -> Void)?
 
     var model = FrequencyComposerModel()
-    private(set) var nodes = QueryNodes("")
 
     private var positional: [String] = []
     private var properties: [String] = []
-    private var hit: HitNodes?
-    private var hitIndex = 0
-    private var hitGeneration = 0
     /// True once the corpus's attributes and the first hit have been asked for.
     private(set) var hasLoaded = false
     private weak var popover: NSPopover?
 
-    let queryStrip = NodeStripView()
-    let hitStrip = NodeStripView()
+    /// The query and the hit with their nodes, made when the view is (after the presenter set `query` and the hits).
+    private lazy var browser: QueryHitBrowser = {
+        let browser = QueryHitBrowser(query: query)
+        browser.hitCount = hitCount
+        browser.hitProvider = hitProvider
+        browser.onPick = { [weak self] node, strip, rect in self?.showPicker(node: node, from: strip, rect: rect) }
+        return browser
+    }()
+    var nodes: QueryNodes { browser.nodes }
+    var queryStrip: NodeStripView { browser.queryStrip }
+    var hitStrip: NodeStripView { browser.hitStrip }
+    var previousButton: NSButton { browser.previousButton }
+    var nextButton: NSButton { browser.nextButton }
+    var counterLabel: NSTextField { browser.counterLabel }
+    var noteLabel: NSTextField { browser.noteLabel }
+    func nextHit() { browser.nextHit() }
     private let table = NSTableView()
-    let previousButton = NSButton()
-    let nextButton = NSButton()
-    let counterLabel = NSTextField(labelWithString: "")
-    let noteLabel = NSTextField(wrappingLabelWithString: "")
     private let errorLabel = NSTextField(wrappingLabelWithString: "")
     let minFrequencyField = NSTextField(string: "1")
     let addButton = NSPopUpButton(frame: .zero, pullsDown: true)
@@ -46,8 +52,6 @@ final class FrequencyComposerController: NSViewController, NSTableViewDataSource
     // MARK: View
 
     override func loadView() {
-        nodes = QueryNodes(query)
-
         let title = NSTextField(labelWithString: "Frequency Distribution")
         title.font = .boldSystemFont(ofSize: 13)
         let help = NSTextField(wrappingLabelWithString:
@@ -55,24 +59,11 @@ final class FrequencyComposerController: NSViewController, NSTableViewDataSource
         help.font = .systemFont(ofSize: 11)
         help.textColor = .secondaryLabelColor
 
-        queryStrip.accessibilityDescription = "Query"
-        hitStrip.accessibilityDescription = "First hit"
-        queryStrip.onPick = { [weak self] node, rect in self?.showPicker(node: node, from: self?.queryStrip, rect: rect) }
-        hitStrip.onPick = { [weak self] node, rect in self?.showPicker(node: node, from: self?.hitStrip, rect: rect) }
-
         let queryCaption = caption("Query")
-        let hitCaption = caption("Hit")
-        configureArrow(previousButton, symbol: "chevron.left", label: "Previous hit", action: #selector(previousHit))
-        configureArrow(nextButton, symbol: "chevron.right", label: "Next hit", action: #selector(nextHit))
-        counterLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
-        counterLabel.textColor = .secondaryLabelColor
-        let hitHeader = NSStackView(views: [hitCaption, previousButton, nextButton, counterLabel])
-        hitHeader.orientation = .horizontal
-        hitHeader.spacing = 6
+        let hitHeader = browser.hitHeader
+        let noteLabel = browser.noteLabel
+        let queryStrip = browser.queryStrip, hitStrip = browser.hitStrip
 
-        noteLabel.font = .systemFont(ofSize: 11)
-        noteLabel.textColor = .secondaryLabelColor
-        noteLabel.isHidden = true
         errorLabel.font = .systemFont(ofSize: 11)
         errorLabel.textColor = .systemRed
         errorLabel.isHidden = true
@@ -140,8 +131,7 @@ final class FrequencyComposerController: NSViewController, NSTableViewDataSource
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        showQuery()
-        updateHitControls()
+        browser.showAll()
         rebuildAddMenu()
         // The sheet is as tall as what it holds (the strips wrap at this width).
         view.layoutSubtreeIfNeeded()
@@ -154,16 +144,6 @@ final class FrequencyComposerController: NSViewController, NSTableViewDataSource
         label.font = .systemFont(ofSize: 11, weight: .semibold)
         label.textColor = .secondaryLabelColor
         return label
-    }
-
-    private func configureArrow(_ button: NSButton, symbol: String, label: String, action: Selector) {
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: label)
-        button.bezelStyle = .accessoryBarAction
-        button.isBordered = true
-        button.target = self
-        button.action = action
-        button.toolTip = label
-        button.setAccessibilityLabel(label)
     }
 
     private func configureTable() {
@@ -201,7 +181,8 @@ final class FrequencyComposerController: NSViewController, NSTableViewDataSource
         addDefaultLine()
         table.reloadData()
         updateRunButton()
-        await loadHit(0)
+        browser.attributes = positional
+        await browser.loadHit(0)
         hasLoaded = true
     }
 
@@ -212,101 +193,6 @@ final class FrequencyComposerController: NSViewController, NSTableViewDataSource
         if let attribute { model.add(.node(node.name, attribute: attribute)) }
     }
 
-    private func loadHit(_ index: Int) async {
-        guard hitCount > 0, let hitProvider else {
-            hit = nil
-            showHit()
-            return
-        }
-        hitGeneration += 1
-        let generation = hitGeneration
-        let wanted = max(0, min(index, hitCount - 1))
-        do {
-            let fetched = try await hitProvider(wanted, positional)
-            guard generation == hitGeneration else { return }
-            hit = fetched
-            hitIndex = wanted
-        } catch {
-            guard generation == hitGeneration else { return }
-            hit = nil
-            hitIndex = wanted
-            noteLabel.stringValue = "This hit can\u{2019}t be shown: \(error.localizedDescription)"
-            noteLabel.isHidden = false
-        }
-        showHit()
-    }
-
-    // MARK: The strips
-
-    private func showQuery() {
-        let font = NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
-        let text = NSMutableAttributedString(string: query, attributes: [
-            .font: font, .foregroundColor: NSColor.labelColor, .paragraphStyle: NodeStripView.paragraphStyle(),
-        ])
-        var spans: [NodeStripView.Span] = []
-        for node in nodes.nodes {
-            var range = node.range
-            if let mark = node.repeatMark { range.length += (mark as NSString).length }
-            let tip = node.isPickable
-                ? "Node \(node.name): click to count one of its attributes."
-                : "Node \(node.name) can match several words or none, so a frequency can\u{2019}t be taken from it."
-            spans.append(.init(range: range, node: node.index, name: node.name, pickable: node.isPickable, toolTip: tip))
-        }
-        queryStrip.setContent(text, spans: spans)
-        if let reason = nodes.unsupportedReason {
-            noteLabel.stringValue = "\(reason) Its tokens can\u{2019}t be picked; text and document properties can still be counted."
-            noteLabel.isHidden = false
-        }
-    }
-
-    private func showHit() {
-        updateHitControls()
-        guard let hit else {
-            hitStrip.setContent(NSAttributedString(string: hitCount == 0 ? "No hits to show." : "", attributes: [
-                .font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.secondaryLabelColor,
-                .paragraphStyle: NodeStripView.paragraphStyle(),
-            ]), spans: [])
-            return
-        }
-        let font = NSFont.systemFont(ofSize: 13)
-        let text = NSMutableAttributedString()
-        var ranges: [NSRange] = []
-        for (index, word) in hit.words.enumerated() {
-            if index > 0 { text.append(NSAttributedString(string: " ", attributes: [.font: font])) }
-            let range = NSRange(location: text.length, length: (word as NSString).length)
-            let inHit = hit.matchRange.contains(index)
-            text.append(NSAttributedString(string: word, attributes: [
-                .font: font, .foregroundColor: inHit ? NSColor.labelColor : NSColor.secondaryLabelColor,
-            ]))
-            ranges.append(range)
-        }
-        text.addAttribute(.paragraphStyle, value: NodeStripView.paragraphStyle(), range: NSRange(location: 0, length: text.length))
-
-        var spans: [NodeStripView.Span] = []
-        var note: String?
-        if nodes.nodes.isEmpty {
-            // Nothing to colour.
-        } else if hit.tokens.count == nodes.nodes.count {
-            for (node, token) in zip(nodes.nodes, hit.tokens) where ranges.indices.contains(token.wordIndex) {
-                spans.append(.init(range: ranges[token.wordIndex], node: node.index, name: node.name, pickable: node.isPickable,
-                                   toolTip: node.isPickable ? "Node \(node.name): click to count one of its attributes." : nil))
-            }
-        } else {
-            note = "The words of this hit can\u{2019}t be matched to the query\u{2019}s tokens (some are optional or repeated). Click the nodes in the query above."
-        }
-        hitStrip.setContent(text, spans: spans)
-        if let note { noteLabel.stringValue = note; noteLabel.isHidden = false } else if nodes.unsupportedReason == nil { noteLabel.isHidden = true }
-    }
-
-    private func updateHitControls() {
-        previousButton.isEnabled = hitCount > 1 && hitIndex > 0
-        nextButton.isEnabled = hitCount > 1 && hitIndex < hitCount - 1
-        counterLabel.stringValue = hitCount == 0 ? "" : "\(hitIndex + 1) of \(hitCount.formatted())"
-    }
-
-    @objc func previousHit() { Task { @MainActor in await loadHit(hitIndex - 1) } }
-    @objc func nextHit() { Task { @MainActor in await loadHit(hitIndex + 1) } }
-
     // MARK: Picking
 
     private func nodeName(at index: Int) -> String? { nodes.nodes.indices.contains(index) ? nodes.nodes[index].name : nil }
@@ -314,10 +200,7 @@ final class FrequencyComposerController: NSViewController, NSTableViewDataSource
     private func showPicker(node: Int, from strip: NodeStripView?, rect: NSRect) {
         guard let strip, let name = nodeName(at: node), !positional.isEmpty else { return }
         popover?.close()
-        let samples: [String: String] = {
-            guard let hit, hit.tokens.count == nodes.nodes.count else { return [:] }
-            return hit.tokens[node].attributes
-        }()
+        let samples = browser.samples(forNode: node)
         let entries = positional.map { NodeAttributePicker.Entry(name: $0, sample: samples[$0]) }
         let picker = NodeAttributePicker(heading: "Node \(name)", color: NodeColors.color(at: node), entries: entries) { [weak self] attribute in
             self?.popover?.close()
@@ -542,7 +425,7 @@ final class FrequencyComposerController: NSViewController, NSTableViewDataSource
 
     @objc func runTapped() {
         guard !model.isEmpty else {
-            errorLabel.stringValue = FrequencyError.noFields.localizedDescription
+            errorLabel.stringValue = QueryNodeError.noFields.localizedDescription
             errorLabel.isHidden = false
             return
         }

@@ -15,6 +15,8 @@ final class NodeStripView: NSView, NSViewToolTipOwner {
         /// False for a node that can match several words or none: drawn dashed and grey, and a click does nothing.
         var pickable = true
         var toolTip: String?
+        /// The node chosen (the anchor of a collocation): drawn stronger.
+        var selected = false
     }
 
     /// Called with the node and the span's first rectangle (in this view's coordinates, to anchor a popover).
@@ -125,10 +127,10 @@ final class NodeStripView: NSView, NSViewToolTipOwner {
                 let color = span.pickable ? NodeColors.color(at: span.node) : NSColor.secondaryLabelColor
                 for rect in spanRects[index] {
                     let path = NSBezierPath(roundedRect: rect, xRadius: 4, yRadius: 4)
-                    color.withAlphaComponent(span.pickable ? 0.22 : 0.10).setFill()
+                    color.withAlphaComponent(span.selected ? 0.5 : (span.pickable ? 0.22 : 0.10)).setFill()
                     path.fill()
                     color.withAlphaComponent(0.85).setStroke()
-                    path.lineWidth = 1
+                    path.lineWidth = span.selected ? 2.5 : 1
                     if !span.pickable { path.setLineDash([3, 2], count: 2, phase: 0) }
                     path.stroke()
                 }

@@ -8,11 +8,15 @@ import KorporaEngine
 /// the snapshot; re-run via the toolbar's Collocations button anytime.
 final class CollocationWindowController: NSWindowController {
     convenience init(spec: CollocationSpec, items: [CollocationItem], context: [String] = []) {
-        let viewController = CollocationViewController(spec: spec, items: items, context: context)
+        var lines = context
+        let measure = CollocationComposerController.displayName(spec.measure)
+        lines.append("Collocates by \(spec.attribute), \(measure), window \(spec.leftWindow) to \(spec.rightWindow)"
+            + (spec.anchor.map { " around node \($0)" } ?? " around the whole match"))
+        let viewController = CollocationViewController(spec: spec, items: items, context: lines)
         let window = NSWindow(contentViewController: viewController)
         window.setContentSize(NSSize(width: 480, height: 360))
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        window.title = "Collocations: \(spec.attribute)"
+        window.title = "Collocations: \(spec.attribute)" + (spec.anchor.map { " (around \($0))" } ?? "")
         self.init(window: window)
     }
 }

@@ -40,10 +40,14 @@ public struct CollocationSpec: Sendable, Codable {
     public var minCollocateFrequency: Int
     /// Hard cap on how many top-scoring collocates are returned.
     public var maxItems: Int
+    /// The name of the query's token the window is taken around (`a`, or the user's own name), or nil for the whole
+    /// match: from its first matched word to its last (docs/frequency-composer.md).
+    public var anchor: String?
 
     public init(attribute: String, measure: AssociationMeasure = .logDice,
                 leftWindow: Int = -5, rightWindow: Int = 5,
-                minFrequency: Int = 5, minCollocateFrequency: Int = 3, maxItems: Int = 50) {
+                minFrequency: Int = 5, minCollocateFrequency: Int = 3, maxItems: Int = 50, anchor: String? = nil) {
+        self.anchor = anchor
         self.attribute = attribute
         self.measure = measure
         self.leftWindow = leftWindow

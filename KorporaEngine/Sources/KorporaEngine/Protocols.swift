@@ -94,7 +94,7 @@ public protocol ConcordanceHandle: Actor {
     func frequencyDistribution(_ criteria: [FrequencyCriterion], minFrequency: Int) async throws -> [FrequencyItem]
 
     /// A frequency over attributes of the query's nodes (and text or document properties), one column for each
-    /// field (docs/frequency-composer.md). Throws `FrequencyError` for a node the query doesn't have.
+    /// field (docs/frequency-composer.md). Throws `QueryNodeError` for a node the query doesn't have.
     func frequencyTable(_ fields: [FrequencyField], minFrequency: Int) async throws -> FrequencyTable
 
     /// Hit `row` of the view with `context` words each side, and for each token of the query the word it matched and

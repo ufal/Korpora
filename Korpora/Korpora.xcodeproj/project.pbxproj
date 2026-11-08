@@ -19,12 +19,14 @@
 		22B381F6D20948AB31481DD4 /* ConlluDrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ECBA5D28719DAB364BF506C /* ConlluDrop.swift */; };
 		2361BEBD2F8EC06105F54B5F /* ConcordanceOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA5BD468A9C191CD0CB9A323 /* ConcordanceOperation.swift */; };
 		247ED6676A2FED188F50DAF6 /* LegacyDefaultsMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70108D2D157AC3924026A527 /* LegacyDefaultsMigrationTests.swift */; };
+		25990BB4D15A32CD8679ACD4 /* QueryHitBrowser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B72B280BE047A9AAD5ED0C4 /* QueryHitBrowser.swift */; };
 		27404A26816693683E08E07E /* DispersionWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 11A3520B55F507580A176050 /* DispersionWindowController.swift */; };
 		29B81AF1A74883E0E7A12393 /* AppSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1CEB379EAD1C7D1F10F792C /* AppSettings.swift */; };
 		2A3E4066F2F30C0CF2347756 /* SettingsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D6B7C9CED354613F83E8A50 /* SettingsWindowController.swift */; };
 		2A4E2002EDDF6EA61BE77E75 /* CQLPatterns.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3BE7AC76198AF6B7E6BE406 /* CQLPatterns.swift */; };
 		2B2B70AE01B0E3943F49F804 /* QueryHistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3253FB4AE0CC8DDD22A9B12 /* QueryHistoryStoreTests.swift */; };
 		2C2DBAEE4CA8A8AA5B831246 /* KorporaDocumentController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC667DAE0261FA8BD9966E36 /* KorporaDocumentController.swift */; };
+		319D9C33DB962719BA07A843 /* CollocationComposerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DFE13D80A39C2D7DE93D2F /* CollocationComposerTests.swift */; };
 		332D394CACC2683A315A91C0 /* ConcordanceViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E0DDF2767D8F85B6A2A9DAF /* ConcordanceViewController.swift */; };
 		3386A9FFA511EDF255708B25 /* FrequencyComposerModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92A4101729D39BBFA3F92403 /* FrequencyComposerModelTests.swift */; };
 		45074C6E1CD3CB489C2A8F86 /* KWICFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FBC2AD51085ABA715C92CF9 /* KWICFormatterTests.swift */; };
@@ -59,7 +61,6 @@
 		97CB75829A78ECC1D477B9CE /* ConcordanceExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB085B52C1CC64F2C18D6D2 /* ConcordanceExporterTests.swift */; };
 		9A58D11670B9CF33508B8FF4 /* DispersionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24BB2E68E54F740A40A1DF52 /* DispersionTests.swift */; };
 		9DA301BAFC5067B031A340A8 /* CorpusDirectorySettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DEA83DD0B055BE11EADCC66 /* CorpusDirectorySettingsTests.swift */; };
-		9E0E01C3DC4DE65D38AB17B9 /* CollocationSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BC23CBE793C2ED01EFAE067 /* CollocationSheetController.swift */; };
 		9FEF942A2023A921E3D832A0 /* ConcordanceSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EA20AB3943E5955AFF4F9E1 /* ConcordanceSettingsViewController.swift */; };
 		A1626887D340E9D9566D6217 /* AppearanceSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38F142C472071C00A420ABC5 /* AppearanceSettingsViewController.swift */; };
 		A38E6E5106AF311BC61559D4 /* WindowPrintingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFEA52040B5D2BEC33D93475 /* WindowPrintingTests.swift */; };
@@ -69,6 +70,7 @@
 		AEAACF157ADF3C9E631B3A24 /* BarChartTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65D6B6A3CFABE26AD74F85D5 /* BarChartTests.swift */; };
 		AEDD02E8CB49FEDD9B1227A4 /* CQLLexerCompletionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2A998DA8E363F315379DD0A /* CQLLexerCompletionTests.swift */; };
 		B185E021B6523F9EDA23520D /* ScriptFontsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB1110D794920D23CFD5CF78 /* ScriptFontsTests.swift */; };
+		B576413B507A62D77C175AFA /* CollocationComposerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDE4FABF7A76010BDB9DC82E /* CollocationComposerController.swift */; };
 		B6EEF2C1FAA3E75434B49D69 /* CQLQueryField.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF1FD3479E35618789EA56FC /* CQLQueryField.swift */; };
 		B7E32FAA82095EB4D8CD493F /* NodeStripViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E999B57B0D665098DD4259E /* NodeStripViewTests.swift */; };
 		B818723B2057A66196B91F17 /* ConlluDropTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AFEC8D6AECEBADDC1AA8204 /* ConlluDropTests.swift */; };
@@ -109,6 +111,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		01DFE13D80A39C2D7DE93D2F /* CollocationComposerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollocationComposerTests.swift; sourceTree = "<group>"; };
 		03BAE2CE377D52015F9FED65 /* FrequencyComposerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrequencyComposerTests.swift; sourceTree = "<group>"; };
 		0B7823CD7A43E310862382A0 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		0BFAF9063885A84A320C7405 /* Korpora.icon */ = {isa = PBXFileReference; lastKnownFileType = wrapper.icon; path = Korpora.icon; sourceTree = "<group>"; };
@@ -133,6 +136,7 @@
 		3A6D43BB65CCB422D8CB824F /* UnicodeScriptData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnicodeScriptData.swift; sourceTree = "<group>"; };
 		3E0DDF2767D8F85B6A2A9DAF /* ConcordanceViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConcordanceViewController.swift; sourceTree = "<group>"; };
 		4222F9B8F0DC1ECA6DF3B174 /* FrequencyWindowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrequencyWindowTests.swift; sourceTree = "<group>"; };
+		4B72B280BE047A9AAD5ED0C4 /* QueryHitBrowser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryHitBrowser.swift; sourceTree = "<group>"; };
 		4DEA83DD0B055BE11EADCC66 /* CorpusDirectorySettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusDirectorySettingsTests.swift; sourceTree = "<group>"; };
 		50429E54926CEE548BDD9820 /* UnicodeScriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnicodeScriptTests.swift; sourceTree = "<group>"; };
 		548B42C845A6C7B07CCE870F /* HistoryPopoverController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPopoverController.swift; sourceTree = "<group>"; };
@@ -165,7 +169,6 @@
 		92A4101729D39BBFA3F92403 /* FrequencyComposerModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrequencyComposerModelTests.swift; sourceTree = "<group>"; };
 		947FCA743FF6733EB8925895 /* ScriptFonts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptFonts.swift; sourceTree = "<group>"; };
 		99E96AB4BAFAEB74DFB6DDF1 /* TransferProgressSheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransferProgressSheetController.swift; sourceTree = "<group>"; };
-		9BC23CBE793C2ED01EFAE067 /* CollocationSheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollocationSheetController.swift; sourceTree = "<group>"; };
 		A876CF20992C126937B834DC /* NodeStripView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NodeStripView.swift; sourceTree = "<group>"; };
 		AB308D76FA5C93BE1B12F54A /* SettingsFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsFlowTests.swift; sourceTree = "<group>"; };
 		AC4BF85C4540BAB954E61CCC /* UnicodeScript.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnicodeScript.swift; sourceTree = "<group>"; };
@@ -177,6 +180,7 @@
 		B674887DFEED6258891E125A /* OperationsPopoverController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OperationsPopoverController.swift; sourceTree = "<group>"; };
 		BAA221175004C97F623B41C8 /* KorporaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KorporaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BC8BD92725D214DE0958CDD0 /* TableChartContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableChartContainerView.swift; sourceTree = "<group>"; };
+		BDE4FABF7A76010BDB9DC82E /* CollocationComposerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollocationComposerController.swift; sourceTree = "<group>"; };
 		BDE8E2FD74049DA17A699E82 /* FrequencyWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrequencyWindowController.swift; sourceTree = "<group>"; };
 		C3BE7AC76198AF6B7E6BE406 /* CQLPatterns.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CQLPatterns.swift; sourceTree = "<group>"; };
 		CA5B7A3F4ED9EF879F25E81A /* CollocationWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollocationWindowController.swift; sourceTree = "<group>"; };
@@ -238,7 +242,7 @@
 			children = (
 				6E43418276694BEE9E6FD9C7 /* ActiveImportTracker.swift */,
 				194EBAFB6892689A6B616369 /* AttributeDisplayPopoverController.swift */,
-				9BC23CBE793C2ED01EFAE067 /* CollocationSheetController.swift */,
+				BDE4FABF7A76010BDB9DC82E /* CollocationComposerController.swift */,
 				CA5B7A3F4ED9EF879F25E81A /* CollocationWindowController.swift */,
 				3E0DDF2767D8F85B6A2A9DAF /* ConcordanceViewController.swift */,
 				118D96F87811C199B75B172C /* ConcordanceWindowController.swift */,
@@ -256,6 +260,7 @@
 				7F74892CDE3F550C94B79B31 /* NewSubcorpusPopoverController.swift */,
 				91DBECD55D37CD667C9B81DC /* NodeAttributePicker.swift */,
 				B674887DFEED6258891E125A /* OperationsPopoverController.swift */,
+				4B72B280BE047A9AAD5ED0C4 /* QueryHitBrowser.swift */,
 				6B1A2B39864F42D3B7BF38A7 /* SamplePopoverController.swift */,
 				8D4005D8384BD2DA78535DA1 /* SortPopoverController.swift */,
 				AD2EE2396662652C35562289 /* SubcorpusValuePickerModel.swift */,
@@ -287,6 +292,7 @@
 			isa = PBXGroup;
 			children = (
 				65D6B6A3CFABE26AD74F85D5 /* BarChartTests.swift */,
+				01DFE13D80A39C2D7DE93D2F /* CollocationComposerTests.swift */,
 				F194B5057DE1CD8400800B9E /* ConcordanceDocumentCancelTests.swift */,
 				5CB085B52C1CC64F2C18D6D2 /* ConcordanceExporterTests.swift */,
 				7F2DB228AD53B0694A7A7C2C /* ConcordanceOperationTests.swift */,
@@ -506,6 +512,7 @@
 				C6212C93C0C81D9DD271EBD5 /* CQLCompletionContextTests.swift in Sources */,
 				AEDD02E8CB49FEDD9B1227A4 /* CQLLexerCompletionTests.swift in Sources */,
 				650935436FE97247095EE3DE /* CQLPatternTests.swift in Sources */,
+				319D9C33DB962719BA07A843 /* CollocationComposerTests.swift in Sources */,
 				C402FCCB69C646D7D3C8E729 /* ConcordanceDocumentCancelTests.swift in Sources */,
 				97CB75829A78ECC1D477B9CE /* ConcordanceExporterTests.swift in Sources */,
 				6A762E1E423B189ABF712D47 /* ConcordanceOperationTests.swift in Sources */,
@@ -548,7 +555,7 @@
 				13E3136A6E77E54771C201BB /* CQLCompletion.swift in Sources */,
 				2A4E2002EDDF6EA61BE77E75 /* CQLPatterns.swift in Sources */,
 				B6EEF2C1FAA3E75434B49D69 /* CQLQueryField.swift in Sources */,
-				9E0E01C3DC4DE65D38AB17B9 /* CollocationSheetController.swift in Sources */,
+				B576413B507A62D77C175AFA /* CollocationComposerController.swift in Sources */,
 				F2A45E9E1E451D9DAC934FF9 /* CollocationWindowController.swift in Sources */,
 				ABB771AD9CD40A0BB1F5332E /* ConcordanceDocument.swift in Sources */,
 				7F41071BF0E94BB152F02C33 /* ConcordanceExporter.swift in Sources */,
@@ -582,6 +589,7 @@
 				93B0520B6FDFB97D6B0E110F /* OperationsPopoverController.swift in Sources */,
 				74DDB78063606DD0DF6872E6 /* PaperSafeDrawing.swift in Sources */,
 				F89A78E1B12E53AFE9E4F061 /* QueryHistoryStore.swift in Sources */,
+				25990BB4D15A32CD8679ACD4 /* QueryHitBrowser.swift in Sources */,
 				5460A66C8408B07767556999 /* SamplePopoverController.swift in Sources */,
 				52D5D1CD820E81DBBFF2B1AA /* ScriptFonts.swift in Sources */,
 				CF4A6809B074F7507F882CB0 /* SettingsLayout.swift in Sources */,

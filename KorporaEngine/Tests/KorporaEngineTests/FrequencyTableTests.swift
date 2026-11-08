@@ -26,12 +26,12 @@ final class FrequencyTableTests: XCTestCase {
 
     func testProgramRefusesUnknownRepeatedAndNoNodes() {
         let q = QueryNodes(#"[upos="ADJ"]* [upos="NOUN"]"#)
-        XCTAssertThrowsError(try q.frequencyProgram(for: [])) { XCTAssertEqual($0 as? FrequencyError, .noFields) }
+        XCTAssertThrowsError(try q.frequencyProgram(for: [])) { XCTAssertEqual($0 as? QueryNodeError, .noFields) }
         XCTAssertThrowsError(try q.frequencyProgram(for: [field("z", "lemma")])) {
-            XCTAssertEqual($0 as? FrequencyError, .unknownNode("z"))
+            XCTAssertEqual($0 as? QueryNodeError, .unknownNode("z"))
         }
         XCTAssertThrowsError(try q.frequencyProgram(for: [field("a", "lemma")])) {
-            XCTAssertEqual($0 as? FrequencyError, .notPickable("a"))
+            XCTAssertEqual($0 as? QueryNodeError, .notPickable("a"))
         }
         XCTAssertNoThrow(try q.frequencyProgram(for: [field("b", "lemma")]))
     }
@@ -136,7 +136,7 @@ final class FrequencyTableTests: XCTestCase {
             _ = try await live.frequencyTable([field("b", "lemma")])
             XCTFail("expected an error")
         } catch {
-            XCTAssertEqual(error as? FrequencyError, .unknownNode("b"))
+            XCTAssertEqual(error as? QueryNodeError, .unknownNode("b"))
         }
     }
 }

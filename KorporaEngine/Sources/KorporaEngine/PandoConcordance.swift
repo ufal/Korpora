@@ -513,8 +513,9 @@ public actor PandoConcordance: ConcordanceHandle {
 
     public func collocations(_ spec: CollocationSpec) throws -> [CollocationItem] {
         let measure = Self.measureName(spec.measure)
+        let program = try QueryNodes(query).collocationProgram(attribute: PandoNames.attribute(spec.attribute), anchor: spec.anchor)
         let object = try library.result(library.run(
-            handle, "\(query); coll by \(PandoNames.attribute(spec.attribute))", PandoLibrary.json([
+            handle, program, PandoLibrary.json([
                 "coll_left": abs(spec.leftWindow), "coll_right": abs(spec.rightWindow),
                 "coll_min_freq": spec.minCollocateFrequency, "coll_max_items": spec.maxItems,
                 "measures": [measure],

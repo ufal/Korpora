@@ -110,7 +110,7 @@ a popover lists the attributes of the corpus, and choosing one adds a **line to 
 - A tree result (`count by`): the table is flat; the hierarchy can be a later view over the same rows.
 - Frequencies of `dcoll`-style relations: for the word-profile work.
 
-## Collocations (the next page)
+## Collocations (built 2026-11-08)
 
 The same query strip and the same hit strip, one node chosen as the **anchor**, and pando's `coll on <node>` (tested: it exists and gives
 different results from the whole-match window: for `a:[lemma="give"] > b:[deprel="obj"]` with ±2, the verb's window shows the indirect objects
@@ -155,3 +155,18 @@ node *i* in the query and in the hit; an unmappable hit is shown uncoloured. A r
 - Drag reorder and the popover are not covered by tests (the model's moves are).
 - A tree view (`count by`), offsets from a node, repeated nodes as picks: as in "Not doing".
 - Collocations: the same strips with a node as the anchor (next).
+
+## Collocations by node: built (2026-11-08)
+
+- **Engine:** `CollocationSpec.anchor` (a node's name, nil for the whole match; a saved spec without it still decodes) and
+  `QueryNodes.collocationProgram`, which writes `a:[...] > b:[...]; coll on a by lemma` after naming the tokens. An unknown node, a node with a
+  repeat mark and a dialect query throw `QueryNodeError` (the old `FrequencyError`, renamed because collocations use it too).
+  Checked on pando with the tiny corpus: for `[upos="VERB"] > [deprel="obj"]` and a window of 1, around the verb gives
+  `cat, dog`; the whole-match window also takes `a`, the word after the object.
+- **App:** `QueryHitBrowser` (the query and hit strips, the arrows and the hit loading, now shared with the frequency sheet) and
+  `CollocationComposerController` (replaces `CollocationSheetController`): the strips, an "Around" pop-up (Whole match, Node a, ...),
+  and the old form. A click on a node (in either strip) chooses it as the anchor and a second click goes back to the whole match;
+  the chosen node is drawn stronger. The attribute defaults to the lemma. The results window says what the window was taken around
+  (title and print header).
+- **Tests:** `CollocationAnchorTests` (engine, against pando), `CollocationComposerTests`.
+- **Not done:** `dcoll` (word profiles, later), and offsets that differ left and right per node.

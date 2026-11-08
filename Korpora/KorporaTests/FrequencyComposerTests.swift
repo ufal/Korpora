@@ -141,7 +141,7 @@ import KorporaEngine
         c.pick(node: "b", attribute: "upos")
         c.model.cycleSort(for: c.model.rows[1].id)
         let window = NSWindow(contentViewController: c)
-        window.setContentSize(NSSize(width: 780, height: 660))
+        window.setContentSize(c.preferredContentSize)
         for name in [NSAppearance.Name.aqua, .darkAqua] {
             window.appearance = NSAppearance(named: name)
             window.contentView?.layoutSubtreeIfNeeded()
