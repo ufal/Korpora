@@ -376,20 +376,30 @@ final class ConcordanceViewController: NSViewController {
     }
 
     @objc func frequenciesTapped(_ sender: Any) {
-        let sheet = FrequencySheetController()
-        sheet.corpusName = document.corpusName
-        sheet.onRun = { [weak self] criterion, minFrequency in
+        let composer = FrequencyComposerController()
+        composer.infoProvider = { [weak self] in
+            guard let self else { throw CancellationError() }
+            return try await self.document.engine.openCorpus(name: self.document.corpusName).info()
+        }
+        composer.query = document.initialQuery
+        composer.hitCount = document.rowCount
+        composer.hitProvider = { [weak self] row, attributes in
+            guard let self else { throw CancellationError() }
+            return try await self.document.hitNodes(at: row, attributes: attributes)
+        }
+        composer.onRun = { [weak self] fields, sortKeys, minFrequency, nodes in
             guard let self else { return }
             Task { @MainActor in
                 do {
-                    let items = try await self.document.frequencyDistribution([criterion], minFrequency: minFrequency)
-                    self.show(FrequencyWindowController(criterion: criterion, items: items, minFrequency: minFrequency, context: self.document.printContext("Frequencies")))
+                    let table = try await self.document.frequencyTable(fields, minFrequency: minFrequency)
+                    self.show(FrequencyWindowController(table: table, sortKeys: sortKeys, minFrequency: minFrequency, nodes: nodes,
+                                                        context: self.document.printContext("Frequencies")))
                 } catch {
                     self.showErrorAlert(error)
                 }
             }
         }
-        presentAsSheet(sheet)
+        presentAsSheet(composer)
     }
 
     /// Where the current view's hits fall across the corpus.

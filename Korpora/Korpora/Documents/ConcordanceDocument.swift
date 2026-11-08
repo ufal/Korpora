@@ -750,6 +750,19 @@ final class ConcordanceDocument: NSDocument {
         return try await liveConcordance.frequencyDistribution(criteria, minFrequency: minFrequency)
     }
 
+    /// A frequency over attributes of the query's nodes (docs/frequency-composer.md), of the current view's hits.
+    func frequencyTable(_ fields: [FrequencyField], minFrequency: Int = 1) async throws -> FrequencyTable {
+        guard let liveConcordance else { throw AnalysisError.noResultsYet }
+        return try await liveConcordance.frequencyTable(fields, minFrequency: minFrequency)
+    }
+
+    /// Row `rowID` as words with the words each token of the query matched, for the frequency composer.
+    func hitNodes(at rowID: Int, attributes: [String], context: Int = 6) async throws -> HitNodes {
+        guard let liveConcordance else { throw AnalysisError.noResultsYet }
+        guard rowID >= 0, rowID < rowCount else { throw AnalysisError.noResultsYet }
+        return try await liveConcordance.hitNodes(forViewRow: viewIndex(forRow: rowID), context: context, attributes: attributes)
+    }
+
     func structuralInfo(at rowID: Int) async throws -> [(structure: String, attribute: String, value: String)] {
         guard let liveConcordance else { throw AnalysisError.noResultsYet }
         guard rowID >= 0, rowID < rowCount else { return [] }

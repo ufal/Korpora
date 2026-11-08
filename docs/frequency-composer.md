@@ -1,6 +1,7 @@
 # Frequency composer: frequencies over the nodes of a query (design, 2026-11-08)
 
-Status: design, nothing built. Target: version 0.5. Collocations reuse the first and third parts (see the end).
+Status: built (2026-11-08), covered by tests and rendered in both appearances; not yet tried by hand on a big corpus. Target: version 0.5.
+Collocations reuse the first and third parts (see the end).
 
 ## The problem
 
@@ -123,3 +124,34 @@ several lines and for text and document properties; the rows split into per-fiel
 adding, reordering and removing lines; the sort priority and direction on fixed rows (including accented strings); the colours of
 node *i* in the query and in the hit; an unmappable hit is shown uncoloured. A real-corpus test on UD (needs the pando build) for
 `a > b; freq by a.lemma, b.upos` giving `give⇥NOUN` first.
+
+## Built (2026-11-08)
+
+- **Engine:** `QueryNodes`, `FrequencyField`/`FrequencyRow`/`FrequencyTable` (folding for ignore case, the row cut),
+  `frequencyTable(_:minFrequency:)`, `FrequencySortKey` and `FrequencyTable.sorted(by:)`, and
+  `hitNodes(forViewRow:context:attributes:)` (hit `n` as words, with each query token's word and attribute values;
+  tested on pando: the subject that stands before its verb is node `b`). A default for engines without it throws.
+- **App:** `NodeStripView` (the query and the hit as text with coloured, badged spans; click, cursor, tooltips, VoiceOver
+  buttons), `NodeColors`, `NodeAttributePicker` (the popover: the corpus's attributes with the node's value in the hit shown beside
+  each), `FrequencyComposerModel` (rows, add/remove/move/sort rules: pure), `FrequencyComposerController` (the sheet that
+  replaces `FrequencySheetController`), and `FrequencyWindowController` rewritten for a `FrequencyTable`.
+- **Where it differs from the plan above:**
+  - The **count is a row of the table** ("Hits, number of hits") that can be put in order and sorted like the fields. The rule: the
+    rows that have a sort set decide the order, in the table's order; none set: by count, highest first.
+    Ties are always broken by count, then by pando's order.
+  - The "Add..." pull-down offers every node and attribute without the mouse (also the way VoiceOver reaches them),
+    and the "Text or document property" submenu.
+  - The first line is made for the user: the first pickable node's `form`, so Count does something at once.
+  - **Context offsets are gone** from the dialog (pando can't count at an offset, and the old sheet threw for any but 0).
+  - The results window sorts on a header click, keeping the earlier headings as tie-breakers (NSTableView's own multi-descriptor
+    behaviour), sorts tables above 5,000 rows in the background, and says at the bottom how many hits the rows cover.
+  - The old single-attribute `frequencyDistribution` is still in the engine (tests use it) but nothing in the app calls it.
+- **Tests:** `FrequencyComposerModelTests`, `NodeStripViewTests`, `FrequencyComposerTests` (with fake providers),
+  `FrequencyWindowTests`, `FrequencyTableTests`, `FrequencySortTests`, `HitNodesTests`. Sorting 100,000 rows of text takes about
+  1 s. `KORPORA_SNAPSHOT_DIR` makes `FrequencyComposerTests.snapshot` write light and dark PNGs of the sheet.
+
+## Not done yet
+- Try by hand on UD: a big query, shuffled and sorted results (the hit arrows), a wrapping query, the popover, dragging rows.
+- Drag reorder and the popover are not covered by tests (the model's moves are).
+- A tree view (`count by`), offsets from a node, repeated nodes as picks: as in "Not doing".
+- Collocations: the same strips with a node as the anchor (next).

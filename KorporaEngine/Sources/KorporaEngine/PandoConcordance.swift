@@ -472,6 +472,32 @@ public actor PandoConcordance: ConcordanceHandle {
         return (context["left"] as? String ?? "", context["match"] as? String ?? "", context["right"] as? String ?? "")
     }
 
+    public func hitNodes(forViewRow row: Int, context: Int, attributes: [String]) throws -> HitNodes {
+        guard let index = sourceIndex(forRow: row) else { throw PandoError.failure("That hit isn\u{2019}t there any more.") }
+        var attrs = attributes
+        if !attrs.contains("form") { attrs.append("form") }
+        guard let hit = try hitPage(offset: index, count: 1, context: context, attrs: attrs).first,
+              let text = hit["context"] as? [String: Any] else {
+            throw PandoError.failure("pando returned no context for that hit.")
+        }
+        func split(_ key: String) -> [String] {
+            (text[key] as? String ?? "").split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        }
+        let left = split("left"), match = split("match"), right = split("right")
+        let start = hit["match_start"] as? Int ?? 0
+        let tokens: [HitNodes.Token] = (hit["tokens"] as? [[String: Any]] ?? []).compactMap { token in
+            guard let position = token["pos"] as? Int else { return nil }
+            let offset = position - start
+            guard match.indices.contains(offset) else { return nil }
+            var values: [String: String] = [:]
+            for attribute in attributes {
+                if let value = token[attribute] as? String { values[attribute] = value }
+            }
+            return HitNodes.Token(wordIndex: left.count + offset, attributes: values)
+        }
+        return HitNodes(words: left + match + right, matchRange: left.count..<(left.count + match.count), tokens: tokens)
+    }
+
     // MARK: Analyses
 
     private static func measureName(_ measure: AssociationMeasure) -> String {

@@ -29,7 +29,10 @@ import Testing
     @Test func everyAuxiliaryWindowCanPrint() throws {
         let info = ConcordanceDocument.ExtendedContextInfo(corpusName: "c", documentLabel: nil, sentenceLabel: nil)
         let windows: [(String, NSWindowController)] = [
-            ("Frequencies", FrequencyWindowController(criterion: .init(attribute: "word"), items: [FrequencyItem(word: "a", freq: 1)])),
+            ("Frequencies", FrequencyWindowController(
+                table: FrequencyTable(fields: [FrequencyField(node: "a", attribute: "word")],
+                                      rows: [FrequencyRow(values: ["a"], count: 1, percent: 100)], totalMatches: 1),
+                sortKeys: [])),
             ("Collocations", CollocationWindowController(spec: CollocationSpec(attribute: "word"),
                                                          items: [CollocationItem(word: "a", freq: 1, cnt: 1, score: 1)])),
             ("Dispersion", DispersionWindowController(query: "x", distribution: HitDistribution(counts: [1], corpusSize: 10))),

@@ -227,27 +227,33 @@ import Testing
         try #require(window?.contentViewController?.view as? TableChartContainerView)
     }
 
+    private func frequencyContainer(of window: NSWindow?) throws -> TableChartContainerView {
+        try #require((window?.contentViewController as? FrequencyViewController)?.container)
+    }
+
     @Test func theFrequencyWindowChartsFrequenciesWithReadableKeys() throws {
-        let items = [
-            FrequencyItem(word: "the", freq: 50),
-            FrequencyItem(word: "cat\tNN", freq: 7),  // a two-level key
-            FrequencyItem(word: "of", freq: 20),
-        ]
-        let controller = FrequencyWindowController(criterion: .init(attribute: "word"), items: items)
-        let c = try container(of: controller.window)
+        let table = FrequencyTable(
+            fields: [FrequencyField(node: "a", attribute: "word"), FrequencyField(node: "b", attribute: "upos")],
+            rows: [FrequencyRow(values: ["the", "DET"], count: 50, percent: 65),
+                   FrequencyRow(values: ["cat", "NN"], count: 7, percent: 9),   // two fields
+                   FrequencyRow(values: ["of", "ADP"], count: 20, percent: 26)],
+            totalMatches: 77)
+        let controller = FrequencyWindowController(table: table, sortKeys: [])
+        let c = try frequencyContainer(of: controller.window)
         c.setMode(.chart)
-        #expect(c.chart.bars.map(\.label) == ["the", "of", "cat \u{00B7} NN"])
+        #expect(c.chart.bars.map(\.label) == ["the \u{00B7} DET", "of \u{00B7} ADP", "cat \u{00B7} NN"])
         #expect(c.chart.bars.map(\.value) == [50, 20, 7])
         #expect(c.measurePopUp.isHidden, "one measure, no pop-up")
     }
 
     @Test func theFrequencyWindowChartsPerMillionWhenTheEngineGaveIt() throws {
-        let items = [
-            FrequencyItem(word: "fiction", freq: 3, norm: 11, perMillion: 272_727.27),
-            FrequencyItem(word: "news", freq: 2, norm: 4, perMillion: 500_000),
-        ]
-        let controller = FrequencyWindowController(criterion: .init(attribute: "doc.genre"), items: items)
-        let c = try container(of: controller.window)
+        let table = FrequencyTable(
+            fields: [FrequencyField(node: nil, attribute: "doc.genre")],
+            rows: [FrequencyRow(values: ["fiction"], count: 3, percent: 60, perMillion: 272_727.27, norm: 11),
+                   FrequencyRow(values: ["news"], count: 2, percent: 40, perMillion: 500_000, norm: 4)],
+            totalMatches: 5)
+        let controller = FrequencyWindowController(table: table, sortKeys: [])
+        let c = try frequencyContainer(of: controller.window)
         c.setMode(.chart)
         #expect(c.measurePopUp.itemTitles == ["Frequency", "Per million"])
         // By raw frequency fiction leads; per million the shorter news documents do.
