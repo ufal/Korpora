@@ -315,6 +315,14 @@ All Swift/C++ code builds cleanly and all tests pass (`swift test` in
 
 ## Open goals (refreshed 2026-09-29)
 
+**Planned for 0.5 (added 2026-11-08):**
+- **Sentence tree display** (`docs/trees.md`): a button in Sentence view opens the dependency tree of the
+  sentence (arcs and a PDT-style tree, drawn natively, node inspector on click). Waits for pando's C API to
+  return the CoNLL-U of a hit's sentence (to be asked for; checked 2026-11-08, pando 0.4.9: not there yet).
+- **Frequency and collocation by node** (design notes in the conversation of 2026-11-08, not yet a page):
+  pick a node as a span in the query text; multi-level `count by a.x, b.y` (pando has it); `coll on <node>`
+  (pando has it, tested on UD).
+
 **Feature work on main** (all Phase 6, agreed roadmap):
 1. **6.9** Text-Types-style subcorpus creation: **done, click-tested**, an
    attribute picker and a checklist of real values with counts (the

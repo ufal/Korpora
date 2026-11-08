@@ -1,6 +1,7 @@
 # Trees: showing the dependency tree of a sentence (plan, 2026-11-08)
 
-Status: plan only, nothing built. First for the Sentence view of a concordance; later maybe for queries
+Status: plan only, nothing built. **Target: version 0.5.** Blocked on pando (CoNLL-U of a hit's sentence in
+the C API: not there in 0.4.9; the user is asking for it). First for the Sentence view of a concordance; later maybe for queries
 (a query drawn as a tree, see the node-picker notes in the frequency and collocation design) and for
 frequency results.
 
