@@ -85,8 +85,10 @@ a popover lists the attributes of the corpus, and choosing one adds a **line to 
 1. **`QueryNodes`** (engine layer, pure): scans a pando-CQL text and returns its token spans (`[` … matching `]`, with the
    quoted strings and brackets inside a value skipped), the user's name in front of each (`name:`), its repeat or optional mark, and a
    function that returns the query with the names inserted. Tested on: unnamed and named tokens, dependency arrows, `::` conditions, quoted
-   brackets, repeats, regions (`<s>`, not nodes), comments. This is the same lexical knowledge as the completion code
-   (`CQLCompletion.swift`), so it should share its tokenizer rather than add a second one.
+   brackets, repeats, regions (`<s>`, not nodes), comments. Built (`KorporaEngine/Sources/KorporaEngine/QueryNodes.swift`, 13 tests; pando accepts the text it
+   writes). `CQLCompletion.swift` has no tokenizer to share (only bracket-depth and open-quote checks), so `QueryNodes`
+   is a small scanner of its own with the same quote and `/regex/` rules. Generated names skip `s p t text doc match matchend`, which pando reads
+   as regions or the hit after `::`; a query starting with a dialect keyword (`MANATEE`, `PMLTQ`, `CWB`, `TIGER`) is not scanned.
 2. **`FrequencySpec`** (engine layer): lines of (node, attribute, ignore case), plus text and document properties; a method on
    `ConcordanceHandle` that writes the `freq by` text, runs it and returns rows with their per-field values split out
    (today the key arrives tab-joined in one string) and the cut information. The old single-attribute
