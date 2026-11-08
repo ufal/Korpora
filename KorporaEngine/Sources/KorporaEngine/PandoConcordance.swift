@@ -500,6 +500,38 @@ public actor PandoConcordance: ConcordanceHandle {
         }
     }
 
+    /// The most combinations a frequency over several fields keeps. pando's `freq` sends every combination
+    /// (it has no row limit, and `limit` doesn't apply: 712,305 noun lemmas in the UD release came back whole),
+    /// by count, so the table keeps the first rows and says it was cut.
+    static let frequencyRowLimit = 100_000
+
+    public func frequencyTable(_ fields: [FrequencyField], minFrequency: Int) throws -> FrequencyTable {
+        let program = try QueryNodes(query).frequencyProgram(for: fields)
+        let object = try library.result(library.run(handle, program, PandoLibrary.json([:])))
+        let rawRows = object["rows"] as? [[String: Any]] ?? []
+        let rows: [FrequencyRow] = rawRows.compactMap { row in
+            guard let key = row["key"] as? String, let count = row["count"] as? Int else { return nil }
+            var values = key.components(separatedBy: "\t")
+            // A value with a tab in it would shift the columns: keep the shape of the table.
+            if values.count > fields.count {
+                values = Array(values[..<(fields.count - 1)]) + [values[(fields.count - 1)...].joined(separator: "\t")]
+            }
+            while values.count < fields.count { values.append("") }
+            let percent = (row["pct"] as? Double) ?? (row["pct"] as? Int).map(Double.init) ?? 0
+            let perMillion = (row["ipm"] as? Double) ?? (row["ipm"] as? Int).map(Double.init)
+            return FrequencyRow(values: values, count: count, percent: percent, perMillion: perMillion,
+                                norm: row["subcorpus_size"] as? Int)
+        }
+        let total = object["total_matches"] as? Int ?? rows.reduce(0) { $0 + $1.count }
+        var table = FrequencyTable(fields: fields, rows: rows, totalMatches: total).folded()
+        if minFrequency > 1 { table.rows = table.rows.filter { $0.count >= minFrequency } }
+        if table.rows.count > Self.frequencyRowLimit {
+            table.rows = Array(table.rows.prefix(Self.frequencyRowLimit))
+            table.isCut = true
+        }
+        return table
+    }
+
     public func frequencyDistribution(_ criteria: [FrequencyCriterion], minFrequency: Int) throws -> [FrequencyItem] {
         guard !criteria.isEmpty else { return [] }
         if criteria.contains(where: { $0.contextOffset != 0 }) {

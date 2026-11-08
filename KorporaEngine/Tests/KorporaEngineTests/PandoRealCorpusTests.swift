@@ -105,4 +105,24 @@ final class PandoRealCorpusTests: XCTestCase {
             XCTFail("pando has no cheap lookup of the region of a shuffled hit")
         } catch is PandoError {}
     }
+
+    // MARK: Frequencies over nodes
+
+    func testFullUDFrequencyOverTwoNodesAndAResultCutAtTheRowLimit() async throws {
+        let engine = try engine()
+        let corpus = try await engine.openCorpus(name: try corpusPath("KORPORA_PANDO_UD"))
+        let give = try await engine.openConcordance(query: #"[lemma="give"] > [deprel="obj"]"#, in: corpus)
+        let table = try await give.frequencyTable([FrequencyField(node: "a", attribute: "lemma"),
+                                                   FrequencyField(node: "b", attribute: "upos")])
+        XCTAssertEqual(table.rows.first?.values, ["give", "NOUN"])
+        XCTAssertFalse(table.isCut)
+        XCTAssertEqual(table.shownMatches, table.totalMatches)
+
+        // 700,000 distinct noun lemmas: more rows than the limit, so the table says it was cut.
+        let nouns = try await engine.openConcordance(query: #"[upos="NOUN"]"#, in: corpus)
+        let cut = try await nouns.frequencyTable([FrequencyField(node: "a", attribute: "lemma")])
+        XCTAssertTrue(cut.isCut)
+        XCTAssertEqual(cut.rows.count, PandoConcordance.frequencyRowLimit)
+        XCTAssertLessThan(cut.shownMatches, cut.totalMatches)
+    }
 }

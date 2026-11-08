@@ -28,7 +28,11 @@ also what makes multi-level frequencies (one attribute of node N, another of nod
   is not documented, and the number of tokens in a hit varies, which breaks the node-to-token mapping above.
 - Groups in parentheses are not pando-CQL (pando says so), so the scanner does not handle them.
 - Pando orders the rows by count, descending. It has no sort by key, and its string order is by code point, not a collation.
-  The result is cut at a row limit (we ask for 100,000).
+  **`freq` has no row limit** (checked on UD: all 712,305 noun lemmas come back, in 2.5 s; the `limit` option does not apply, `group_limit`
+  is for `count` trees) **and no group count**. So the engine keeps the first 100,000 rows itself, says it did (`isCut`), and the
+  coverage is `sum of the rows' counts` against `total_matches`: "these rows cover X of the Y hits".
+- **No case folding in `freq by`** (`lower(…)`, `%c` are syntax errors there): "ignore case" is done in the app by merging the rows
+  whose values differ only in case (counts and percentages added, shown in lower case).
 
 ## The idea: the query is the picker
 
@@ -69,8 +73,8 @@ a popover lists the attributes of the corpus, and choosing one adds a **line to 
   priority and the count as an option (a "Count" pseudo-line, also ▲▼, first by default). Strings compare with
   `localizedStandardCompare` (or the language of the corpus), which is the collation that pando's code-point order lacks.
 - **Cut rows.** Sorting by a key sorts only the rows we received. If pando cut the result (the top 100,000 by count) the
-  window says "showing N of M combinations" and the ascending sort by key is marked as of the shown rows.
-  (To check: whether `freq` says how many groups there were before the cut; `count by` does.)
+  window says "these rows cover X of the Y hits" and the ascending sort by key is marked as of the shown rows. (pando's `freq` doesn't
+  say how many combinations there were, so there is no "N of M combinations".)
 
 ## The first hit
 
@@ -89,7 +93,7 @@ a popover lists the attributes of the corpus, and choosing one adds a **line to 
    writes). `CQLCompletion.swift` has no tokenizer to share (only bracket-depth and open-quote checks), so `QueryNodes`
    is a small scanner of its own with the same quote and `/regex/` rules. Generated names skip `s p t text doc match matchend`, which pando reads
    as regions or the hit after `::`; a query starting with a dialect keyword (`MANATEE`, `PMLTQ`, `CWB`, `TIGER`) is not scanned.
-2. **`FrequencySpec`** (engine layer): lines of (node, attribute, ignore case), plus text and document properties; a method on
+2. **`FrequencyField`, `FrequencyTable`, `frequencyTable(_:minFrequency:)`** (engine layer; built, 14 tests plus a UD one): lines of (node, attribute, ignore case), plus text and document properties; a method on
    `ConcordanceHandle` that writes the `freq by` text, runs it and returns rows with their per-field values split out
    (today the key arrives tab-joined in one string) and the cut information. The old single-attribute
    call stays for the old sheet until the composer replaces it.

@@ -75,6 +75,10 @@ private actor FakeConcordance: ConcordanceHandle {
     func frequencyDistribution(_ criteria: [FrequencyCriterion], minFrequency: Int) async throws -> [FrequencyItem] {
         [FrequencyItem(word: "fake", freq: 3)]
     }
+    func frequencyTable(_ fields: [FrequencyField], minFrequency: Int) async throws -> FrequencyTable {
+        FrequencyTable(fields: fields, rows: [FrequencyRow(values: fields.map { _ in "fake" }, count: 3, percent: 100)],
+                       totalMatches: 3)
+    }
 }
 
 private struct FakeEngine: CorpusEngine {

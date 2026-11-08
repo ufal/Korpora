@@ -92,6 +92,10 @@ public protocol ConcordanceHandle: Actor {
 
     func collocations(_ spec: CollocationSpec) async throws -> [CollocationItem]
     func frequencyDistribution(_ criteria: [FrequencyCriterion], minFrequency: Int) async throws -> [FrequencyItem]
+
+    /// A frequency over attributes of the query's nodes (and text or document properties), one column for each
+    /// field (docs/frequency-composer.md). Throws `FrequencyError` for a node the query doesn't have.
+    func frequencyTable(_ fields: [FrequencyField], minFrequency: Int) async throws -> FrequencyTable
 }
 
 extension ConcordanceHandle {
@@ -117,6 +121,10 @@ extension ConcordanceHandle {
 
     public func frequencyDistribution(_ criteria: [FrequencyCriterion]) async throws -> [FrequencyItem] {
         try await frequencyDistribution(criteria, minFrequency: 1)
+    }
+
+    public func frequencyTable(_ fields: [FrequencyField]) async throws -> FrequencyTable {
+        try await frequencyTable(fields, minFrequency: 1)
     }
 }
 
