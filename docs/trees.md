@@ -20,16 +20,60 @@ stays beside the concordance; arrow keys step to the previous and next hit.
    head, left to right in word order, the word and its label in each node. Better for seeing the
    shape of the structure and deep nesting; wide for long sentences.
 
-The UDPipe viewer is `web/lindat-service/js-treex-view.min.js` in `ufal/udpipe` (181 KB, minified,
-jQuery plugin `treexView`, uses d3). It renders Treex JSON in a web view. **We do not reuse it**: it is a
-JavaScript library, which means a `WKWebView` in a native AppKit app, a bundled jQuery, d3 and a minified
-file we can't maintain, and I found no licence notice in it (the UDPipe repository as a whole is MPL-2.0;
-that would have to be checked file by file before bundling). We take the *look* of the PDT style, not the
-code.
+The UDPipe viewer is a minified build of **`ufal/js-treex-view`** (MIT, Copyright 2015 ÚFAL; 1,626 lines of
+JavaScript with jQuery and d3). The licence allows reuse, but a JavaScript library in an AppKit app means a
+`WKWebView` and a bundled toolchain, so **we do not reuse the code, we take its algorithm and look** (below)
+and keep the copyright notice in `docs/` where we cite it.
 
-**Recommendation: draw both ourselves in AppKit/CoreGraphics, with a toggle** (Arcs | Tree), arcs first
-because it is the simpler layout and the right default for a concordancer (sentence order stays visible,
-so it reads like the sentence row above it). Both need the same layout inputs, so the second style is a
+## What js-treex-view does (read from the source, 2026-11-08)
+
+**Tree layout** (`lib/Layouts.js`, `tree()`): about 40 lines.
+1. Sort the nodes in word order. Each node's row is its **depth** (root 0).
+2. Row heights: the tallest node of each row; row *d* starts at the sum of the heights above it plus
+   `(nodeYSkip + marginY) * d` (constants: `nodeXSkip` 10, `nodeYSkip` 5, margins 2).
+3. x, walking the nodes in word order with a running `left`: `left` = the larger of (`left` + `nodeXSkip`) and
+   (right edge of the last node already placed **in the same row**) + `nodeXSkip`; the node's x is `left` plus
+   a 2-pixel step per node.
+So **x never goes backwards in word order, nodes in one row never overlap, and a parent is not centred over
+its children**: it sits at the x its own word order gives it (the layout is an *order-preserving* tree, so a
+reader can still read the sentence left to right across the tree; edges slant). No tree-shape optimisation
+is needed, which makes it simple, fast and stable between sentences. It works for non-projective trees
+as they are. That is the layout we build for the Tree style.
+
+**Drawing** (`lib/Stylesheet.js`, a-layer): a node is a small circle (r 3.5, a-nodes pink `#ff6666`, 1 px
+`#555` outline) and **below it a label** on a white 90% box, 12 pt Arial, several lines (form; then other
+attributes, each line can carry its own colour). Edges are straight 2 px `#555` lines between node centres
+(a dashed 1 px line for some functors in the t-layer, not needed). Several trees (layers, languages) are
+drawn side by side with a 10 px gap. A constituency variant puts the leaves on the bottom row and draws
+right-angled ("Manhattan") edges with dashed leaf links: not needed for UD.
+
+**Interaction** (`TreeView.js`, `Attributes.js`, `Hint.js`):
+- *Hover* a node: its word in the sentence text above the tree is highlighted, and a tooltip (`hint`)
+  follows the pointer.
+- *Click* a node: it is selected (red 1.5 px outline, 10% red fill); clicking it again deselects. The
+  selection opens a **300-pixel side panel with a table of the node's attributes**: name and value rows,
+  bold names, sorted by name, **nested attributes expandable** (a row whose value is a group opens as a
+  sub-table), and a **"hide empty" checkbox, on by default**.
+- *Click a word in the sentence text*: a ring grows from the node and fades (1 s), so the eye finds where
+  the word is in the tree.
+- A pager steps through the sentences (bundles) of a document.
+
+## What we take from it
+- The **order-preserving tree layout** for the Tree style: exactly the three steps above, in Swift, with the
+  word widths measured in the script fonts. It is a function from (depths, node sizes) to points, unit-tested.
+- The **look**: dot plus label below, thin grey straight edges, the label's second line being the relation
+  (the original shows the PDT's `afun` in dark blue; we show `deprel`), colours from the system palette.
+- The **interaction**: sentence strip above the tree with hover and click linking (here also the matched words
+  in the match colour); selecting a node opens an **attribute inspector**, here an `NSOutlineView` in a side
+  panel: `id`, `form`, `lemma`, `upos`, `xpos`, `head`, `deprel`, then `feats` as an expandable group (one row
+  per feature, `Number=Sing`), then `misc` and every other token attribute of the corpus; "Hide empty" on by
+  default; Copy value on a row; the same tooltip as in the concordance on hover; the ring pulse when a word is
+  clicked in the strip.
+- Not taken: layers, zones, Treex file loading, constituency drawing.
+
+**Recommendation: draw both ourselves in AppKit/CoreGraphics, with a toggle** (Arcs | Tree). Arcs first as
+the default for a concordancer (the sentence stays in one line and reads like the row above it); the Tree
+style is the js-treex-view layout, which is as short as the arcs one. Both need the same layout inputs, so the second style is a
 second drawing routine, not a second feature.
 
 Why native and not a web view: the fonts and sizes per script and the per-corpus language (typography.md)
@@ -76,15 +120,14 @@ fixed tree for tests.
 - *Arcs*: x positions from word widths (measured with the script fonts) and a gap; an arc per dependency;
   height proportional to the span, so that nested arcs nest and crossing arcs show non-projectivity;
   label centred on the arc; root arrow. Long sentences: horizontal scroll, not shrink.
-- *Tree*: classic layered layout on word order: leaves in word order, a parent above the middle of its
-  children (a Reingold-Tilford variant is overkill; "x of the head = mean of its children, then separate
-  overlaps" is enough for a sentence); a straight edge with the label beside it.
+- *Tree*: the order-preserving layout of js-treex-view (above): depth rows, x in word order, no overlap in a
+  row; a straight edge from each node to its head.
 - Enhanced dependencies (the CoNLL-U column 9, `10:nsubj|...`): not drawn in the first version.
 
 **View** (`SentenceTreeView`, an `NSView` in an `NSScrollView`): draws with CoreGraphics and the same
 `ScriptFontResolver` fonts; colours from the system palette (dark mode); matched words in the
 concordance's match colour; hover shows lemma, upos and feats in a tooltip (as the concordance tooltips do);
-click on a word selects it and its subtree. Accessibility: each word is an accessibility element with its
+click on a word selects it and opens the attribute inspector (above). Accessibility: each word is an accessibility element with its
 head and relation as the label.
 
 **Window**: `SentenceTreeWindowController`, one window that follows the selected row (so there are not
