@@ -1,9 +1,33 @@
 import Cocoa
 import KorporaEngine
+import Sparkle
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// Updates (docs/sparkle.md). A Debug build, which is what runs from Xcode, never checks by itself (it
+    /// would offer to replace the build being tried); "Check for Updates..." still works there.
+    private lazy var updaterController: SPUStandardUpdaterController = {
+        #if DEBUG
+        let start = false
+        #else
+        let start = true
+        #endif
+        return SPUStandardUpdaterController(startingUpdater: start, updaterDelegate: nil, userDriverDelegate: nil)
+    }()
+
+    #if DEBUG
+    private var updaterStarted = false
+    #endif
+
+    @objc func checkForUpdates(_ sender: Any?) {
+        #if DEBUG
+        if !updaterStarted { updaterStarted = true; updaterController.startUpdater() }
+        #endif
+        updaterController.checkForUpdates(sender)
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = makeMainMenu()
+        _ = updaterController   // starts the scheduled checks in a release build
         AppSettings.shared.applyCorporaDirectory()  // before anything looks for a corpus
         // Early versions hid some folders next to the corpora; make them visible (nothing is deleted).
         if CorpusLibrary.baseDirectoryIsAvailable { CorpusLibrary.makeHiddenFoldersVisible(in: CorpusLibrary.baseDirectory) }
@@ -76,6 +100,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenu = NSMenu()
         appMenuItem.submenu = appMenu
         appMenu.addItem(withTitle: "About Korpora", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        let updatesItem = NSMenuItem(title: "Check for Updates\u{2026}", action: #selector(checkForUpdates(_:)), keyEquivalent: "")
+        updatesItem.target = self
+        appMenu.addItem(updatesItem)
         appMenu.addItem(.separator())
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings(_:)), keyEquivalent: ",")
         settingsItem.target = self

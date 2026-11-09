@@ -327,7 +327,7 @@ All Swift/C++ code builds cleanly and all tests pass (`swift test` in
   checks that disagree about quotes and `/regex/`) are rebuilt on it. Gains: `a.` after `::` completes the attributes of node `a`,
   no completion inside strings and regexes, region-tag attributes, query colouring and error underlines. Its own commit, with the
   existing completion and pairing tests passing unchanged first.
-- **Sparkle 2 for updates** (evaluated 2026-11-08, Sparkle 2.10.1: judged easy enough). Korpora is
+- **Sparkle 2 for updates: built 2026-11-09, see `docs/sparkle.md`; the release steps are untried until 0.5 is built.** (Plan, evaluated 2026-11-08, Sparkle 2.10.1: judged easy enough.) Korpora is
   non-sandboxed, hardened runtime, Developer ID, notarized: the plain Sparkle 2 case. Work: add the Swift package
   in `project.yml`; `SUFeedURL` and `SUPublicEDKey` in Info.plist; a "Check for Updates..." item (an
   `SPUStandardUpdaterController`); `make-release.sh` signs Sparkle's nested helpers and the framework inside-out
@@ -365,7 +365,7 @@ not yet released):
 - A one-off 0-hit result (Phase 5.5) was seen once and never reproduced.
 
 **Release and distribution**
-- Out of scope for now: auto-updates (Sparkle), Mac App Store, an Intel or
+- Auto-updates: Sparkle, from 0.5 (`docs/sparkle.md`). Out of scope for now: Mac App Store, an Intel or
   universal build.
 - macOS 16–26 is covered by the macOS 15 floor but has never been run;
   tested on 15.7 and 27.

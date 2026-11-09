@@ -23,8 +23,14 @@
 # Env overrides: NOTARY_PROFILE (default korpora-notary), SIGN_IDENTITY
 # (default "Developer ID Application").
 #
-# Output: release/Korpora-<version>.dmg and its .sha256 next to it, plus
-# Korpora-<version>.dSYM.zip (keep it: the binary is stripped).
+# Updates (docs/sparkle.md): the final DMG is signed with the EdDSA key in the
+# login keychain and release/appcast.xml is written for it. Upload BOTH to the
+# GitHub release: the app reads .../releases/latest/download/appcast.xml.
+# CFBundleVersion must go up with every release (Sparkle compares it).
+# Optional release notes: docs/release-notes/<version>.md.
+#
+# Output: release/Korpora-<version>.dmg and its .sha256 next to it, release/
+# appcast.xml, plus Korpora-<version>.dSYM.zip (keep it: the binary is stripped).
 set -euo pipefail
 
 NOTARY_PROFILE="${NOTARY_PROFILE:-korpora-notary}"
@@ -83,9 +89,43 @@ VERSION="$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP/C
 BUILD="$(/usr/libexec/PlistBuddy -c 'Print CFBundleVersion' "$APP/Contents/Info.plist")"
 echo "    Korpora $VERSION ($BUILD)"
 
+# Sparkle's tools come with the package the build just resolved. The release
+# must be signed with the key the app's SUPublicEDKey names, or no installed
+# copy will accept the update: check before the long notarization, not after.
+SPARKLE_BIN="$DERIVED/SourcePackages/artifacts/sparkle/Sparkle/bin"
+[ -x "$SPARKLE_BIN/generate_appcast" ] || die "Sparkle's tools not found at $SPARKLE_BIN"
+APP_KEY="$(/usr/libexec/PlistBuddy -c 'Print SUPublicEDKey' "$APP/Contents/Info.plist")"
+KEYCHAIN_KEY="$("$SPARKLE_BIN/generate_keys" -p 2>/dev/null)" \
+    || die "no Sparkle signing key in the login keychain (see docs/sparkle.md)"
+[ "$KEYCHAIN_KEY" = "$APP_KEY" ] || die "the keychain's Sparkle key ($KEYCHAIN_KEY) is not the app's SUPublicEDKey ($APP_KEY)"
+
+# ------------------------------------------------------ Sparkle signing ----
+# Sparkle ships its nested code (Updater.app, Autoupdate, the two XPC
+# services) signed with its own identity and no secure timestamp, which the
+# notary service rejects; Xcode only re-signs the framework itself. Re-sign
+# inside-out with ours (the XPC services keep their own entitlements), then
+# the framework, then the app, whose seal covers the framework.
+SPARKLE="$APP/Contents/Frameworks/Sparkle.framework"
+if [ -d "$SPARKLE" ]; then
+    echo "==> Re-signing Sparkle"
+    SPARKLE_B="$SPARKLE/Versions/B"
+    for item in "$SPARKLE_B/XPCServices/Installer.xpc" "$SPARKLE_B/XPCServices/Downloader.xpc" \
+                "$SPARKLE_B/Autoupdate" "$SPARKLE_B/Updater.app" "$SPARKLE"; do
+        [ -e "$item" ] || die "Sparkle layout changed, missing: ${item#"$APP/"}"
+        retry3 codesign --force --sign "$SIGN_IDENTITY" --timestamp --options runtime \
+            --preserve-metadata=entitlements "$item" \
+            || die "could not sign ${item#"$APP/"}"
+    done
+    retry3 codesign --force --sign "$SIGN_IDENTITY" --timestamp --options runtime \
+        --preserve-metadata=entitlements "$APP" || die "could not re-sign the app"
+fi
+
 # -------------------------------------------------- signature checks ----
 echo "==> Checking signatures"
-for bin in "$APP" "$APP/Contents/Helpers/pando-index" "$APP/Contents/Frameworks/libpando.dylib"; do
+SIGNED=("$APP" "$APP/Contents/Helpers/pando-index" "$APP/Contents/Frameworks/libpando.dylib")
+[ -d "$SPARKLE" ] && SIGNED+=("$SPARKLE" "$SPARKLE/Versions/B/Updater.app" "$SPARKLE/Versions/B/Autoupdate" \
+    "$SPARKLE/Versions/B/XPCServices/Installer.xpc" "$SPARKLE/Versions/B/XPCServices/Downloader.xpc")
+for bin in "${SIGNED[@]}"; do
     info="$(codesign -dvv "$bin" 2>&1)" || die "not signed: $bin"
     grep -q "^Authority=Developer ID Application: .*($TEAM_ID)" <<<"$info" \
         || die "not signed with Developer ID ($TEAM_ID): $bin"
@@ -99,7 +139,13 @@ codesign --verify --deep --strict "$APP" || die "codesign --verify --deep --stri
 if codesign -d --entitlements - "$APP" 2>/dev/null | grep -q get-task-allow; then
     die "app is signed with com.apple.security.get-task-allow (CODE_SIGN_INJECT_BASE_ENTITLEMENTS must be NO for Release)"
 fi
-if otool -L "$APP/Contents/MacOS/Korpora" "$APP/Contents/Helpers/"* "$APP/Contents/Frameworks/"* | grep -q /opt/homebrew; then
+# Frameworks are bundles (otool wants the binary inside), so look at the
+# Mach-O files by name: the dylibs and each framework's main binary.
+LINKED=("$APP/Contents/MacOS/Korpora" "$APP/Contents/Helpers/"* "$APP/Contents/Frameworks/"*.dylib)
+for fw in "$APP/Contents/Frameworks/"*.framework; do
+    [ -d "$fw" ] && LINKED+=("$fw/Versions/Current/$(basename "$fw" .framework)")
+done
+if otool -L "${LINKED[@]}" | grep -q /opt/homebrew; then
     die "a binary still links a /opt/homebrew library"
 fi
 
@@ -192,8 +238,24 @@ if [ "$NOTARIZE" = yes ]; then
     xcrun stapler validate "$MNT/Korpora.app" >/dev/null || gk_ok=no
     hdiutil detach "$MNT" >/dev/null
     [ "$gk_ok" = yes ] || die "Gatekeeper rejected the app inside the DMG, or its ticket is missing"
+
+    # ------------------------------------------------------- appcast ----
+    # After stapling: the signature covers the DMG's final bytes.
+    echo "==> Writing the appcast"
+    FEED="$STAGE/appcast"
+    mkdir "$FEED"
+    cp "$DMG" "$FEED/"
+    NOTES="$ROOT/docs/release-notes/$VERSION.md"
+    EMBED=()
+    if [ -f "$NOTES" ]; then cp "$NOTES" "$FEED/Korpora-$VERSION.md"; EMBED=(--embed-release-notes); fi
+    "$SPARKLE_BIN/generate_appcast" --download-url-prefix "https://github.com/ufal/Korpora/releases/download/v$VERSION/" \
+        ${EMBED[@]+"${EMBED[@]}"} "$FEED" > "$OUT/appcast.log" 2>&1 \
+        || { tail -20 "$OUT/appcast.log" >&2; die "generate_appcast failed - log: $OUT/appcast.log"; }
+    cp "$FEED/appcast.xml" "$OUT/appcast.xml"
+    grep -q "sparkle:edSignature" "$OUT/appcast.xml" || die "the appcast has no EdDSA signature"
+    echo "    $OUT/appcast.xml"
 else
-    echo "==> Skipped notarization (--skip-notarize): this DMG is NOT distributable"
+    echo "==> Skipped notarization (--skip-notarize): this DMG is NOT distributable, and no appcast is written"
 fi
 
 # ----------------------------------------------------------- output ----

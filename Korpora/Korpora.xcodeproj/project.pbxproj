@@ -32,6 +32,7 @@
 		45074C6E1CD3CB489C2A8F86 /* KWICFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FBC2AD51085ABA715C92CF9 /* KWICFormatterTests.swift */; };
 		470EB5A8AA5C7EB0446D755D /* LegacyDefaultsMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE1B3764D995C534F371A028 /* LegacyDefaultsMigration.swift */; };
 		489542DF1FDF313AFC4C4EE1 /* FrequencyComposerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03BAE2CE377D52015F9FED65 /* FrequencyComposerTests.swift */; };
+		490CEDD4E2BDE3B6707728B1 /* UpdatesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF875F2D06EDE10A114C5335 /* UpdatesTests.swift */; };
 		4AB1276625BB1338E6EEFCA0 /* UnicodeScript.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC4BF85C4540BAB954E61CCC /* UnicodeScript.swift */; };
 		4B12DE00ECB62CF1B94A5E85 /* ExtendedContextWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20A93E62192681E88BFE51B2 /* ExtendedContextWindowController.swift */; };
 		4EACCC5BFE236FE4B27AACC1 /* TransferProgressSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99E96AB4BAFAEB74DFB6DDF1 /* TransferProgressSheetController.swift */; };
@@ -77,6 +78,7 @@
 		BE963D7E5B3A307F7B3242BD /* WindowPrinting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54A99C5F88D490DDA3B9D49F /* WindowPrinting.swift */; };
 		C402FCCB69C646D7D3C8E729 /* ConcordanceDocumentCancelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F194B5057DE1CD8400800B9E /* ConcordanceDocumentCancelTests.swift */; };
 		C6212C93C0C81D9DD271EBD5 /* CQLCompletionContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EC95A179DFFA46D1C19AA43 /* CQLCompletionContextTests.swift */; };
+		C90E4F31E1D61DB5933946F3 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 393AD6893C31A48AC7AE3347 /* Sparkle */; };
 		C9273B1C6C8F464645CCBFE4 /* TableChartContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC8BD92725D214DE0958CDD0 /* TableChartContainerView.swift */; };
 		CF4A6809B074F7507F882CB0 /* SettingsLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CE440FCBF2248C9252300CE /* SettingsLayout.swift */; };
 		D2292F83A25C875C1174CC94 /* ActiveImportTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E43418276694BEE9E6FD9C7 /* ActiveImportTracker.swift */; };
@@ -182,6 +184,7 @@
 		BC8BD92725D214DE0958CDD0 /* TableChartContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TableChartContainerView.swift; sourceTree = "<group>"; };
 		BDE4FABF7A76010BDB9DC82E /* CollocationComposerController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollocationComposerController.swift; sourceTree = "<group>"; };
 		BDE8E2FD74049DA17A699E82 /* FrequencyWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrequencyWindowController.swift; sourceTree = "<group>"; };
+		BF875F2D06EDE10A114C5335 /* UpdatesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatesTests.swift; sourceTree = "<group>"; };
 		C3BE7AC76198AF6B7E6BE406 /* CQLPatterns.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CQLPatterns.swift; sourceTree = "<group>"; };
 		CA5B7A3F4ED9EF879F25E81A /* CollocationWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollocationWindowController.swift; sourceTree = "<group>"; };
 		CF1FD3479E35618789EA56FC /* CQLQueryField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CQLQueryField.swift; sourceTree = "<group>"; };
@@ -214,6 +217,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F862FD9EFBFAFD408F69D5F0 /* KorporaEngine in Frameworks */,
+				C90E4F31E1D61DB5933946F3 /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -322,6 +326,7 @@
 				91CE8F8CB611E321AAA51650 /* SubcorpusValuePickerModelTests.swift */,
 				6483D27295A44D6449A8BDF9 /* ToolbarGroupTests.swift */,
 				50429E54926CEE548BDD9820 /* UnicodeScriptTests.swift */,
+				BF875F2D06EDE10A114C5335 /* UpdatesTests.swift */,
 				FFEA52040B5D2BEC33D93475 /* WindowPrintingTests.swift */,
 			);
 			path = KorporaTests;
@@ -412,6 +417,7 @@
 			name = Korpora;
 			packageProductDependencies = (
 				E311D4B1BE20D3D50EA5385C /* KorporaEngine */,
+				393AD6893C31A48AC7AE3347 /* Sparkle */,
 			);
 			productName = Korpora;
 			productReference = F564FB37D52D1AD65CC90F09 /* Korpora.app */;
@@ -456,6 +462,7 @@
 			mainGroup = 661A2B36F0D8637FD4135D34;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				4DE0F5EEAB09AEAB825F7875 /* XCRemoteSwiftPackageReference "Sparkle" */,
 				493BF7B3B28C92490239BFF6 /* XCLocalSwiftPackageReference "../KorporaEngine" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -538,6 +545,7 @@
 				8EE0AC24488FF49D925A04ED /* SubcorpusValuePickerModelTests.swift in Sources */,
 				ED4128B36A80A7168711F606 /* ToolbarGroupTests.swift in Sources */,
 				DA2EEF3E76DF1BE3F5518902 /* UnicodeScriptTests.swift in Sources */,
+				490CEDD4E2BDE3B6707728B1 /* UpdatesTests.swift in Sources */,
 				A38E6E5106AF311BC61559D4 /* WindowPrintingTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -858,7 +866,23 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		4DE0F5EEAB09AEAB825F7875 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {
+				kind = exactVersion;
+				version = 2.10.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
+		393AD6893C31A48AC7AE3347 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4DE0F5EEAB09AEAB825F7875 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
 		E311D4B1BE20D3D50EA5385C /* KorporaEngine */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = KorporaEngine;

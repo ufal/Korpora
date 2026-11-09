@@ -25,6 +25,11 @@ options:
 packages:
   KorporaEngine:
     path: ../KorporaEngine
+  # Updates (docs/sparkle.md). Pinned exactly: the signing steps in
+  # scripts/make-release.sh and the tools it runs come from this version.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.1
 
 targets:
   Korpora:
@@ -39,6 +44,8 @@ targets:
     dependencies:
       - package: KorporaEngine
         product: KorporaEngine
+      - package: Sparkle
+        product: Sparkle
     # Bundle pando into the app for release builds: `libpando.dylib` into
     # Contents/Frameworks (the engine loads it with dlopen) and `pando-index`
     # into Contents/Helpers (corpus import). Gated on PANDO_BUILD_DIR so dev
