@@ -175,8 +175,36 @@ final class UDMetadataTests: XCTestCase {
         for name in ["tiny.conllu", "cs_pdt.conllu", "pdt-ud-train.conllu", "_x-ud-test.conllu", "cs_-ud-test.conllu", "cs_pdt-ud-train.txt"] {
             XCTAssertNil(UDMetadata.parse(fileName: name), name)
         }
-        XCTAssertEqual(UDMetadata.header(forFileName: "en_ewt-ud-dev.conllu"),
-                       "# newregion text\n# text_id = en_ewt-ud-dev.conllu\n# text_langcode = en\n# text_treebank = ewt\n")
+        XCTAssertEqual(UDMetadata.header(forFileName: "en_ewt-ud-dev.conllu"), """
+            # newregion text
+            # text_family = Indo-European
+            # text_genus = Germanic
+            # text_id = en_ewt-ud-dev.conllu
+            # text_iso3 = eng
+            # text_lang = English
+            # text_langcode = en
+            # text_script = Latn
+            # text_treebank = ewt
+
+            """.replacingOccurrences(of: "\n\n", with: "\n"))
+        // A language UD's table doesn't have: only what the file name says (pando pads the rest with `_`).
+        XCTAssertEqual(UDMetadata.header(forFileName: "qqq_x-ud-dev.conllu"),
+                       "# newregion text\n# text_id = qqq_x-ud-dev.conllu\n# text_langcode = qqq\n# text_treebank = x\n")
+        // No branch given: no line for it (Abkhaz is a family of its own in the table).
+        XCTAssertFalse(try XCTUnwrap(UDMetadata.header(forFileName: "ab_abnc-ud-test.conllu")).contains("text_genus"))
+        XCTAssertTrue(try XCTUnwrap(UDMetadata.header(forFileName: "cs_pdt-ud-dev.conllu")).contains("# text_genus = Slavic\n"))
+    }
+
+    func testEveryLanguageOfTheTableHasItsFieldsAndCodesAreLowerCase() {
+        XCTAssertGreaterThan(UDLanguages.byCode.count, 280)
+        for (code, entry) in UDLanguages.byCode {
+            XCTAssertEqual(code, code.lowercased())
+            XCTAssertFalse(entry.name.isEmpty, code)
+            XCTAssertFalse(entry.iso3.isEmpty, code)
+            XCTAssertFalse(entry.family.isEmpty, code)
+            XCTAssertEqual(entry.script.count, 4, code)
+        }
+        XCTAssertEqual(UDLanguages.byCode["cs"]?.family, "Indo-European", "UD's \"IE\" is written out")
     }
 
     private func write(_ text: String, as name: String, in box: TestPando.Sandbox) throws -> URL {
@@ -221,7 +249,28 @@ final class UDMetadataTests: XCTestCase {
         XCTAssertEqual(codes, ["cs", "en"])
         XCTAssertEqual(treebanks, ["ewt", "pdt"])
         XCTAssertEqual(ids, ["cs_pdt-ud-train.conllu", "en_ewt-ud-dev.conllu"])
+        // What UD's language table adds.
+        let names = try await corpus.attributeValues(attribute: "text.lang")
+        let families = try await corpus.attributeValues(attribute: "text.family")
+        let genera = try await corpus.attributeValues(attribute: "text.genus")
+        let scripts = try await corpus.attributeValues(attribute: "text.script")
+        let iso = try await corpus.attributeValues(attribute: "text.iso3")
+        XCTAssertEqual(names, ["Czech", "English"])
+        XCTAssertEqual(families, ["Indo-European"])
+        XCTAssertEqual(genera, ["Germanic", "Slavic"])
+        XCTAssertEqual(scripts, ["Latn"])
+        XCTAssertEqual(iso, ["ces", "eng"])
         XCTAssertEqual(CorpusLibrary.entries().first?.tokens, 16)
+        // The point of it: a search or a subcorpus by branch, family or script.
+        func hits(_ restriction: String) async throws -> Int {
+            try await engine.openConcordance(query: "[upos=\"NOUN\"] :: \(restriction)", in: corpus).totalHits
+        }
+        let slavic = try await hits("match.text_genus = \"Slavic\"")
+        let germanic = try await hits("match.text_genus = \"Germanic\"")
+        let indoEuropean = try await hits("match.text_family = \"Indo-European\"")
+        let latin = try await hits("match.text_script = \"Latn\"")
+        let cyrillic = try await hits("match.text_script = \"Cyrl\"")
+        XCTAssertEqual([slavic, germanic, indoEuropean, latin, cyrillic], [4, 4, 8, 8, 0])
         let leftovers = try FileManager.default.contentsOfDirectory(atPath: box.corpora.path)
         XCTAssertEqual(leftovers, ["UD"], "the staged copies are gone")
     }

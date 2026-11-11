@@ -4,6 +4,7 @@ import Foundation
 /// `scripts/build_ud_corpus.py` writes it: a UD file is called `{language}_{treebank}-ud-{split}.conllu`
 /// (`cs_pdt-ud-train.conllu`), and the language, the treebank and the file name become the attributes
 /// `text.langcode`, `text.treebank` and `text.id`, so a search or a subcorpus can say "Czech" or "the PDT".
+/// Korpora adds what UD's language table knows (`text.lang`, `text.iso3`, `text.family`, `text.genus`, `text.script`).
 /// `pando-index` itself only records what the comments of a file say, and UD files don't say it.
 /// The files the user picked are never changed: the import indexes copies with the lines put in front.
 enum UDMetadata {
@@ -20,10 +21,21 @@ enum UDMetadata {
     }
 
     /// The lines to put at the top of the file called `name`: a `text` region and its attributes. nil for a name
-    /// that isn't a UD one. Same keys, same order as pando's script.
+    /// that isn't a UD one. The three of pando's script (`text_id`, `text_langcode`, `text_treebank`), and what UD's
+    /// language table (`UDLanguages`) says about the language, so that a search or a subcorpus can pick by language
+    /// name, family, branch (genus) or script: `text_lang`, `text_iso3`, `text_family`, `text_genus`, `text_script`.
+    /// A language the table doesn't have, or a family without branches, gets no such line: pando fills it with `_`.
     static func header(forFileName name: String) -> String? {
         guard let parsed = parse(fileName: name) else { return nil }
-        return "# newregion text\n# text_id = \(name)\n# text_langcode = \(parsed.language)\n# text_treebank = \(parsed.treebank)\n"
+        var attributes: [(String, String)] = [("text_id", name), ("text_langcode", parsed.language), ("text_treebank", parsed.treebank)]
+        if let language = UDLanguages.byCode[parsed.language] {
+            attributes += [("text_lang", language.name), ("text_iso3", language.iso3), ("text_family", language.family),
+                           ("text_script", language.script)]
+            if let genus = language.genus { attributes.append(("text_genus", genus)) }
+        }
+        // In key order, as the script writes them.
+        let lines = attributes.sorted { $0.0 < $1.0 }.map { "# \($0.0) = \($0.1)\n" }
+        return "# newregion text\n" + lines.joined()
     }
 
     /// Whether the file already opens a `text` region (it has been prepared, by pando's script or by hand).

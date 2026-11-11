@@ -336,6 +336,17 @@ All Swift/C++ code builds cleanly and all tests pass (`swift test` in
   visible "Importing ..." folder (the files picked are never changed; a file that already opens a `text` region, or whose name is
   not a UD one, is linked as it was): `text.langcode`, `text.treebank`, `text.id`. Costs the disk space of the copies while the
   import runs (about the size of the treebanks). A corpus imported before has to be imported again.
+  **Language attributes from UD's table** (2026-11-11): `scripts/generate-ud-languages.py` turns
+  [codes_and_flags.yaml](https://github.com/UniversalDependencies/docs-automation/blob/master/codes_and_flags.yaml) of UD's
+  docs-automation into `UDLanguages.swift` (292 languages; it covers every code in the file names of UD 2.19; run it again when UD
+  adds languages). The import adds, from the language code of the file name: `text.lang` (the name, "Czech"; was `_`), `text.iso3`,
+  `text.family` (UD's "IE" is written "Indo-European"), `text.genus` (the branch: Germanic, Slavic, ...; UD gives none for
+  isolates and some families, then `_`) and `text.script` (an ISO 15924 code; the first one UD lists, so Romanian is Latn though UD also
+  lists Cyrl). Why a single script: pando-index's `--multivalue` would make "Latn|Cyrl" one value in the pickers. Left out: `flag`
+  (a country code for a picture, with oddities such as `GE-AB`). pando-index takes the extra header keys as attributes of `text`, and
+  fills them with `_` for a file without them. Filtering: `:: match.text_genus = "Slavic"`, or a subcorpus on `text` by `genus`,
+  `family`, `script`, `lang`. Tried on 284 treebanks: 202 languages, 36 families, 59 genera, 27 scripts. The indexes are no longer
+  byte-identical to the script's (they have these attributes more); the three of the script are unchanged.
   **Checked against the script** (2026-11-11, UD 2.19, the bundled `pando-index` for both): UD_Czech-PDTC (dev and test), then 284
   treebanks (422 files, 362 MB: every one under 4 MB and every one with `# text_*` comments up to 60 MB). The indexes of the script
   and of the importer are byte-identical in all 184 and 1,174 files; only `corpus.info` differs (index id, timestamps). So the

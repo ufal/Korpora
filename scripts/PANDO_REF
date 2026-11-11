@@ -3,4 +3,7 @@
 # a7dbe56 is pando v0.4.4 (MIT licence); upstream has no tag for 0.4.2-0.4.4.
 # Skipped on purpose: v0.4.5 (ac4f020) only changes dcoll scores (word profiles, 2.0) and makes pando-index write
 # extra <attr>.dcoll files (+82 MB per 38 M tokens). Take it when the app uses dcoll.
+# 2026-11-11: looked at v0.4.11 (91a5209), 17 commits on: nothing we use. No CoNLL-U sentence option yet (the tree display waits for it).
+# New: subcorpora in pando (EF-12: position sets, "subcorpus" on pando_query / pando_run, ipm under `use`), KonText steps, the
+# vertical reader, PML-TQ and CWB dialects, Linux fixes. Take it for the C API option, or when subcorpora move into pando.
 a7dbe56
