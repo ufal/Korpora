@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import KorporaEngine
 import Testing
@@ -121,5 +122,42 @@ import Testing
         controller.tableView.sortDescriptors = [NSSortDescriptor(key: "name", ascending: false)]
         #expect(CorpusLibrary.names() == ["gamma", "beta", "alpha"])
         #expect(shared.corpusOrder == ["gamma", "beta", "alpha"])
+    }
+
+    @Test func theAppearanceFollowsTheSystemUntilTheUserChoosesLightOrDark() throws {
+        let suite = "korpora.test.appearance.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults)
+        #expect(settings.appearanceChoice == .system)
+        #expect(AppearanceChoice.system.appearance == nil, "nil is what lets the app follow the system")
+        #expect(AppearanceChoice.light.appearance?.name == .aqua)
+        #expect(AppearanceChoice.dark.appearance?.name == .darkAqua)
+        settings.appearanceChoice = .dark
+        #expect(AppSettings(defaults: defaults).appearanceChoice == .dark)
+        // An unknown stored value goes back to the system's.
+        defaults.set("sepia", forKey: "appearanceChoice")
+        #expect(settings.appearanceChoice == .system)
+        #expect(AppearanceChoice.allCases.map(\.title) == ["System", "Light", "Dark"])
+    }
+
+    @MainActor @Test func choosingInTheAppearancePaneSetsTheAppsAppearanceAndSystemGivesItBack() throws {
+        let shared = AppSettings.shared
+        let saved = shared.defaults.object(forKey: "appearanceChoice")
+        defer {
+            if let saved { shared.defaults.set(saved, forKey: "appearanceChoice") } else { shared.defaults.removeObject(forKey: "appearanceChoice") }
+            shared.applyAppearance()
+        }
+        let pane = AppearanceSettingsViewController()
+        _ = pane.view
+        pane.appearancePopUp.selectItem(withTitle: "Dark")
+        _ = pane.appearancePopUp.sendAction(pane.appearancePopUp.action, to: pane.appearancePopUp.target)
+        #expect(NSApp.appearance?.name == .darkAqua)
+        pane.appearancePopUp.selectItem(withTitle: "Light")
+        _ = pane.appearancePopUp.sendAction(pane.appearancePopUp.action, to: pane.appearancePopUp.target)
+        #expect(NSApp.appearance?.name == .aqua)
+        pane.appearancePopUp.selectItem(withTitle: "System")
+        _ = pane.appearancePopUp.sendAction(pane.appearancePopUp.action, to: pane.appearancePopUp.target)
+        #expect(NSApp.appearance == nil)
     }
 }

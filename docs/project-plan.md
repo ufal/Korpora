@@ -327,6 +327,10 @@ All Swift/C++ code builds cleanly and all tests pass (`swift test` in
   checks that disagree about quotes and `/regex/`) are rebuilt on it. Gains: `a.` after `::` completes the attributes of node `a`,
   no completion inside strings and regexes, region-tag attributes, query colouring and error underlines. Its own commit, with the
   existing completion and pairing tests passing unchanged first.
+- **Appearance: System / Light / Dark** (done 2026-11-11, Settings > Appearance, top). The app follows the Mac's appearance, which
+  is the default and what the HIG ask for; the pop-up sets `NSApp.appearance` (nil for System, `.aqua`, `.darkAqua`), so every
+  window follows it, and it is applied at launch and on change (`AppearanceChoice`, `AppSettings.applyAppearance`). Printing
+  already draws on paper in light colours whatever the choice (`PaperSafeDrawing`).
 - **UD metadata at import: done 2026-11-11** (`UDMetadata.swift`). A UD corpus imported in Korpora had no language metadata,
   while the one built with pando's `scripts/build_ud_corpus.py` (`pando-spike.sh ud`, the linked "Universal Dependencies 2.18")
   has it. Why: `pando-index` records only what the comments say; UD files carry the language and the treebank only in the file

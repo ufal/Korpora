@@ -32,7 +32,7 @@ import Testing
         #expect(window.styleMask.contains(.resizable))
         let designed: [SettingsWindowController.Pane: NSSize] = [
             .corpora: NSSize(width: 840, height: 470),
-            .appearance: NSSize(width: 460, height: 550),
+            .appearance: NSSize(width: 460, height: 590),
             .concordance: NSSize(width: 460, height: 290),
         ]
         for pane in SettingsWindowController.Pane.allCases {
@@ -137,7 +137,7 @@ import Testing
         let list = try #require(scrollViews(in: controller.view).last)
         let before = list.frame.height
 
-        window.setContentSize(NSSize(width: 600, height: 720))
+        window.setContentSize(NSSize(width: 600, height: 760))
         layOut(window)
         #expect(list.frame.height >= before + 150, "list went from \(before) to \(list.frame.height)")
     }

@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = makeMainMenu()
         _ = updaterController   // starts the scheduled checks in a release build
+        AppSettings.shared.applyAppearance()
         AppSettings.shared.applyCorporaDirectory()  // before anything looks for a corpus
         // Early versions hid some folders next to the corpora; make them visible (nothing is deleted).
         if CorpusLibrary.baseDirectoryIsAvailable { CorpusLibrary.makeHiddenFoldersVisible(in: CorpusLibrary.baseDirectory) }

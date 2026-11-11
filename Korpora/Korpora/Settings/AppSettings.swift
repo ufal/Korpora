@@ -2,6 +2,29 @@ import Cocoa
 import KorporaEngine
 
 /// Backs the Settings window; persisted via `UserDefaults`.
+/// How the app looks: the system's light or dark appearance, or one of them always. The system's is the default,
+/// as the Human Interface Guidelines ask; the others are for a user who wants Korpora to differ from the Mac.
+enum AppearanceChoice: String, CaseIterable {
+    case system, light, dark
+
+    var title: String {
+        switch self {
+        case .system: return "System"
+        case .light: return "Light"
+        case .dark: return "Dark"
+        }
+    }
+
+    /// What `NSApplication.appearance` is set to: nil follows the system.
+    var appearance: NSAppearance? {
+        switch self {
+        case .system: return nil
+        case .light: return NSAppearance(named: .aqua)
+        case .dark: return NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
 final class AppSettings {
     static let shared = AppSettings()
     static let didChangeNotification = Notification.Name("AppSettingsDidChange")
@@ -26,6 +49,7 @@ final class AppSettings {
         static let structuralAttributeColor = "structuralAttributeColor"
         static let matchColor = "matchColor"
         static let corpusOrder = "corpusOrder"
+        static let appearanceChoice = "appearanceChoice"
         static let usesAlternatingRowBackground = "usesAlternatingRowBackground"
         static let extendedContextDisplayMode = "extendedContextDisplayMode"
         static let allowMultipleExtendedContexts = "allowMultipleExtendedContexts"
@@ -60,6 +84,22 @@ final class AppSettings {
         guard self === AppSettings.shared else { return }
         CorpusLibrary.customBaseDirectory = corporaDirectory
         applyCorpusOrder()
+    }
+
+    var appearanceChoice: AppearanceChoice {
+        get { defaults.string(forKey: Key.appearanceChoice).flatMap(AppearanceChoice.init(rawValue:)) ?? .system }
+        set {
+            defaults.set(newValue.rawValue, forKey: Key.appearanceChoice)
+            applyAppearance()
+            NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
+        }
+    }
+
+    /// Gives the application the chosen appearance (every window follows it). Done at launch and on every change;
+    /// only for the app's own settings, so that tests with their own defaults leave the app alone.
+    func applyAppearance() {
+        guard self === AppSettings.shared else { return }
+        NSApp.appearance = appearanceChoice.appearance
     }
 
     /// The order the user put the corpora in, in the list and so in the New Concordance pop-up, whose first is the

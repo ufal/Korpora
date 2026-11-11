@@ -9,6 +9,7 @@ final class AppearanceSettingsViewController: NSViewController {
     private let positionalColorWell = NSColorWell()
     private let structuralColorWell = NSColorWell()
     let matchColorWell = NSColorWell()
+    let appearancePopUp = NSPopUpButton(frame: .zero, pullsDown: false)
     private let alternatingRowCheckbox = NSButton(
         checkboxWithTitle: "Alternate row background", target: nil, action: nil)
     let scriptTableView = NSTableView()
@@ -41,9 +42,18 @@ final class AppearanceSettingsViewController: NSViewController {
     }
 
     override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 460, height: 550))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 460, height: 590))
         // Follow the window when it's resized, like the Corpora pane: the table of fonts takes the extra width and height.
         root.autoresizingMask = [.width, .height]
+
+        let appearanceLabel = NSTextField(labelWithString: "Appearance:")
+        appearanceLabel.font = .boldSystemFont(ofSize: 12)
+        appearancePopUp.addItems(withTitles: AppearanceChoice.allCases.map(\.title))
+        appearancePopUp.selectItem(withTitle: AppSettings.shared.appearanceChoice.title)
+        appearancePopUp.target = self
+        appearancePopUp.action = #selector(appearanceChanged)
+        appearancePopUp.setAccessibilityLabel("Appearance")
+        appearancePopUp.toolTip = "System follows the Mac\u{2019}s light or dark appearance (System Settings > Appearance)"
 
         let scriptTitle = NSTextField(labelWithString: "Fonts by script:")
         scriptTitle.font = .boldSystemFont(ofSize: 12)
@@ -118,7 +128,7 @@ final class AppearanceSettingsViewController: NSViewController {
         alternatingRowCheckbox.action = #selector(alternatingRowChanged)
 
         let views: [NSView] = [
-            scriptTitle, scriptHint, scriptScrollView, addButton, removeButton, changeScriptFontButton,
+            appearanceLabel, appearancePopUp, scriptTitle, scriptHint, scriptScrollView, addButton, removeButton, changeScriptFontButton,
             colorsTitle, positionalLabel, positionalColorWell, structuralLabel, structuralColorWell,
             matchLabel, matchColorWell,
             alternatingRowCheckbox,
@@ -131,7 +141,13 @@ final class AppearanceSettingsViewController: NSViewController {
         removeButton.widthAnchor.constraint(equalToConstant: 28).isActive = true
 
         NSLayoutConstraint.activate([
-            scriptTitle.topAnchor.constraint(equalTo: root.topAnchor, constant: 20),
+            appearanceLabel.topAnchor.constraint(equalTo: root.topAnchor, constant: 20),
+            appearanceLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20),
+            appearancePopUp.centerYAnchor.constraint(equalTo: appearanceLabel.centerYAnchor),
+            appearancePopUp.leadingAnchor.constraint(equalTo: appearanceLabel.trailingAnchor, constant: 8),
+            appearancePopUp.widthAnchor.constraint(equalToConstant: 110),
+
+            scriptTitle.topAnchor.constraint(equalTo: appearanceLabel.bottomAnchor, constant: 20),
             scriptTitle.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20),
 
             scriptHint.topAnchor.constraint(equalTo: scriptTitle.bottomAnchor, constant: 4),
@@ -178,12 +194,17 @@ final class AppearanceSettingsViewController: NSViewController {
         ])
 
         view = root
-        preferredContentSize = NSSize(width: 460, height: 550)
+        preferredContentSize = NSSize(width: 460, height: 590)
         reloadRows()
     }
 
     @objc private func positionalColorChanged() {
         AppSettings.shared.positionalAttributeColor = positionalColorWell.color
+    }
+
+    @objc private func appearanceChanged() {
+        let title = appearancePopUp.titleOfSelectedItem
+        AppSettings.shared.appearanceChoice = AppearanceChoice.allCases.first { $0.title == title } ?? .system
     }
 
     @objc private func matchColorChanged() {
