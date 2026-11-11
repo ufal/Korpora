@@ -177,13 +177,13 @@ final class UDMetadataTests: XCTestCase {
         }
         XCTAssertEqual(UDMetadata.header(forFileName: "en_ewt-ud-dev.conllu"), """
             # newregion text
-            # text_family = Indo-European
-            # text_genus = Germanic
             # text_id = en_ewt-ud-dev.conllu
-            # text_iso3 = eng
             # text_lang = English
+            # text_lang_family = Indo-European
+            # text_lang_genus = Germanic
+            # text_lang_iso3 = eng
+            # text_lang_script = Latn
             # text_langcode = en
-            # text_script = Latn
             # text_treebank = ewt
 
             """.replacingOccurrences(of: "\n\n", with: "\n"))
@@ -191,8 +191,8 @@ final class UDMetadataTests: XCTestCase {
         XCTAssertEqual(UDMetadata.header(forFileName: "qqq_x-ud-dev.conllu"),
                        "# newregion text\n# text_id = qqq_x-ud-dev.conllu\n# text_langcode = qqq\n# text_treebank = x\n")
         // No branch given: no line for it (Abkhaz is a family of its own in the table).
-        XCTAssertFalse(try XCTUnwrap(UDMetadata.header(forFileName: "ab_abnc-ud-test.conllu")).contains("text_genus"))
-        XCTAssertTrue(try XCTUnwrap(UDMetadata.header(forFileName: "cs_pdt-ud-dev.conllu")).contains("# text_genus = Slavic\n"))
+        XCTAssertFalse(try XCTUnwrap(UDMetadata.header(forFileName: "ab_abnc-ud-test.conllu")).contains("text_lang_genus"))
+        XCTAssertTrue(try XCTUnwrap(UDMetadata.header(forFileName: "cs_pdt-ud-dev.conllu")).contains("# text_lang_genus = Slavic\n"))
     }
 
     func testEveryLanguageOfTheTableHasItsFieldsAndCodesAreLowerCase() {
@@ -202,7 +202,8 @@ final class UDMetadataTests: XCTestCase {
             XCTAssertFalse(entry.name.isEmpty, code)
             XCTAssertFalse(entry.iso3.isEmpty, code)
             XCTAssertFalse(entry.family.isEmpty, code)
-            XCTAssertEqual(entry.script.count, 4, code)
+            XCTAssertFalse(entry.scripts.isEmpty, code)
+            for script in entry.scripts { XCTAssertEqual(script.count, 4, code) }
         }
         XCTAssertEqual(UDLanguages.byCode["cs"]?.family, "Indo-European", "UD's \"IE\" is written out")
     }
@@ -251,10 +252,10 @@ final class UDMetadataTests: XCTestCase {
         XCTAssertEqual(ids, ["cs_pdt-ud-train.conllu", "en_ewt-ud-dev.conllu"])
         // What UD's language table adds.
         let names = try await corpus.attributeValues(attribute: "text.lang")
-        let families = try await corpus.attributeValues(attribute: "text.family")
-        let genera = try await corpus.attributeValues(attribute: "text.genus")
-        let scripts = try await corpus.attributeValues(attribute: "text.script")
-        let iso = try await corpus.attributeValues(attribute: "text.iso3")
+        let families = try await corpus.attributeValues(attribute: "text.lang_family")
+        let genera = try await corpus.attributeValues(attribute: "text.lang_genus")
+        let scripts = try await corpus.attributeValues(attribute: "text.lang_script")
+        let iso = try await corpus.attributeValues(attribute: "text.lang_iso3")
         XCTAssertEqual(names, ["Czech", "English"])
         XCTAssertEqual(families, ["Indo-European"])
         XCTAssertEqual(genera, ["Germanic", "Slavic"])
@@ -265,14 +266,33 @@ final class UDMetadataTests: XCTestCase {
         func hits(_ restriction: String) async throws -> Int {
             try await engine.openConcordance(query: "[upos=\"NOUN\"] :: \(restriction)", in: corpus).totalHits
         }
-        let slavic = try await hits("match.text_genus = \"Slavic\"")
-        let germanic = try await hits("match.text_genus = \"Germanic\"")
-        let indoEuropean = try await hits("match.text_family = \"Indo-European\"")
-        let latin = try await hits("match.text_script = \"Latn\"")
-        let cyrillic = try await hits("match.text_script = \"Cyrl\"")
+        let slavic = try await hits("match.text_lang_genus = \"Slavic\"")
+        let germanic = try await hits("match.text_lang_genus = \"Germanic\"")
+        let indoEuropean = try await hits("match.text_lang_family = \"Indo-European\"")
+        let latin = try await hits("match.text_lang_script = \"Latn\"")
+        let cyrillic = try await hits("match.text_lang_script = \"Cyrl\"")
         XCTAssertEqual([slavic, germanic, indoEuropean, latin, cyrillic], [4, 4, 8, 8, 0])
         let leftovers = try FileManager.default.contentsOfDirectory(atPath: box.corpora.path)
         XCTAssertEqual(leftovers, ["UD"], "the staged copies are gone")
+    }
+
+    func testALanguageWrittenInTwoScriptsIsFoundByEither() async throws {
+        let tool = try tool()
+        let box = try TestPando.Sandbox()
+        _ = try write(TestPando.tinyConllu, as: "ro_rrt-ud-dev.conllu", in: box)     // Latn, Cyrl
+        _ = try write(TestPando.tinyConllu, as: "bg_btb-ud-dev.conllu", in: box)     // Cyrl
+        _ = try write(TestPando.tinyConllu, as: "qqq_x-ud-dev.conllu", in: box)      // not in the table
+        try await CorpusImporter.importCorpus(name: "Scripts", inputs: [box.root.appendingPathComponent("in")], tool: tool)
+        let engine = PandoEngine(library: try TestPando.library())
+        let corpus = try await engine.openCorpus(name: "Scripts")
+        let scripts = try await corpus.attributeValues(attribute: "text.lang_script")
+        XCTAssertEqual(scripts.filter { $0 != "_" }, ["Cyrl", "Latn"], "the values are listed one by one: \(scripts)")
+        func nouns(_ script: String) async throws -> Int {
+            try await engine.openConcordance(query: "[upos=\"NOUN\"] :: match.text_lang_script = /\(script)/", in: corpus).totalHits
+        }
+        let cyrillic = try await nouns("Cyrl")
+        let latin = try await nouns("Latn")
+        XCTAssertEqual([cyrillic, latin], [8, 4], "Romanian counts for both, Bulgarian for Cyrillic only")
     }
 
     func testFilesWithOtherNamesAreImportedAsBefore() async throws {

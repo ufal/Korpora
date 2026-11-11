@@ -82,7 +82,8 @@ public enum CorpusImporter {
         }
         let source: URL
         let udFiles = kind(of: inputs) == .conllu ? UDMetadata.conlluFiles(in: inputs) : []
-        if UDMetadata.needsHeaders(udFiles) {
+        let addsUDMetadata = UDMetadata.needsHeaders(udFiles)
+        if addsUDMetadata {
             // UD files carry their language and treebank in the file name only: index copies that say it
             // (text.langcode, text.treebank, text.id), as pando's own UD script does. The originals stay as they are.
             let staging = work.appendingPathComponent("input", isDirectory: true)
@@ -108,6 +109,9 @@ public enum CorpusImporter {
         let output = work.appendingPathComponent("index", isDirectory: true)
 
         var arguments: [String] = []
+        if addsUDMetadata {
+            arguments += ["--multivalue", UDMetadata.multivalueAttributes.joined(separator: ",")]
+        }
         switch kind(of: inputs) {
         case .conllu: break
         case .vertical: arguments += ["--format", "vertical"]

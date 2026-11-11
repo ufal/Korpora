@@ -339,14 +339,17 @@ All Swift/C++ code builds cleanly and all tests pass (`swift test` in
   **Language attributes from UD's table** (2026-11-11): `scripts/generate-ud-languages.py` turns
   [codes_and_flags.yaml](https://github.com/UniversalDependencies/docs-automation/blob/master/codes_and_flags.yaml) of UD's
   docs-automation into `UDLanguages.swift` (292 languages; it covers every code in the file names of UD 2.19; run it again when UD
-  adds languages). The import adds, from the language code of the file name: `text.lang` (the name, "Czech"; was `_`), `text.iso3`,
-  `text.family` (UD's "IE" is written "Indo-European"), `text.genus` (the branch: Germanic, Slavic, ...; UD gives none for
-  isolates and some families, then `_`) and `text.script` (an ISO 15924 code; the first one UD lists, so Romanian is Latn though UD also
-  lists Cyrl). Why a single script: pando-index's `--multivalue` would make "Latn|Cyrl" one value in the pickers. Left out: `flag`
-  (a country code for a picture, with oddities such as `GE-AB`). pando-index takes the extra header keys as attributes of `text`, and
-  fills them with `_` for a file without them. Filtering: `:: match.text_genus = "Slavic"`, or a subcorpus on `text` by `genus`,
-  `family`, `script`, `lang`. Tried on 284 treebanks: 202 languages, 36 families, 59 genera, 27 scripts. The indexes are no longer
-  byte-identical to the script's (they have these attributes more); the three of the script are unchanged.
+  adds languages). The import adds, from the language code of the file name: `text.lang` (the name, "Czech"; was `_`),
+  `text.lang_iso3`, `text.lang_family` (UD's "IE" is written "Indo-European"), `text.lang_genus` (the branch: Germanic, Slavic, ...; UD
+  gives none for isolates and some families, then `_`) and `text.lang_script` (ISO 15924 codes, every script UD lists: a language
+  written in two, such as Romanian, has `Latn|Cyrl`; it is a `--multivalue` attribute, which the importer passes to `pando-index`, so
+  the pickers list `Latn` and `Cyrl` one by one and a subcorpus on either finds it). The names carry `lang_` so that it is clear they
+  describe the language, not the text. Left out: `flag` (a country code for a picture, with oddities such as `GE-AB`). pando-index
+  takes the extra header keys as attributes of `text`, and fills them with `_` for a file without them. Filtering:
+  `:: match.text_lang_genus = "Slavic"`, `match.text_lang_script = /Cyrl/` (the regex form, which is what a subcorpus writes), or a
+  subcorpus on `text` by `lang_genus`, `lang_family`, `lang_script`, `lang`. Tried on 284 treebanks: 202 languages, 36 families, 59
+  genera, 27 scripts. The indexes are no longer byte-identical to the script's (they have these attributes more); the three of the
+  script are unchanged.
   **Checked against the script** (2026-11-11, UD 2.19, the bundled `pando-index` for both): UD_Czech-PDTC (dev and test), then 284
   treebanks (422 files, 362 MB: every one under 4 MB and every one with `# text_*` comments up to 60 MB). The indexes of the script
   and of the importer are byte-identical in all 184 and 1,174 files; only `corpus.info` differs (index id, timestamps). So the

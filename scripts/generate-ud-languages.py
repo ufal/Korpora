@@ -61,7 +61,7 @@ def main():
         scripts = entry.get("scripts") or []
         family = entry.get("family", "")
         genus = entry.get("genus")
-        rows.append((code, name, entry.get("iso3", ""), FAMILY_NAMES.get(family, family), genus, scripts[0] if scripts else ""))
+        rows.append((code, name, entry.get("iso3", ""), FAMILY_NAMES.get(family, family), genus, scripts))
     rows.sort()
     codes = [r[0] for r in rows]
     assert len(codes) == len(set(codes)), "a language code is used twice"
@@ -70,7 +70,7 @@ def main():
         f"// Source: {where} ({len(rows)} languages, {datetime.date.today().isoformat()})",
         "",
         "/// What Universal Dependencies knows about each of its languages, by the language code that starts the names",
-        "/// of its files (`cs` in `cs_pdt-ud-train.conllu`). `script` is the first one UD lists for the language.",
+        "/// of its files (`cs` in `cs_pdt-ud-train.conllu`).",
         "enum UDLanguages {",
         "    struct Entry: Sendable, Equatable {",
         "        let name: String",
@@ -78,16 +78,16 @@ def main():
         "        let family: String",
         "        /// The branch of the family (Germanic, Slavic, ...); nil where UD gives none (isolates, some families).",
         "        let genus: String?",
-        "        /// An ISO 15924 code: Latn, Cyrl, Arab, ...",
-        "        let script: String",
+        "        /// ISO 15924 codes (Latn, Cyrl, Arab, ...) in the order UD lists them: usually one, a few languages have two.",
+        "        let scripts: [String]",
         "    }",
         "",
         "    static let byCode: [String: Entry] = [",
     ]
-    for code, name, iso3, family, genus, script in rows:
+    for code, name, iso3, family, genus, scripts in rows:
         genus_text = swift(genus) if genus else "nil"
         lines.append(f"        {swift(code)}: Entry(name: {swift(name)}, iso3: {swift(iso3)}, family: {swift(family)}, "
-                     f"genus: {genus_text}, script: {swift(script)}),")
+                     f"genus: {genus_text}, scripts: [{', '.join(swift(s) for s in scripts)}]),")
     lines += ["    ]", "}", ""]
     OUT.write_text("\n".join(lines), encoding="utf-8")
     print(f"{len(rows)} languages -> {OUT}")
