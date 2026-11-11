@@ -335,7 +335,15 @@ All Swift/C++ code builds cleanly and all tests pass (`swift test` in
   `# text_id` (the file name), `# text_langcode`, `# text_treebank`. The importer now does the same, on copies in its
   visible "Importing ..." folder (the files picked are never changed; a file that already opens a `text` region, or whose name is
   not a UD one, is linked as it was): `text.langcode`, `text.treebank`, `text.id`. Costs the disk space of the copies while the
-  import runs (about the size of the treebanks). A corpus imported before has to be imported again. Still wanted from pando:
+  import runs (about the size of the treebanks). A corpus imported before has to be imported again.
+  **Checked against the script** (2026-11-11, UD 2.19, the bundled `pando-index` for both): UD_Czech-PDTC (dev and test), then 284
+  treebanks (422 files, 362 MB: every one under 4 MB and every one with `# text_*` comments up to 60 MB). The indexes of the script
+  and of the importer are byte-identical in all 184 and 1,174 files; only `corpus.info` differs (index id, timestamps). So the
+  script does exactly this: the three lines, nothing else (no flexencoder: it needs a separate tool, and the 2.18 build log shows
+  `pando-index`'s own reader). `text` then has `id`, `langcode`, `treebank` and the placeholders `lang`, `genre`, `century` (`_`).
+  The longer `text.*` list of the older linked 2.18 index (`text.orig`, `text.por_source`, ... 22 more) is not from the script: that index
+  was built with an older pando, which stored a sentence's `# text_orig = ...` comments on the text region; the pando of 0.4.4
+  (the release pin) stores them as attributes of the sentence (`s.text_orig`, 170 region attributes in the sample), also with the script. Still wanted from pando:
   doing this natively in `pando-index`, which would save the copies.
 - **Sparkle 2 for updates: built 2026-11-09, see `docs/sparkle.md`; the release steps are untried until 0.5 is built.** (Plan, evaluated 2026-11-08, Sparkle 2.10.1: judged easy enough.) Korpora is
   non-sandboxed, hardened runtime, Developer ID, notarized: the plain Sparkle 2 case. Work: add the Swift package
