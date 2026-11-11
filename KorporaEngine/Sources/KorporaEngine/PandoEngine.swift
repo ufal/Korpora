@@ -82,7 +82,7 @@ public actor PandoCorpus: CorpusHandle {
             return StructureInfo(name: name, attributes: entry["attrs"] as? [String] ?? [])
         }
         return CorpusInfo(name: name, sizeTokens: object["size"] as? Int ?? 0,
-                          attributes: attributes, structures: structures)
+                          attributes: attributes, structures: StructureInfo.ordered(structures))
     }
 
     // MARK: Attribute values (`show values`)
