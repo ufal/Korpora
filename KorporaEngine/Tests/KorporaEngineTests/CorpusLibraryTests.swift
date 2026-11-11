@@ -33,6 +33,21 @@ final class CorpusLibraryTests: XCTestCase {
         XCTAssertEqual(CorpusLibrary.names(), ["UD 1", "UD 2", "UD 10"])
     }
 
+    func testTheUsersOrderComesFirstAndNewCorporaFollowInTheUsualOrder() throws {
+        let box = try TestPando.Sandbox()
+        for name in ["Alpha", "Beta", "Gamma"] { try box.fakeIndex(named: name, in: box.corpora) }
+        let linked = try box.fakeIndex(named: "Linked", in: box.elsewhere)
+        _ = try CorpusLibrary.link(indexDirectory: linked, taken: [])
+        defer { CorpusLibrary.customOrder = [] }
+        XCTAssertEqual(CorpusLibrary.names(), ["Alpha", "Beta", "Gamma", "Linked"], "no order set: built, then linked")
+        CorpusLibrary.customOrder = ["Linked", "Gamma"]
+        XCTAssertEqual(CorpusLibrary.names(), ["Linked", "Gamma", "Alpha", "Beta"])
+        // A name that is gone, or listed twice, does no harm.
+        CorpusLibrary.customOrder = ["Gone", "Beta", "Beta", "Alpha"]
+        XCTAssertEqual(CorpusLibrary.names(), ["Beta", "Alpha", "Gamma", "Linked"])
+        XCTAssertEqual(CorpusLibrary.names(includingMissing: true), ["Beta", "Alpha", "Gamma", "Linked"])
+    }
+
     func testBuiltWinsWhenANameIsInBothPlaces() throws {
         let box = try TestPando.Sandbox()
         try box.fakeIndex(named: "same", in: box.corpora, tokens: 1)

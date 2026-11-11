@@ -35,6 +35,30 @@ public enum CorpusLibrary {
         set { customLock.withLock { customStorage = newValue } }
     }
 
+    private static var orderStorage: [String] = []
+
+    /// The order the user put the corpora in (names, first first). The app sets it from its settings, at launch and
+    /// on every change. Corpora not named here (new ones) follow the named ones, in the usual order.
+    public static var customOrder: [String] {
+        get { customLock.withLock { orderStorage } }
+        set { customLock.withLock { orderStorage = newValue } }
+    }
+
+    /// `entries` with the user's order applied: the named ones first, in that order, the rest after them as they were.
+    static func ordered(_ entries: [Entry], by order: [String]) -> [Entry] {
+        guard !order.isEmpty else { return entries }
+        var rank: [String: Int] = [:]
+        for (index, name) in order.enumerated() where rank[name] == nil { rank[name] = index }
+        return entries.enumerated().sorted { a, b in
+            switch (rank[a.element.name], rank[b.element.name]) {
+            case let (x?, y?): return x < y
+            case (_?, nil): return true
+            case (nil, _?): return false
+            case (nil, nil): return a.offset < b.offset
+            }
+        }.map(\.element)
+    }
+
     /// Whether built corpora are kept in a folder the user chose.
     public static var baseDirectoryIsChosen: Bool { customBaseDirectory != nil }
 
@@ -225,7 +249,7 @@ public enum CorpusLibrary {
             }
             result.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
         }
-        return result
+        return ordered(result, by: customOrder)
     }
 
     /// Where a link leads, whether or not anything is there now.

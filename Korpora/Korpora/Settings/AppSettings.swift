@@ -25,6 +25,7 @@ final class AppSettings {
         static let positionalAttributeColor = "positionalAttributeColor"
         static let structuralAttributeColor = "structuralAttributeColor"
         static let matchColor = "matchColor"
+        static let corpusOrder = "corpusOrder"
         static let usesAlternatingRowBackground = "usesAlternatingRowBackground"
         static let extendedContextDisplayMode = "extendedContextDisplayMode"
         static let allowMultipleExtendedContexts = "allowMultipleExtendedContexts"
@@ -58,6 +59,32 @@ final class AppSettings {
     func applyCorporaDirectory() {
         guard self === AppSettings.shared else { return }
         CorpusLibrary.customBaseDirectory = corporaDirectory
+        applyCorpusOrder()
+    }
+
+    /// The order the user put the corpora in, in the list and so in the New Concordance pop-up, whose first is the
+    /// one a new concordance starts with. Empty until the user reorders: then built corpora first, linked after,
+    /// each alphabetical. Given to the corpus library (here, at launch and on every change).
+    var corpusOrder: [String] {
+        get { defaults.stringArray(forKey: Key.corpusOrder) ?? [] }
+        set {
+            defaults.set(newValue, forKey: Key.corpusOrder)
+            applyCorpusOrder()
+            NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
+        }
+    }
+
+    func applyCorpusOrder() {
+        guard self === AppSettings.shared else { return }
+        CorpusLibrary.customOrder = corpusOrder
+    }
+
+    /// A corpus was renamed: it keeps its place.
+    func renameInCorpusOrder(from old: String, to new: String) {
+        var order = corpusOrder
+        guard let index = order.firstIndex(of: old) else { return }
+        order[index] = new
+        corpusOrder = order
     }
 
     /// - Parameter includingMissing: also the linked corpora whose index folder is gone (the list shows them with

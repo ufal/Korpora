@@ -68,6 +68,8 @@ final class CorporaSettingsViewController: NSViewController {
         var name: String { entry.name }
     }
 
+    private static let dragType = NSPasteboard.PasteboardType("cz.cuni.mff.ufal.korpora.corpus-row")
+
     private enum Column: String { case name, tokens, source, size, resident, rowHeight, language }
 
     private let directoryPathLabel = NSTextField(labelWithString: "")
@@ -84,7 +86,7 @@ final class CorporaSettingsViewController: NSViewController {
     private let globalRowHeightField = NSTextField(string: "")
     private let hintLabel = NSTextField(labelWithString: "")
     private static let defaultHint =
-        "+ imports annotated text (CoNLL-U) or adds an index folder. Return renames."
+        "+ imports annotated text (CoNLL-U) or adds an index folder. Return renames. Drag to reorder; the first is the default for a new concordance."
     private let removeButton = NSButton(
         image: NSImage(systemSymbolName: "minus", accessibilityDescription: "Remove")!,
         target: nil, action: nil)
@@ -171,9 +173,16 @@ final class CorporaSettingsViewController: NSViewController {
         languageColumn.minWidth = 80
         languageColumn.width = 85
         languageColumn.resizingMask = .userResizingMask
+        // A click on a heading sorts the list by it, and that becomes the order (see `sortDescriptorsDidChange`).
+        for (column, key) in [(nameColumn, "name"), (tokensColumn, "tokens"), (sourceColumn, "source"), (sizeColumn, "size")] {
+            column.sortDescriptorPrototype = NSSortDescriptor(key: key, ascending: true)
+        }
         for column in [nameColumn, tokensColumn, sourceColumn, sizeColumn, residentColumn, rowHeightColumn, languageColumn] {
             tableView.addTableColumn(column)
         }
+        tableView.registerForDraggedTypes([Self.dragType])
+        tableView.draggingDestinationFeedbackStyle = .gap
+        tableView.setDraggingSourceOperationMask(.move, forLocal: true)
         // Name is the flexible column: `fitNameColumn()` gives it the width the others leave.
         tableView.columnAutoresizingStyle = .noColumnAutoresizing
         // The widths the user drags the columns to are remembered. (Not under test: the tests would share them.)
@@ -332,8 +341,8 @@ final class CorporaSettingsViewController: NSViewController {
     /// number, so adding or removing another corpus doesn't move it.
     func reloadCorpora() {
         let selectedName = selectedCorpusName
+        // In the user's order (the library applies it); the same list the New Concordance pop-up shows.
         rows = AppSettings.shared.corpusLibraryEntries(includingMissing: true)
-            .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
             .map { entry in
                 Row(entry: entry,
                     sizeBytes: entry.isMissing ? 0 : CorpusMemoryResidency.directorySize(entry.directory.resolvingSymlinksInPath()),
@@ -546,6 +555,7 @@ final class CorporaSettingsViewController: NSViewController {
         guard renamed.name != old else { return renamed }
         let wasResident = AppSettings.shared.isKeepResident(old)
         AppSettings.shared.renameKeepResident(from: old, to: renamed.name)
+        AppSettings.shared.renameInCorpusOrder(from: old, to: renamed.name)
         AppSettings.shared.renameTypography(from: old, to: renamed.name)
         SubcorpusLibrary.rename(corpus: old, to: renamed.name)
         QueryHistoryStore.renameCorpus(from: old, to: renamed.name)
@@ -707,6 +717,74 @@ final class CorporaSettingsViewController: NSViewController {
 
 extension CorporaSettingsViewController: NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
     func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+
+    // MARK: Order
+
+    /// `names` with `moved` taken out and put, in their own order, at the gap `gap` (the gap above row `gap`, as a
+    /// table's drag reports it, counted in `names`).
+    static func reordered(_ names: [String], moving moved: [String], toGap gap: Int) -> [String] {
+        let movedSet = Set(moved)
+        let before = names.prefix(max(0, min(gap, names.count))).filter { !movedSet.contains($0) }.count
+        var rest = names.filter { !movedSet.contains($0) }
+        let inOrder = names.filter { movedSet.contains($0) }
+        rest.insert(contentsOf: inOrder, at: before)
+        return rest
+    }
+
+    /// Puts the rows in `names`' order, remembers it (it is the order of the New Concordance pop-up too) and keeps
+    /// the selection on the same corpora.
+    private func apply(order names: [String]) {
+        let selected = Set(tableView.selectedRowIndexes.compactMap { rows.indices.contains($0) ? rows[$0].name : nil })
+        let position = Dictionary(uniqueKeysWithValues: names.enumerated().map { ($1, $0) })
+        rows.sort { (position[$0.name] ?? Int.max) < (position[$1.name] ?? Int.max) }
+        AppSettings.shared.corpusOrder = rows.map(\.name)
+        tableView.reloadData()
+        tableView.selectRowIndexes(IndexSet(rows.indices.filter { selected.contains(rows[$0].name) }), byExtendingSelection: false)
+    }
+
+    func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+        guard let descriptor = tableView.sortDescriptors.first, let key = descriptor.key else { return }
+        func value(_ row: Row) -> String {
+            switch key {
+            case "tokens": return String(format: "%020d", row.entry.tokens ?? 0)
+            case "size": return String(format: "%020llu", row.sizeBytes)
+            case "source": return Self.sourceTitle(for: row.entry)
+            default: return row.name
+            }
+        }
+        let sorted = rows.enumerated().sorted { a, b in
+            let order = key == "name" || key == "source"
+                ? value(a.element).localizedStandardCompare(value(b.element))
+                : value(a.element).compare(value(b.element))
+            if order == .orderedSame { return a.offset < b.offset }
+            return descriptor.ascending ? order == .orderedAscending : order == .orderedDescending
+        }
+        apply(order: sorted.map(\.element.name))
+    }
+
+    func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+        guard rows.indices.contains(row) else { return nil }
+        let item = NSPasteboardItem()
+        item.setString(rows[row].name, forType: Self.dragType)
+        return item
+    }
+
+    func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int,
+                   proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
+        guard info.draggingSource as? NSTableView === tableView else { return [] }
+        tableView.setDropRow(row, dropOperation: .above)
+        return .move
+    }
+
+    func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int,
+                   dropOperation: NSTableView.DropOperation) -> Bool {
+        let moved = (info.draggingPasteboard.pasteboardItems ?? []).compactMap { $0.string(forType: Self.dragType) }
+        guard !moved.isEmpty else { return false }
+        // The order is now the user's own, not that of a heading.
+        tableView.sortDescriptors = []
+        apply(order: Self.reordered(rows.map(\.name), moving: moved, toGap: row))
+        return true
+    }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
         selectionChangedSinceClick = true

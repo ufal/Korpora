@@ -75,4 +75,51 @@ import Testing
         controller.reloadCorpora()
         #expect(controller.selectedCorpusName == "two")
     }
+
+    @Test func reorderingMovesTheDraggedCorporaToTheGapKeepingTheirOrder() {
+        let names = ["a", "b", "c", "d", "e"]
+        typealias C = CorporaSettingsViewController
+        #expect(C.reordered(names, moving: ["d"], toGap: 0) == ["d", "a", "b", "c", "e"])
+        #expect(C.reordered(names, moving: ["a"], toGap: 5) == ["b", "c", "d", "e", "a"])
+        #expect(C.reordered(names, moving: ["b"], toGap: 4) == ["a", "c", "d", "b", "e"])
+        #expect(C.reordered(names, moving: ["d", "b"], toGap: 1) == ["a", "b", "d", "c", "e"], "the dragged ones keep their order")
+        #expect(C.reordered(names, moving: ["c"], toGap: 2) == names, "dropped where it is")
+        #expect(C.reordered(names, moving: ["c"], toGap: 3) == names)
+    }
+
+    @Test func theOrderIsStoredAndAFollowsARename() {
+        let settings = AppSettings(defaults: freshDefaults())
+        #expect(settings.corpusOrder.isEmpty)
+        settings.corpusOrder = ["ud", "syn", "cats"]
+        #expect(AppSettings(defaults: settings.defaults).corpusOrder == ["ud", "syn", "cats"])
+        settings.renameInCorpusOrder(from: "syn", to: "syn2025")
+        #expect(settings.corpusOrder == ["ud", "syn2025", "cats"])
+        settings.renameInCorpusOrder(from: "not there", to: "x")
+        #expect(settings.corpusOrder == ["ud", "syn2025", "cats"])
+    }
+
+    /// A click on a heading sorts the list and that is the new order, which the New Concordance pop-up uses too.
+    @MainActor @Test func clickingAHeadingSortsTheListAndKeepsItAsTheOrder() throws {
+        let box = try TestPando.Sandbox()
+        try box.fakeIndex(named: "alpha", tokens: 7)
+        try box.fakeIndex(named: "beta", tokens: 5)
+        try box.fakeIndex(named: "gamma", tokens: 9)
+        // The test host shares the app's own defaults: put them back as they were.
+        let shared = AppSettings.shared
+        let saved = shared.defaults.object(forKey: "corpusOrder")
+        defer {
+            if let saved { shared.defaults.set(saved, forKey: "corpusOrder") } else { shared.defaults.removeObject(forKey: "corpusOrder") }
+            CorpusLibrary.customOrder = shared.corpusOrder
+        }
+        shared.defaults.removeObject(forKey: "corpusOrder")
+        CorpusLibrary.customOrder = []
+
+        let controller = CorporaSettingsViewController()
+        _ = controller.view
+        controller.tableView.sortDescriptors = [NSSortDescriptor(key: "tokens", ascending: false)]
+        #expect(CorpusLibrary.names() == ["gamma", "alpha", "beta"])
+        controller.tableView.sortDescriptors = [NSSortDescriptor(key: "name", ascending: false)]
+        #expect(CorpusLibrary.names() == ["gamma", "beta", "alpha"])
+        #expect(shared.corpusOrder == ["gamma", "beta", "alpha"])
+    }
 }
