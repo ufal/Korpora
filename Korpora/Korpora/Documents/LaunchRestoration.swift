@@ -15,6 +15,9 @@ enum LaunchRestoration {
     /// Set by `KorporaDocumentController.newDocument(_:)`, taken by the next concordance that asks.
     static var userRequestedNew = false
 
+    /// Whether the app is still in the first seconds of its launch.
+    static var inLaunchWindow: Bool { Date().timeIntervalSince(startedAt) < launchWindow }
+
     /// Call once at launch.
     static func begin() {
         startedAt = Date()

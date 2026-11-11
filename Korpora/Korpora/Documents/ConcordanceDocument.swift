@@ -404,6 +404,49 @@ final class ConcordanceDocument: NSDocument {
         updateChangeCount(.changeDone)
     }
 
+    // MARK: What the window showed when it was saved
+
+    /// Which row was selected and which was at the top of the table: saved with the concordance and put back once
+    /// its results are in.
+    struct ViewState: Codable, Equatable {
+        var selectedRow: Int?
+        var topRow: Int?
+    }
+
+    private(set) var restoredViewState: ViewState?
+    var onRestoreViewState: ((ViewState) -> Void)?
+    var viewStateProvider: (() -> ViewState)?
+
+    // MARK: A search that waits until the window is shown
+
+    /// True for a concordance read in the first seconds of a launch (the ones the system puts back): with several
+    /// of them, each searches when its window is shown, not all at once while the app starts. A tab nobody opens
+    /// is never searched.
+    private(set) var isReplayDeferred = false
+    private var searchStarted = false
+    private var shownObservers: [NSObjectProtocol] = []
+
+    private func replayWhenShown(in window: NSWindow?) {
+        status = "The search starts when this window is shown."
+        guard let window else { startDeferredSearch(); return }
+        for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didBecomeKeyNotification] {
+            shownObservers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self, window.isVisible, window.occlusionState.contains(.visible) || window.isKeyWindow else { return }
+                    self.startDeferredSearch()
+                }
+            })
+        }
+        if window.isVisible, window.occlusionState.contains(.visible) { startDeferredSearch() }
+    }
+
+    private func startDeferredSearch() {
+        shownObservers.forEach(NotificationCenter.default.removeObserver)
+        shownObservers = []
+        guard !searchStarted else { return }
+        replay()
+    }
+
     // MARK: Analysis windows that come back
 
     /// The analysis windows the concordance had open when it was saved: opened again once its results are in
@@ -417,7 +460,12 @@ final class ConcordanceDocument: NSDocument {
     func analysesChanged() { markChanged() }
 
     private func deliverRestoredAnalyses() {
-        guard !restoredAnalyses.isEmpty, liveConcordance != nil, let onRestoreAnalyses else { return }
+        guard liveConcordance != nil else { return }
+        if let state = restoredViewState, let onRestoreViewState {
+            restoredViewState = nil
+            onRestoreViewState(state)
+        }
+        guard !restoredAnalyses.isEmpty, let onRestoreAnalyses else { return }
         let states = restoredAnalyses
         restoredAnalyses = []
         onRestoreAnalyses(states)
@@ -451,6 +499,8 @@ final class ConcordanceDocument: NSDocument {
                     presentNewConcordanceSheet()
                 }
             }
+        } else if isReplayDeferred {
+            replayWhenShown(in: controller.window)
         } else {
             replay()
         }
@@ -657,6 +707,7 @@ final class ConcordanceDocument: NSDocument {
     private func replay() {
         guard !corpusName.trimmingCharacters(in: .whitespaces).isEmpty,
               !initialQuery.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        searchStarted = true
         replayGeneration += 1
         let generation = replayGeneration
         isSearching = true
@@ -880,6 +931,7 @@ final class ConcordanceDocument: NSDocument {
         var operations: [ConcordanceOperation]
         // Optional: a document saved before the analysis windows came back has none.
         var analyses: [AnalysisState]?
+        var viewState: ViewState?
     }
 
     override func data(ofType typeName: String) throws -> Data {
@@ -889,7 +941,8 @@ final class ConcordanceDocument: NSDocument {
             leftContext: leftContext, rightContext: rightContext, kwicAttr: kwicAttr,
             inlineAttributes: inlineAttributes, tooltipAttributes: tooltipAttributes,
             structuralAttributeToShow: structuralAttributeToShow, viewMode: viewMode, operations: operations,
-            analyses: analysisStatesProvider?() ?? restoredAnalyses)
+            analyses: analysisStatesProvider?() ?? restoredAnalyses,
+            viewState: viewStateProvider?() ?? restoredViewState)
         return try JSONEncoder().encode(state)
     }
 
@@ -919,6 +972,8 @@ final class ConcordanceDocument: NSDocument {
         viewMode = state.viewMode ?? .kwic
         operations = state.operations
         restoredAnalyses = state.analyses ?? []
+        restoredViewState = state.viewState
+        isReplayDeferred = MainActor.assumeIsolated { LaunchRestoration.inLaunchWindow } && !initialQuery.isEmpty
     }
 }
 

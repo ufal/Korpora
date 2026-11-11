@@ -143,6 +143,15 @@ final class ConcordanceViewController: NSViewController {
         queryField.onSubmit = { [weak self] in self?.runQuery() }
         updateCompletionProvider()
 
+        document.viewStateProvider = { [weak self] in self?.currentViewState() ?? .init() }
+        document.onRestoreViewState = { [weak self] state in self?.restoreViewState(state) }
+        // The selection and the scroll position are saved with the concordance (a change is a change of the document).
+        NotificationCenter.default.addObserver(forName: NSTableView.selectionDidChangeNotification, object: tableView, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.document.markChanged() }
+        }
+        NotificationCenter.default.addObserver(forName: NSScrollView.didEndLiveScrollNotification, object: scrollView, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.document.markChanged() }
+        }
         document.analysisStatesProvider = { [weak self] in self?.currentAnalysisStates() ?? [] }
         document.onRestoreAnalyses = { [weak self] states in self?.restoreAnalyses(states) }
         document.onResultsChanged = { [weak self] animated in self?.refresh(animated: animated) }
@@ -526,6 +535,25 @@ final class ConcordanceViewController: NSViewController {
         windowController.showWindow(nil)
         windowController.window?.makeKeyAndOrderFront(nil)
         if state != nil { document.analysesChanged() }
+    }
+
+    /// The selected row and the one at the top of the table.
+    func currentViewState() -> ConcordanceDocument.ViewState {
+        let visible = tableView.rows(in: tableView.visibleRect)
+        return .init(selectedRow: tableView.selectedRow >= 0 ? tableView.selectedRow : nil,
+                     topRow: visible.length > 0 && visible.location > 0 ? visible.location : nil)
+    }
+
+    /// Puts the selection and the scroll position back, once the rows are in the table.
+    func restoreViewState(_ state: ConcordanceDocument.ViewState) {
+        RunLoop.main.perform(inModes: [.common]) { [weak self] in
+            guard let self else { return }
+            let rows = tableView.numberOfRows
+            if let row = state.selectedRow, row < rows { tableView.selectRowIndexes([row], byExtendingSelection: false) }
+            if let top = state.topRow, top < rows {
+                tableView.scroll(NSPoint(x: 0, y: tableView.rect(ofRow: top).minY))
+            }
+        }
     }
 
     /// The analysis windows open now, with where they are.

@@ -291,7 +291,12 @@ Confirmed product decisions (from earlier in this project):
   - Tested by script on this Mac: a file concordance, an untitled one with a query, and a file with three analysis windows (at their
     saved frames, the frequency sort kept) all came back; quits finished in most runs. Not seen by script: the empty "Untitled"
     window with its sheet being dropped when something is restored (no clean slate: the drafts folder can't be cleared from here).
-  - Not done: re-running searches lazily on restore (all re-run at once now), the selected row and scroll position.
+  - **Lazy searches:** a concordance read in the first 4 seconds of a launch (one the system puts back) searches when its window
+    is shown (`isReplayDeferred`, `replayWhenShown`: window visible or key), so a session with many concordances does not search
+    them all while the app starts, and a tab nobody opens is never searched. One read later (File > Open) searches at once.
+  - **Selection and scroll:** the selected row and the top row of the table are saved with the concordance (`ViewState`, marked as a
+    change on a selection change and at the end of a scroll) and put back once its results are in; checked on screen (row 9 at the
+    top, row 12 selected).
 - **Tests**: ManateeKit's tests are XCTest, not this workspace's usual Swift
   Testing convention — a known divergence, not something to rewrite
   speculatively.

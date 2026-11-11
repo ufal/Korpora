@@ -55,3 +55,40 @@ import KorporaEngine
         #expect(doc.initialQuery == "[]")
     }
 }
+
+@MainActor @Suite(.serialized) struct ViewStateRestorationTests {
+    private let type = "cz.cuni.mff.ufal.korpora.concordance"
+
+    @Test func theSelectedRowAndTheScrollPositionAreSavedAndGivenBack() throws {
+        let doc = ConcordanceDocument()
+        doc.corpusName = "c"
+        doc.initialQuery = "[]"
+        doc.viewStateProvider = { .init(selectedRow: 12, topRow: 40) }
+        let data = try doc.data(ofType: type)
+        let again = ConcordanceDocument()
+        try again.read(from: data, ofType: type)
+        #expect(again.restoredViewState == .init(selectedRow: 12, topRow: 40))
+    }
+
+    @Test func aDocumentSavedBeforeHasNoViewState() throws {
+        let json = #"{"formatVersion":3,"engine":"pando","corpusName":"c","initialQuery":"[]","leftContext":"-5","rightContext":"5","kwicAttr":"form","operations":[]}"#
+        let doc = ConcordanceDocument()
+        try doc.read(from: Data(json.utf8), ofType: type)
+        #expect(doc.restoredViewState == nil)
+    }
+
+    /// A concordance read in the first seconds of a launch is one the system puts back: it searches when its window
+    /// is shown. One read later (File > Open) searches at once.
+    @Test func aConcordanceReadAtLaunchWaitsToBeShownAndOneReadLaterDoesNot() throws {
+        let json = Data(#"{"formatVersion":3,"engine":"pando","corpusName":"c","initialQuery":"[]","leftContext":"-5","rightContext":"5","kwicAttr":"form","operations":[]}"#.utf8)
+        LaunchRestoration.begin()
+        let atLaunch = ConcordanceDocument()
+        try atLaunch.read(from: json, ofType: type)
+        #expect(atLaunch.isReplayDeferred)
+        LaunchRestoration.launchWindow = 0
+        defer { LaunchRestoration.launchWindow = 4 }
+        let later = ConcordanceDocument()
+        try later.read(from: json, ofType: type)
+        #expect(!later.isReplayDeferred)
+    }
+}
