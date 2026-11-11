@@ -2,7 +2,7 @@ import Cocoa
 import KorporaEngine
 import Sparkle
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// Updates (docs/sparkle.md). A Debug build, which is what runs from Xcode, never checks by itself (it
     /// would offer to replace the build being tried); "Check for Updates..." still works there.
     private lazy var updaterController: SPUStandardUpdaterController = {
@@ -11,7 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #else
         let start = true
         #endif
-        return SPUStandardUpdaterController(startingUpdater: start, updaterDelegate: nil, userDriverDelegate: nil)
+        return SPUStandardUpdaterController(startingUpdater: start, updaterDelegate: self, userDriverDelegate: nil)
     }()
 
     #if DEBUG
@@ -188,5 +188,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.windowsMenu = windowMenu
 
         return main
+    }
+}
+
+// MARK: Updates
+
+extension AppDelegate {
+    /// AppKit won't quit while a sheet (New Concordance, an import, ...) is open: "App termination blocked by modal
+    /// sheet". Sparkle's "Install and Relaunch" then did nothing on the first press (seen in the 0.5 to 0.5.1 update
+    /// test). Closes every sheet; returns whether there was one.
+    @discardableResult
+    static func endAllSheets() -> Bool {
+        var found = false
+        for window in NSApp.windows {
+            // A sheet can carry a sheet of its own: close from the top, and never loop for ever.
+            for _ in 0..<8 {
+                var top = window
+                while let next = top.attachedSheet { top = next }
+                guard top !== window, let parent = top.sheetParent else { break }
+                parent.endSheet(top, returnCode: .cancel)
+                found = true
+            }
+        }
+        return found
+    }
+
+    /// Sparkle is ready to relaunch: close the sheets first, and go on in the next turn of the run loop, when
+    /// AppKit lets the app quit.
+    func updater(_ updater: SPUUpdater, shouldPostponeRelaunchForUpdate item: SUAppcastItem,
+                 untilInvokingBlock installHandler: @escaping () -> Void) -> Bool {
+        guard Self.endAllSheets() else { return false }
+        DispatchQueue.main.async(execute: installHandler)
+        return true
     }
 }

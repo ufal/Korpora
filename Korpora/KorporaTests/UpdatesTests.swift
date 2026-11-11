@@ -22,4 +22,19 @@ import Testing
         #expect(titles[about + 1] == "Check for Updates\u{2026}")
         #expect(menu.items[about + 1].action == #selector(AppDelegate.checkForUpdates(_:)))
     }
+
+    @Test func anUpdateClosesTheSheetsThatWouldBlockTheQuit() {
+        let parent = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled], backing: .buffered, defer: true)
+        let sheet = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled], backing: .buffered, defer: true)
+        let inner = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 100, height: 50), styleMask: [.titled], backing: .buffered, defer: true)
+        for window in [parent, sheet, inner] { window.isReleasedWhenClosed = false }
+        parent.makeKeyAndOrderFront(nil)
+        parent.beginSheet(sheet, completionHandler: nil)
+        sheet.beginSheet(inner, completionHandler: nil)
+        #expect(parent.attachedSheet === sheet)
+        #expect(AppDelegate.endAllSheets())
+        #expect(parent.attachedSheet == nil && sheet.attachedSheet == nil)
+        #expect(!AppDelegate.endAllSheets(), "nothing left to close")
+        parent.close()
+    }
 }

@@ -4546,6 +4546,25 @@ hardware.
 - `Corpora/` — the Xcode project and all AppKit sources; `project.yml` for
   xcodegen; `scripts/build-dev-corpus.sh` for the dev-only test corpus
 
+### Releases 0.5 and 0.5.1 - published 2026-11-09 and 2026-11-11
+
+`Korpora 0.5 (6)` (v0.5, from f7b8ce3) is the first with Sparkle (docs/sparkle.md): frequency and collocation by node, the CQL lexer.
+`Korpora 0.5.1 (7)` (v0.5.1, from 63c7d30) is a bug-fix release: only matched tokens highlighted and a settable match colour, the corpora
+list in the user's order (drag or heading), the UD import with `text.*` and language attributes, ordered attribute lists, a System/Light/Dark
+setting. Both built with `scripts/make-release.sh` (pando a7dbe56 / v0.4.4 bundled), notarized and stapled (0.5.1: submissions `db2f823e-...`
+app, `4fde064c-...` DMG), appcast signed with the EdDSA key. GitHub releases with the DMG, `.sha256`, dSYM zip and `appcast.xml`.
+`Korpora-0.5.1.dmg` SHA-256 `ac94f81c...47f6`.
+
+Smoke test of 0.5.1 on a fresh clone of the Cirrus macOS 15.7.7 image (Gatekeeper on): scripted install checks 9/9, exec checks 6/6; the
+user did the first launch, import of `smoke.conllu`, a query, the Appearance pop-up and a relaunch: fine.
+
+**First Sparkle update test, 0.5 to 0.5.1** (fresh VM, 0.5 installed from its GitHub DMG): Check for Updates found 0.5.1 (7) and the
+release notes; the EdDSA signature verified; the result is 0.5.1 (7), codesign strict ok, Gatekeeper "Notarized Developer ID". One
+snag: the first "Install and Relaunch" did nothing, because the New Concordance sheet was open and AppKit refuses to quit with a sheet
+("App termination blocked by modal sheet" in the log); the second press worked. Fixed after 0.5.1: `AppDelegate` is Sparkle's updater
+delegate and, in `shouldPostponeRelaunchForUpdate`, closes every sheet and continues (`endAllSheets`, tested). It only helps from the
+version that has it, so a 0.5 or 0.5.1 user with a sheet open still has to close the sheet or press twice. Not released yet.
+
 ### Smoke tests with `tart exec` (set up 2026-11-11)
 
 The Cirrus vanilla image has no Tart Guest Agent, so commands could only reach the VM over SSH. `scripts/smoke/install-tart-guest-agent.sh`
