@@ -38,6 +38,7 @@
 		4EACCC5BFE236FE4B27AACC1 /* TransferProgressSheetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 99E96AB4BAFAEB74DFB6DDF1 /* TransferProgressSheetController.swift */; };
 		52D5D1CD820E81DBBFF2B1AA /* ScriptFonts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 947FCA743FF6733EB8925895 /* ScriptFonts.swift */; };
 		5460A66C8408B07767556999 /* SamplePopoverController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B1A2B39864F42D3B7BF38A7 /* SamplePopoverController.swift */; };
+		575F0D6F9823CCEFCBE695E9 /* RestorationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD475029789FD133761DB2BE /* RestorationTests.swift */; };
 		576BE606702264D7FF969666 /* Engines.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1A3E3632E8CB4A221956BA5 /* Engines.swift */; };
 		59997812E5187B68B3AB9863 /* SortableTableView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0F115CEAC930466168A9217 /* SortableTableView.swift */; };
 		5CA68CD8C6685246032E243F /* FrequencyComposerController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F19C975A049C346E2002EEB /* FrequencyComposerController.swift */; };
@@ -77,6 +78,7 @@
 		B818723B2057A66196B91F17 /* ConlluDropTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AFEC8D6AECEBADDC1AA8204 /* ConlluDropTests.swift */; };
 		BE963D7E5B3A307F7B3242BD /* WindowPrinting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54A99C5F88D490DDA3B9D49F /* WindowPrinting.swift */; };
 		C402FCCB69C646D7D3C8E729 /* ConcordanceDocumentCancelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F194B5057DE1CD8400800B9E /* ConcordanceDocumentCancelTests.swift */; };
+		C487943E8AA1B73DCB8F6F78 /* RestorationGuard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 330EE69B17F41A1CE70E9570 /* RestorationGuard.swift */; };
 		C6212C93C0C81D9DD271EBD5 /* CQLCompletionContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EC95A179DFFA46D1C19AA43 /* CQLCompletionContextTests.swift */; };
 		C90E4F31E1D61DB5933946F3 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 393AD6893C31A48AC7AE3347 /* Sparkle */; };
 		C9273B1C6C8F464645CCBFE4 /* TableChartContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC8BD92725D214DE0958CDD0 /* TableChartContainerView.swift */; };
@@ -132,6 +134,7 @@
 		27FD96658F279E86467718F8 /* CorporaSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorporaSettingsViewController.swift; sourceTree = "<group>"; };
 		2AFEC8D6AECEBADDC1AA8204 /* ConlluDropTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConlluDropTests.swift; sourceTree = "<group>"; };
 		2C346BFB8ACCC982C91C5324 /* CorpusTypography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusTypography.swift; sourceTree = "<group>"; };
+		330EE69B17F41A1CE70E9570 /* RestorationGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestorationGuard.swift; sourceTree = "<group>"; };
 		33523E2968DE7282B8143137 /* EngineSeamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSeamTests.swift; sourceTree = "<group>"; };
 		36AD3505A6B115D835CFF1D6 /* KWICCellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KWICCellView.swift; sourceTree = "<group>"; };
 		38F142C472071C00A420ABC5 /* AppearanceSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettingsViewController.swift; sourceTree = "<group>"; };
@@ -208,6 +211,7 @@
 		F7B4A1DC93D5DF6251665F15 /* CQLPatternTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CQLPatternTests.swift; sourceTree = "<group>"; };
 		FB1110D794920D23CFD5CF78 /* ScriptFontsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptFontsTests.swift; sourceTree = "<group>"; };
 		FC33C652F154E0B0ACAAAF16 /* SettingsWindowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowTests.swift; sourceTree = "<group>"; };
+		FD475029789FD133761DB2BE /* RestorationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestorationTests.swift; sourceTree = "<group>"; };
 		FFEA52040B5D2BEC33D93475 /* WindowPrintingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowPrintingTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -320,6 +324,7 @@
 				5E999B57B0D665098DD4259E /* NodeStripViewTests.swift */,
 				892F0CB7F666BA4DDAF0C975 /* PandoTestSupport.swift */,
 				D3253FB4AE0CC8DDD22A9B12 /* QueryHistoryStoreTests.swift */,
+				FD475029789FD133761DB2BE /* RestorationTests.swift */,
 				FB1110D794920D23CFD5CF78 /* ScriptFontsTests.swift */,
 				AB308D76FA5C93BE1B12F54A /* SettingsFlowTests.swift */,
 				FC33C652F154E0B0ACAAAF16 /* SettingsWindowTests.swift */,
@@ -392,6 +397,7 @@
 				DA5BD468A9C191CD0CB9A323 /* ConcordanceOperation.swift */,
 				F1A3E3632E8CB4A221956BA5 /* Engines.swift */,
 				10EEF40040FBFD9EF32A2353 /* KWICFormatter.swift */,
+				330EE69B17F41A1CE70E9570 /* RestorationGuard.swift */,
 				AC4BF85C4540BAB954E61CCC /* UnicodeScript.swift */,
 				3A6D43BB65CCB422D8CB824F /* UnicodeScriptData.swift */,
 			);
@@ -539,6 +545,7 @@
 				B7E32FAA82095EB4D8CD493F /* NodeStripViewTests.swift in Sources */,
 				648BECFAEFA6FE5FE21E9572 /* PandoTestSupport.swift in Sources */,
 				2B2B70AE01B0E3943F49F804 /* QueryHistoryStoreTests.swift in Sources */,
+				575F0D6F9823CCEFCBE695E9 /* RestorationTests.swift in Sources */,
 				B185E021B6523F9EDA23520D /* ScriptFontsTests.swift in Sources */,
 				7C51472C41F8F9E040526D02 /* SettingsFlowTests.swift in Sources */,
 				171B94927CACB5FA8C25D710 /* SettingsWindowTests.swift in Sources */,
@@ -598,6 +605,7 @@
 				74DDB78063606DD0DF6872E6 /* PaperSafeDrawing.swift in Sources */,
 				F89A78E1B12E53AFE9E4F061 /* QueryHistoryStore.swift in Sources */,
 				25990BB4D15A32CD8679ACD4 /* QueryHitBrowser.swift in Sources */,
+				C487943E8AA1B73DCB8F6F78 /* RestorationGuard.swift in Sources */,
 				5460A66C8408B07767556999 /* SamplePopoverController.swift in Sources */,
 				52D5D1CD820E81DBBFF2B1AA /* ScriptFonts.swift in Sources */,
 				CF4A6809B074F7507F882CB0 /* SettingsLayout.swift in Sources */,

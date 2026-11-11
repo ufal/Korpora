@@ -27,6 +27,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.mainMenu = makeMainMenu()
+        // The launch got as far as showing windows: if it hangs or crashes before this, the next launch drops the saved windows.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { RestorationGuard.finishLaunch() }
         _ = updaterController   // starts the scheduled checks in a release build
         AppSettings.shared.applyAppearance()
         AppSettings.shared.applyCorporaDirectory()  // before anything looks for a corpus
@@ -74,13 +76,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// `willTerminateNotification` regardless of the answer here - this
     /// alert only decides whether that's allowed to happen at all.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard ActiveImportTracker.shared.isImporting else { return .terminateNow }
+        guard ActiveImportTracker.shared.isImporting else { return writeDraftsThenTerminate() }
         let alert = NSAlert()
         alert.messageText = "A corpus import is in progress"
         alert.informativeText = "Quitting now will stop the compile. It can’t be resumed - you’ll need to start over."
         alert.addButton(withTitle: "Quit")
         alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+        return alert.runModal() == .alertFirstButtonReturn ? writeDraftsThenTerminate() : .terminateCancel
+    }
+
+    /// Every open concordance writes its draft before the app quits, so that the next launch reopens it: the
+    /// standard Mac "windows come back" behaviour. Closing a window instead discards its concordance.
+    private func writeDraftsThenTerminate() -> NSApplication.TerminateReply {
+        let documents = NSDocumentController.shared.documents.compactMap { $0 as? ConcordanceDocument }
+            .filter { !$0.initialQuery.isEmpty }
+        guard !documents.isEmpty else { return .terminateNow }
+        var remaining = documents.count
+        var replied = false
+        func reply() {
+            guard !replied else { return }
+            replied = true
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        for document in documents {
+            document.writeDraft {
+                remaining -= 1
+                if remaining == 0 { reply() }
+            }
+        }
+        // Never keep the user waiting for the drafts: quit after 3 seconds whatever happens.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { reply() }
+        return .terminateLater
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        RestorationGuard.finishLaunch()
     }
 
     func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {

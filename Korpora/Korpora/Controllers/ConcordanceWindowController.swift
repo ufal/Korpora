@@ -52,12 +52,10 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
         window.setContentSize(NSSize(width: 820, height: 520))
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.tabbingMode = .preferred
-        // ConcordanceDocument's own data(ofType:)/read(from:ofType:) is the
-        // real reopen-a-concordance mechanism (see docs/project-plan.md's
-        // NSDocument model) - the system's separate crash/relaunch window-restoration
-        // path is redundant here and, if it ever finds stale state, can
-        // silently swallow a launch (no window, no error).
-        window.isRestorable = false
+        // The system puts the windows back after a quit or a relaunch (an update, say): the document's autosave
+        // draft (ConcordanceDocument.writeDraft) is what it reopens. A launch that fails while doing so is caught by
+        // RestorationGuard, which drops the saved state.
+        window.isRestorable = true
         self.init(window: window)
         viewController.windowController = self
 

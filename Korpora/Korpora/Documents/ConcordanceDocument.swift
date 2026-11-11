@@ -391,7 +391,39 @@ final class ConcordanceDocument: NSDocument {
     /// toolbar control would dirty the document and closing/quitting would
     /// prompt to Save/Delete/Cancel. Explicit File > Save still works (see
     /// `validateUserInterfaceItem` below), independent of this override.
-    override var isDocumentEdited: Bool { false }
+    ///
+    /// Except while a draft is being written (`writeDraft`): AppKit's autosave writes nothing for a document that
+    /// says it has no edits (spike, 2026-11-11), and a draft is what it reopens after a quit.
+    override var isDocumentEdited: Bool { isWritingDraft }
+
+    private var isWritingDraft = false
+    private var draftWork: DispatchWorkItem?
+
+    /// Writes the document's state as AppKit's autosave draft, which window restoration reopens after a quit
+    /// (docs/project-plan.md, "Document persistence model"). Closing a window deletes its draft, so a closed
+    /// concordance is not resumed, and nothing asks to save. A document with no query yet (the New Concordance
+    /// sheet is still open) has nothing to resume and writes none. `completion` runs on the main thread.
+    func writeDraft(completion: (() -> Void)? = nil) {
+        draftWork?.cancel()
+        guard !initialQuery.isEmpty else { completion?(); return }
+        isWritingDraft = true
+        updateChangeCount(.changeDone)
+        autosave(withImplicitCancellability: false) { [weak self] error in
+            DispatchQueue.main.async {
+                self?.isWritingDraft = false
+                if let error { NSLog("Korpora: could not write the draft: \(error.localizedDescription)") }
+                completion?()
+            }
+        }
+    }
+
+    /// A draft soon after a change, so that even a crash resumes close to where the user was.
+    private func scheduleDraft() {
+        draftWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.writeDraft() }
+        draftWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
+    }
 
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
         if item.action == #selector(NSDocument.save(_:)) { return true }
@@ -446,6 +478,7 @@ final class ConcordanceDocument: NSDocument {
         QueryHistoryStore.record(
             corpusName: corpusName, subcorpusName: subcorpus?.name, query: cql, defaults: historyDefaults)
         replay()
+        scheduleDraft()
     }
 
     // MARK: - Operations (each undoable - see `ConcordanceOperation`)
@@ -517,6 +550,7 @@ final class ConcordanceDocument: NSDocument {
         }
         operations = newOperations
         replay()
+        scheduleDraft()
     }
 
     // MARK: - Query execution
