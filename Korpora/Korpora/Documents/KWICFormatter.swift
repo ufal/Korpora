@@ -9,6 +9,14 @@ struct KWICDisplaySegment: Equatable {
     enum Kind: Equatable { case word, secondaryAttribute }
     let text: String
     let kind: Kind
+    /// False for a word (and the spaces around it) between the matched tokens that is not one of them.
+    let isMatch: Bool
+
+    init(text: String, kind: Kind, isMatch: Bool = true) {
+        self.text = text
+        self.kind = kind
+        self.isMatch = isMatch
+    }
 }
 
 /// One token's hover-tooltip text, located by which of `KWICDisplayLine
@@ -48,17 +56,17 @@ enum KWICFormatter {
         var segments: [KWICDisplaySegment] = []
         var tooltips: [KWICTokenTooltip] = []
 
-        func append(_ text: String, kind: KWICDisplaySegment.Kind) {
+        func append(_ text: String, kind: KWICDisplaySegment.Kind, isMatch: Bool = true) {
             guard !text.isEmpty else { return }
-            segments.append(KWICDisplaySegment(text: text, kind: kind))
+            segments.append(KWICDisplaySegment(text: text, kind: kind, isMatch: isMatch))
         }
 
         for (index, token) in tokens.enumerated() {
             if index > 0 {
-                append(" ", kind: .word)
+                append(" ", kind: .word, isMatch: token.isMatch && tokens[index - 1].isMatch)
             }
             let tokenSegmentStart = segments.count
-            append(token.word, kind: .word)
+            append(token.word, kind: .word, isMatch: token.isMatch)
             if !inlineAttributes.isEmpty {
                 let extras = inlineAttributes.compactMap { token.secondaryAttributes[$0] }
                 if !extras.isEmpty {

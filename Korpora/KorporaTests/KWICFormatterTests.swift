@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 import KorporaEngine
@@ -17,6 +18,31 @@ import KorporaEngine
             KWICDisplaySegment(text: "fox", kind: .word),
         ])
         #expect(line.tokenTooltips.isEmpty)
+    }
+
+    @Test func aWordBetweenTheMatchedTokensIsMarkedAsNotMatched() {
+        let tokens = [
+            KWICToken(word: "the", secondaryAttributes: [:]),
+            KWICToken(word: "big", secondaryAttributes: [:], isMatch: false),
+            KWICToken(word: "cat", secondaryAttributes: [:]),
+        ]
+        let line = KWICFormatter.displayLine(for: tokens, inlineAttributes: [], tooltipAttributes: [])
+        #expect(line.segments.map(\.isMatch) == [true, false, false, false, true])
+        // In the Match column that word, and the spaces next to it, are plain; elsewhere nothing changes.
+        #expect(KWICCellView.style(of: line.segments[2], in: .highlighted) == .plain)
+        #expect(KWICCellView.style(of: line.segments[0], in: .highlighted) == .highlighted)
+        #expect(KWICCellView.style(of: line.segments[2], in: .plain) == .plain)
+    }
+
+    @Test func theMatchColorIsRedUntilTheUserChoosesAndTheChoiceIsKept() throws {
+        let suite = "korpora.test.matchcolor.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let settings = AppSettings(defaults: defaults)
+        #expect(settings.matchColor == NSColor.systemRed)
+        settings.matchColor = NSColor(srgbRed: 0, green: 0.5, blue: 0, alpha: 1)
+        let again = AppSettings(defaults: defaults).matchColor.usingColorSpace(.sRGB)
+        #expect(again?.greenComponent == 0.5)
     }
 
     @Test func displayLineAppendsInlineAttributesAsSecondarySegments() {

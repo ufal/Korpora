@@ -119,7 +119,7 @@ final class KWICCellView: NSTableCellView {
             result.append(styledText(text, bold: bold, color: color, paragraphStyle: paragraphStyle, language: language))
         }
         append(before, bold: false, color: .labelColor)
-        append(match, bold: true, color: .controlAccentColor)
+        append(match, bold: true, color: AppSettings.shared.matchColor)
         append(after, bold: false, color: .labelColor)
         return result
     }
@@ -240,7 +240,8 @@ final class KWICCellView: NSTableCellView {
 
     private static func width(of segment: KWICDisplaySegment, script: UnicodeScript, style: Style, language: String?) -> CGFloat {
         let font: NSFont = segment.kind == .secondaryAttribute
-            ? AppSettings.shared.resultsFont : wordFont(for: segment, script: script, style: style, language: language).font
+            ? AppSettings.shared.resultsFont
+            : wordFont(for: segment, script: script, style: Self.style(of: segment, in: style), language: language).font
         return NSAttributedString(string: segment.text, attributes: [.font: font]).size().width
     }
 
@@ -262,6 +263,12 @@ final class KWICCellView: NSTableCellView {
             if let script = own[index] { next = script } else { own[index] = next }
         }
         return own.map { $0 ?? .latin }
+    }
+
+    /// The style a segment is drawn in: the column's, except that a word the match column holds without it being
+    /// matched is plain.
+    static func style(of segment: KWICDisplaySegment, in style: Style) -> Style {
+        style == .highlighted && !segment.isMatch ? .plain : style
     }
 
     /// The font of a token (not of a secondary attribute): the one the settings give its script, at that
@@ -286,7 +293,7 @@ final class KWICCellView: NSTableCellView {
     ) -> NSAttributedString {
         let baseFont = AppSettings.shared.resultsFont
         let scripts = wordScripts(of: segments)
-        let wordColor: NSColor = style == .highlighted ? .controlAccentColor : .labelColor
+        let matchColor = AppSettings.shared.matchColor
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineBreakMode = alignment == .right ? .byTruncatingHead : .byTruncatingTail
         paragraphStyle.alignment = alignment
@@ -298,9 +305,11 @@ final class KWICCellView: NSTableCellView {
                 attributes[.font] = baseFont
                 attributes[.foregroundColor] = AppSettings.shared.positionalAttributeColor
             } else {
-                let (font, language) = wordFont(for: segment, script: scripts[index], style: style, language: language)
+                // A word between the matched tokens that isn't one of them reads as context.
+                let own = Self.style(of: segment, in: style)
+                let (font, language) = wordFont(for: segment, script: scripts[index], style: own, language: language)
                 attributes[.font] = font
-                attributes[.foregroundColor] = wordColor
+                attributes[.foregroundColor] = own == .highlighted ? matchColor : NSColor.labelColor
                 if let language { attributes[.languageIdentifier] = language }
             }
             attributed.append(NSAttributedString(string: segment.text, attributes: attributes))

@@ -32,7 +32,7 @@ import Testing
         #expect(window.styleMask.contains(.resizable))
         let designed: [SettingsWindowController.Pane: NSSize] = [
             .corpora: NSSize(width: 840, height: 470),
-            .appearance: NSSize(width: 460, height: 520),
+            .appearance: NSSize(width: 460, height: 550),
             .concordance: NSSize(width: 460, height: 290),
         ]
         for pane in SettingsWindowController.Pane.allCases {

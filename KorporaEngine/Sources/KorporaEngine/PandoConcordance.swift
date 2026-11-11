@@ -30,6 +30,8 @@ public actor PandoConcordance: ConcordanceHandle {
         var position: Int
         var left: [String]
         var match: [[String: String]]
+        /// Whether each of `match` is a token the query matched (false: a word in a gap between them).
+        var matched: [Bool]
         var matchWords: [String]
         var right: [String]
     }
@@ -170,7 +172,10 @@ public actor PandoConcordance: ConcordanceHandle {
                 }
                 return token
             }
-            return Line(position: start, left: Self.words(context?["left"] as? String), match: match,
+            // Only the tokens pando lists are matched. A hit that lists none (nothing was asked for) is
+            // taken as matched whole, as before.
+            let matched = (start...max(start, end)).map { byPosition.isEmpty || byPosition[$0] != nil }
+            return Line(position: start, left: Self.words(context?["left"] as? String), match: match, matched: matched,
                         matchWords: matchWords, right: Self.words(context?["right"] as? String))
         }
     }
@@ -224,7 +229,8 @@ public actor PandoConcordance: ConcordanceHandle {
             var secondary: [String: String] = [:]
             for name in secondaryAttributes { if let value = token[name] { secondary[name] = value } }
             let word = token[kwicAttr] ?? (offset < line.matchWords.count ? line.matchWords[offset] : "")
-            return KWICToken(word: word, secondaryAttributes: secondary)
+            return KWICToken(word: word, secondaryAttributes: secondary,
+                             isMatch: line.matched.indices.contains(offset) ? line.matched[offset] : true)
         }
         return KWICLine(leftTokens: plain(Array(line.left.suffix(left))), kwicTokens: kwic,
                         rightTokens: plain(Array(line.right.prefix(right))), position: line.position)

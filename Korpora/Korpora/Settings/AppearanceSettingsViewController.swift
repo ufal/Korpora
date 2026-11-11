@@ -8,6 +8,7 @@ import Cocoa
 final class AppearanceSettingsViewController: NSViewController {
     private let positionalColorWell = NSColorWell()
     private let structuralColorWell = NSColorWell()
+    let matchColorWell = NSColorWell()
     private let alternatingRowCheckbox = NSButton(
         checkboxWithTitle: "Alternate row background", target: nil, action: nil)
     let scriptTableView = NSTableView()
@@ -40,7 +41,7 @@ final class AppearanceSettingsViewController: NSViewController {
     }
 
     override func loadView() {
-        let root = NSView(frame: NSRect(x: 0, y: 0, width: 460, height: 520))
+        let root = NSView(frame: NSRect(x: 0, y: 0, width: 460, height: 550))
         // Follow the window when it's resized, like the Corpora pane: the table of fonts takes the extra width and height.
         root.autoresizingMask = [.width, .height]
 
@@ -100,6 +101,11 @@ final class AppearanceSettingsViewController: NSViewController {
         colorsTitle.font = .boldSystemFont(ofSize: 12)
         let positionalLabel = NSTextField(labelWithString: "Positional attributes:")
         let structuralLabel = NSTextField(labelWithString: "Structural attribute:")
+        let matchLabel = NSTextField(labelWithString: "Match:")
+        matchColorWell.color = AppSettings.shared.matchColor
+        matchColorWell.target = self
+        matchColorWell.action = #selector(matchColorChanged)
+        matchColorWell.setAccessibilityLabel("Match color")
         positionalColorWell.color = AppSettings.shared.positionalAttributeColor
         positionalColorWell.target = self
         positionalColorWell.action = #selector(positionalColorChanged)
@@ -114,6 +120,7 @@ final class AppearanceSettingsViewController: NSViewController {
         let views: [NSView] = [
             scriptTitle, scriptHint, scriptScrollView, addButton, removeButton, changeScriptFontButton,
             colorsTitle, positionalLabel, positionalColorWell, structuralLabel, structuralColorWell,
+            matchLabel, matchColorWell,
             alternatingRowCheckbox,
         ]
         for v in views {
@@ -159,18 +166,28 @@ final class AppearanceSettingsViewController: NSViewController {
             structuralColorWell.leadingAnchor.constraint(equalTo: structuralLabel.trailingAnchor, constant: 8),
             structuralColorWell.widthAnchor.constraint(equalToConstant: 44),
 
-            alternatingRowCheckbox.topAnchor.constraint(equalTo: structuralLabel.bottomAnchor, constant: 12),
+            matchLabel.topAnchor.constraint(equalTo: structuralLabel.bottomAnchor, constant: 8),
+            matchLabel.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20),
+            matchColorWell.centerYAnchor.constraint(equalTo: matchLabel.centerYAnchor),
+            matchColorWell.leadingAnchor.constraint(equalTo: matchLabel.trailingAnchor, constant: 8),
+            matchColorWell.widthAnchor.constraint(equalToConstant: 44),
+
+            alternatingRowCheckbox.topAnchor.constraint(equalTo: matchLabel.bottomAnchor, constant: 12),
             alternatingRowCheckbox.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 20),
             alternatingRowCheckbox.bottomAnchor.constraint(equalTo: root.bottomAnchor, constant: -20),
         ])
 
         view = root
-        preferredContentSize = NSSize(width: 460, height: 520)
+        preferredContentSize = NSSize(width: 460, height: 550)
         reloadRows()
     }
 
     @objc private func positionalColorChanged() {
         AppSettings.shared.positionalAttributeColor = positionalColorWell.color
+    }
+
+    @objc private func matchColorChanged() {
+        AppSettings.shared.matchColor = matchColorWell.color
     }
 
     @objc private func structuralColorChanged() {

@@ -106,7 +106,7 @@ private final class ExtendedContextDetailViewController: NSViewController {
             result.append(KWICCellView.styledText(before, bold: false, color: .labelColor, language: language))
             result.append(NSAttributedString(string: " ", attributes: [.font: AppSettings.shared.resultsFont]))
         }
-        result.append(KWICCellView.styledText(match, bold: true, color: .controlAccentColor, language: language))
+        result.append(KWICCellView.styledText(match, bold: true, color: AppSettings.shared.matchColor, language: language))
         if !after.isEmpty {
             result.append(NSAttributedString(string: " ", attributes: [.font: AppSettings.shared.resultsFont]))
             result.append(KWICCellView.styledText(after, bold: false, color: .labelColor, language: language))

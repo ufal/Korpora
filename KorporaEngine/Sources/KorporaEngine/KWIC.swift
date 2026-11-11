@@ -9,10 +9,14 @@ import Foundation
 public struct KWICToken: Sendable, Equatable {
     public let word: String
     public let secondaryAttributes: [String: String]
+    /// False for a word that stands between the matched tokens without being one of them (the match column
+    /// spans the first to the last matched token, so a pattern with a gap, such as a dependency, has some).
+    public let isMatch: Bool
 
-    public init(word: String, secondaryAttributes: [String: String]) {
+    public init(word: String, secondaryAttributes: [String: String], isMatch: Bool = true) {
         self.word = word
         self.secondaryAttributes = secondaryAttributes
+        self.isMatch = isMatch
     }
 }
 

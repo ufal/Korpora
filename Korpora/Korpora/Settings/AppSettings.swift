@@ -24,6 +24,7 @@ final class AppSettings {
         static let scriptFonts = "scriptFonts"
         static let positionalAttributeColor = "positionalAttributeColor"
         static let structuralAttributeColor = "structuralAttributeColor"
+        static let matchColor = "matchColor"
         static let usesAlternatingRowBackground = "usesAlternatingRowBackground"
         static let extendedContextDisplayMode = "extendedContextDisplayMode"
         static let allowMultipleExtendedContexts = "allowMultipleExtendedContexts"
@@ -235,6 +236,13 @@ final class AppSettings {
     var structuralAttributeColor: NSColor {
         get { color(forKey: Key.structuralAttributeColor) ?? .secondaryLabelColor }
         set { setColor(newValue, forKey: Key.structuralAttributeColor) }
+    }
+
+    /// The color the matched words render in (bold), in the Match column and in an extended context. Red, so it
+    /// doesn't blend with the selection, which is drawn in the accent color (blue unless the user changed it).
+    var matchColor: NSColor {
+        get { color(forKey: Key.matchColor) ?? .systemRed }
+        set { setColor(newValue, forKey: Key.matchColor) }
     }
 
     /// Whether the concordance table stripes alternating rows - see
