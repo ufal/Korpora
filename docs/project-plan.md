@@ -4546,6 +4546,15 @@ hardware.
 - `Corpora/` — the Xcode project and all AppKit sources; `project.yml` for
   xcodegen; `scripts/build-dev-corpus.sh` for the dev-only test corpus
 
+### Smoke tests with `tart exec` (set up 2026-11-11)
+
+The Cirrus vanilla image has no Tart Guest Agent, so commands could only reach the VM over SSH. `scripts/smoke/install-tart-guest-agent.sh`
+installs it (v0.15.0, checksum checked, in `/usr/local/bin`, a launchd global agent; also turns Gatekeeper on). The VM `korpora-smoke-base`
+is a clean macOS 15.7.7 with that done and no Korpora. For a release: `tart clone korpora-smoke-base korpora-smoke-<ver>`; put the DMG,
+`scripts/smoke/smoke.conllu`, `scripts/release-smoke-vm.sh` in a folder; `tart run --dir=smoke:<folder> korpora-smoke-<ver>` (no `:ro`: the
+read-only form did not start); then from the host `tart exec korpora-smoke-<ver> bash "/Volumes/My Shared Files/smoke/release-smoke-vm.sh" install`,
+the manual first launch in the VM window, and the same with `exec`. No SSH keys are involved.
+
 ### Release 0.4.1 - published 2026-11-07
 
 `Korpora 0.4.1 (5)`: a fix release on 0.4 (published 2026-11-06), built with `scripts/make-release.sh` from `main`
