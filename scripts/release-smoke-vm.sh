@@ -12,6 +12,8 @@
 #   assessments disabled:  sudo spctl --global-enable
 #
 #   bash ~/smoke/release-smoke-vm.sh install   # Gatekeeper checks + install
+#     (or, with the folder shared into the VM by `tart run --dir=smoke:<folder>`:
+#      bash "/Volumes/My Shared Files/smoke/release-smoke-vm.sh" install)
 #   ... manual: first launch from Finder (expect only the "downloaded from
 #       the Internet" prompt), import smoke.conllu via the UI, run a query,
 #       check completion, change a setting, quit + relaunch ...
@@ -22,7 +24,9 @@
 # prompt the manual step is meant to see.
 set -u
 PHASE="${1:-install}"
-cd "$HOME/smoke"
+# The folder with the DMG and smoke.conllu: where this script is (a folder shared into the VM, or ~/smoke).
+SMOKE_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SMOKE_DIR"
 pass=0; fail=0
 ok()  { echo "PASS: $*"; pass=$((pass+1)); }
 bad() { echo "FAIL: $*"; fail=$((fail+1)); }
@@ -72,7 +76,7 @@ APP=/Applications/Korpora.app
 echo "== Bundled pando, run from the installed app"
 H="$APP/Contents/Helpers"
 W=$(mktemp -d)
-"$H/pando-index" "$HOME/smoke/smoke.conllu" "$W/idx" > /tmp/idx.log 2>&1
+"$H/pando-index" "$SMOKE_DIR/smoke.conllu" "$W/idx" > /tmp/idx.log 2>&1
 st=$?
 tail -3 /tmp/idx.log
 grep -qi "dyld\|Library not loaded" /tmp/idx.log && bad "dyld error in pando-index"
