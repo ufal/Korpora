@@ -29,7 +29,7 @@
 	<key>SUPublicEDKey</key>
 	<string>A/T4VcqPOZ3zBSJ+mC5DipYMDgf3i7sXAfcwjrJftjQ=</string>
 	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
+	<string>$(PRODUCT_MODULE_NAME).KorporaApplication</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.education</string>
 	<key>CFBundleDocumentTypes</key>

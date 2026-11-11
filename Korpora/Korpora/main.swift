@@ -15,7 +15,7 @@ if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil { R
 // class - so it's instantiated here, ahead of NSApplication.main().
 _ = KorporaDocumentController()
 
-let app = NSApplication.shared
+let app = KorporaApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate
 app.setActivationPolicy(.regular)

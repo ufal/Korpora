@@ -254,40 +254,36 @@ Confirmed product decisions (from earlier in this project):
   — superseded as a *plan* by the "Goal — Ship a signed GitHub release"
   section below, which is the separate, tracked goal for that work. It
   remains true as a description of current state until that goal starts.
-- **Document persistence model**: dev-only choice, **revisit before real
-  release** — `ConcordanceDocument.isDocumentEdited` is hardcoded to
-  `false` (2026-09-05) so a concordance is disposable scratch state: running
-  sort/filter/shuffle/sample/line-group no longer dirties the document, so
-  closing a window or quitting never prompts to Save/Delete/Cancel, and
-  unsaved concordances are silently discarded. This was the right call
-  *during* active development/testing (constant quit/relaunch cycles were
-  getting interrupted by save prompts for throwaway test concordances), but
-  it's the opposite of how a finished, "modern macOS app" should feel —
-  every open concordance (query + operation chain, not the materialized
-  rows — see `DocumentState`) should transparently survive quit/relaunch
-  with no explicit Save, the same way Notes/TextEdit/Safari resume exactly
-  where you left off. Making that the real pre-release behavior needs:
-  1. Removing/reverting the `isDocumentEdited` override above (or gating it
-     behind a debug-only flag) so documents can autosave-and-resume instead
-     of always discarding.
-  2. Restoring `window.isRestorable = true` /
-     `NSQuitAlwaysKeepsWindows = true` (`Corpora/Corpora/Controllers/
-     ConcordanceWindowController.swift`, `Corpora/Corpora/Info.plist`) —
-     currently forced off because they caused a stuck-restoration-state bug
-     that silently swallowed a launch (no window, no error) after repeated
-     force-kills during dev testing (see Phase 0's bugs list). That
-     workaround needs a real root-cause fix instead of leaving restoration
-     disabled, or the "silent resume" this item wants can't come back
-     safely.
-  3. Reconsidering `AppDelegate.applicationShouldTerminate` (added
-     2026-09-05, always returns `.terminateNow`) — added as an explicit,
-     unconditional guarantee that the app can always quit instantly with no
-     alert, from a script or the system as well as the user, independent of
-     any document's edited state. A real persistence model doesn't
-     necessarily conflict with this (autosave-and-resume can still happen
-     on an unconditional-terminate path), but it needs to be re-examined
-     alongside items 1–2, not left as an accidental leftover from the
-     disposable-scratch model.
+- **Document persistence model: windows and concordances come back after a quit (built 2026-11-12, to be tried by hand).**
+  Was a dev-only choice (`isDocumentEdited` hard-coded false, window restoration off, because stale state once made a
+  launch fail silently). Now: a quit (or a Sparkle relaunch) keeps every concordance with a query and the system puts the windows
+  back; closing a window discards its concordance and asks nothing; nothing ever prompts to save. How, and what the
+  spike (2026-11-11) showed:
+  - AppKit's autosave writes no draft for a document that says it has no edits. So `ConcordanceDocument.isDocumentEdited` is true
+    only while a draft is written (`writeDraft`, 1.5 s after a change and at quit) and while a quit goes on.
+  - **A quit goes through `KorporaApplication.terminate` first** (the app object is ours, set in `main.swift` and `Info.plist`):
+    AppKit refuses to quit while a sheet is open ("App termination blocked by modal sheet", silently), and the app always has one at
+    launch (New Concordance), so ⌘Q did nothing and a Sparkle relaunch stalled. The sheets are closed first. A quit sent as an Apple
+    Event (Dock, log-out) is handled by AppKit itself and ignored under a sheet, so `AppDelegate` takes that event over too.
+  - AppKit's quit sequence closes every untitled document that says it has no edits *before* it asks the delegate anything
+    (`_shouldTerminate` -> `_closeAllDocuments`), so the drafts are written, and `isQuitting` is set, in `terminate`, not in
+    `applicationShouldTerminate`. A concordance with no query yet (the sheet was never answered) is closed: nothing to resume.
+  - While AppKit waits to quit ("terminate later"), the run loop is in a mode where `DispatchQueue.main.async` and GCD timers
+    do not run: use `RunLoop.main.perform(inModes: [.common])` and a `Timer` added for `.common`.
+  - At launch AppKit may open an untitled concordance before the old windows are back: the first New Concordance sheet of a
+    launch waits for `NSApplication.didFinishRestoringWindowsNotification` (2 s at most) and, if a concordance came back, the empty
+    one closes (`LaunchRestoration`).
+  - `RestorationGuard`: a launch that never gets as far as showing windows (8 s) or quitting cleanly makes the next launch delete
+    the system's saved window state (`~/Library/Saved Application State/<id>.savedState`) before AppKit reads it, so one bad state
+    can't fail every launch (the old bug).
+  - `window.isRestorable` is true again and `NSQuitAlwaysKeepsWindows` is gone from `Info.plist`, so the system's own setting decides:
+    System Settings > Desktop & Dock > **"Close windows when quitting an application" must be off**, or macOS reopens no app's
+    windows (it was on in the user's Mac, which hid the first test).
+  - Drafts are AppKit's own, a few hundred bytes each, in its autosave location (not next to a corpus). Tested: draft written and deleted on
+    close, the guard, the sheet closing, the lazy first sheet. Tried by script on this Mac: a file concordance and an untitled one with
+    a query both came back after a quit; a launch with nothing to restore shows the sheet; the empty window is not restored.
+  - Not done: re-running searches lazily on restore (all re-run at once now), restoring the frequency, collocation and dispersion
+    windows, the selected row and scroll position.
 - **Tests**: ManateeKit's tests are XCTest, not this workspace's usual Swift
   Testing convention — a known divergence, not something to rewrite
   speculatively.

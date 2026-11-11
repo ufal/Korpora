@@ -16,6 +16,7 @@
 		16C6AB39D6B4B024D56DB595 /* AttributeDisplayPopoverController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 194EBAFB6892689A6B616369 /* AttributeDisplayPopoverController.swift */; };
 		171B94927CACB5FA8C25D710 /* SettingsWindowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC33C652F154E0B0ACAAAF16 /* SettingsWindowTests.swift */; };
 		1938B1A7AFC746B80688FF6E /* CorporaSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27FD96658F279E86467718F8 /* CorporaSettingsViewController.swift */; };
+		1F86A5DFC18831E72785A573 /* KorporaApplication.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36609021C3C9A88C1881804F /* KorporaApplication.swift */; };
 		22B381F6D20948AB31481DD4 /* ConlluDrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ECBA5D28719DAB364BF506C /* ConlluDrop.swift */; };
 		2361BEBD2F8EC06105F54B5F /* ConcordanceOperation.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA5BD468A9C191CD0CB9A323 /* ConcordanceOperation.swift */; };
 		247ED6676A2FED188F50DAF6 /* LegacyDefaultsMigrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70108D2D157AC3924026A527 /* LegacyDefaultsMigrationTests.swift */; };
@@ -61,6 +62,7 @@
 		9706A787B7D8B81891AC6D95 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A2ABBCF839D0C66351D969 /* main.swift */; };
 		9747F58DC5013813C8E611E3 /* CorpusTypography.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C346BFB8ACCC982C91C5324 /* CorpusTypography.swift */; };
 		97CB75829A78ECC1D477B9CE /* ConcordanceExporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5CB085B52C1CC64F2C18D6D2 /* ConcordanceExporterTests.swift */; };
+		9934B81AF447F832C1DA7BBD /* LaunchRestoration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70FB534B3DA110729D774A9B /* LaunchRestoration.swift */; };
 		9A58D11670B9CF33508B8FF4 /* DispersionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24BB2E68E54F740A40A1DF52 /* DispersionTests.swift */; };
 		9DA301BAFC5067B031A340A8 /* CorpusDirectorySettingsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DEA83DD0B055BE11EADCC66 /* CorpusDirectorySettingsTests.swift */; };
 		9FEF942A2023A921E3D832A0 /* ConcordanceSettingsViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EA20AB3943E5955AFF4F9E1 /* ConcordanceSettingsViewController.swift */; };
@@ -136,6 +138,7 @@
 		2C346BFB8ACCC982C91C5324 /* CorpusTypography.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusTypography.swift; sourceTree = "<group>"; };
 		330EE69B17F41A1CE70E9570 /* RestorationGuard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RestorationGuard.swift; sourceTree = "<group>"; };
 		33523E2968DE7282B8143137 /* EngineSeamTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EngineSeamTests.swift; sourceTree = "<group>"; };
+		36609021C3C9A88C1881804F /* KorporaApplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KorporaApplication.swift; sourceTree = "<group>"; };
 		36AD3505A6B115D835CFF1D6 /* KWICCellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KWICCellView.swift; sourceTree = "<group>"; };
 		38F142C472071C00A420ABC5 /* AppearanceSettingsViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppearanceSettingsViewController.swift; sourceTree = "<group>"; };
 		3A6D43BB65CCB422D8CB824F /* UnicodeScriptData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnicodeScriptData.swift; sourceTree = "<group>"; };
@@ -156,6 +159,7 @@
 		6E43418276694BEE9E6FD9C7 /* ActiveImportTracker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveImportTracker.swift; sourceTree = "<group>"; };
 		6EE043A10DE130AB36BA0F1C /* ConcordanceExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConcordanceExporter.swift; sourceTree = "<group>"; };
 		70108D2D157AC3924026A527 /* LegacyDefaultsMigrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyDefaultsMigrationTests.swift; sourceTree = "<group>"; };
+		70FB534B3DA110729D774A9B /* LaunchRestoration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchRestoration.swift; sourceTree = "<group>"; };
 		712827F20614CE4E88A28D46 /* DispersionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DispersionView.swift; sourceTree = "<group>"; };
 		73CC906E25B06673D997CBD4 /* CorpusImportSheetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusImportSheetController.swift; sourceTree = "<group>"; };
 		7EC95A179DFFA46D1C19AA43 /* CQLCompletionContextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CQLCompletionContextTests.swift; sourceTree = "<group>"; };
@@ -362,6 +366,7 @@
 				2244ED579AEB14CE01DD800F /* AppDelegate.swift */,
 				0B7823CD7A43E310862382A0 /* Info.plist */,
 				206361B4B6C7135D9E8D6D48 /* Korpora.entitlements */,
+				36609021C3C9A88C1881804F /* KorporaApplication.swift */,
 				B5A2ABBCF839D0C66351D969 /* main.swift */,
 				3884778F62C23F3C51ACF9F9 /* Controllers */,
 				E35D1AF2A62F3C261539018C /* Documents */,
@@ -397,6 +402,7 @@
 				DA5BD468A9C191CD0CB9A323 /* ConcordanceOperation.swift */,
 				F1A3E3632E8CB4A221956BA5 /* Engines.swift */,
 				10EEF40040FBFD9EF32A2353 /* KWICFormatter.swift */,
+				70FB534B3DA110729D774A9B /* LaunchRestoration.swift */,
 				330EE69B17F41A1CE70E9570 /* RestorationGuard.swift */,
 				AC4BF85C4540BAB954E61CCC /* UnicodeScript.swift */,
 				3A6D43BB65CCB422D8CB824F /* UnicodeScriptData.swift */,
@@ -594,7 +600,9 @@
 				D2DB97BA102AA3F70C5066BF /* HistoryPopoverController.swift in Sources */,
 				8A9BD412E2BB01965893F7C1 /* KWICCellView.swift in Sources */,
 				6CDEB59F2FF4FA28D2BBBD5D /* KWICFormatter.swift in Sources */,
+				1F86A5DFC18831E72785A573 /* KorporaApplication.swift in Sources */,
 				2C2DBAEE4CA8A8AA5B831246 /* KorporaDocumentController.swift in Sources */,
+				9934B81AF447F832C1DA7BBD /* LaunchRestoration.swift in Sources */,
 				470EB5A8AA5C7EB0446D755D /* LegacyDefaultsMigration.swift in Sources */,
 				DF41E0A7E0BECE4B5D74495C /* NewConcordanceSheetController.swift in Sources */,
 				F36D175CD48D51F2E3C45511 /* NewSubcorpusPopoverController.swift in Sources */,

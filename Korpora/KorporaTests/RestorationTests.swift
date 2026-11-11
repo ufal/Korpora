@@ -66,4 +66,32 @@ import Testing
         let url = try #require(RestorationGuard.savedStateFolder(bundleIdentifier: "cz.cuni.mff.ufal.korpora"))
         #expect(url.path.hasSuffix("Library/Saved Application State/cz.cuni.mff.ufal.korpora.savedState"))
     }
+
+    /// AppKit closes every untitled document that says it has no edits before it asks the app delegate anything, so
+    /// a concordance has to say it is edited from the moment a quit starts (and only then).
+    @Test func aConcordanceSaysItIsEditedOnlyWhileAQuitGoesOn() {
+        let doc = ConcordanceDocument()
+        #expect(!doc.isDocumentEdited)
+        ConcordanceDocument.isQuitting = true
+        #expect(doc.isDocumentEdited)
+        (NSApp as? KorporaApplication)?.quitWasCancelled()
+        #expect(!doc.isDocumentEdited)
+    }
+
+    @Test func theApplicationObjectIsOursSoAQuitGoesThroughIt() {
+        #expect(NSApp is KorporaApplication)
+    }
+
+    /// The first sheet of a launch waits for the system to put the windows back; one asked for later does not.
+    @Test func theFirstSheetOfALaunchWaitsForTheRestorationAndALaterOneDoesNot() async {
+        LaunchRestoration.begin(timeout: 0.2)
+        var told: [Bool] = []
+        LaunchRestoration.afterRestoration { told.append($0) }
+        #expect(told.isEmpty, "still restoring")
+        try? await Task.sleep(for: .milliseconds(500))
+        #expect(told == [true], "it waited, so it is part of the launch")
+        LaunchRestoration.afterRestoration { told.append($0) }
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(told == [true, false], "asked for after the launch: not held back")
+    }
 }

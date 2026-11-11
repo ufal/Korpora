@@ -394,7 +394,12 @@ final class ConcordanceDocument: NSDocument {
     ///
     /// Except while a draft is being written (`writeDraft`): AppKit's autosave writes nothing for a document that
     /// says it has no edits (spike, 2026-11-11), and a draft is what it reopens after a quit.
-    override var isDocumentEdited: Bool { isWritingDraft }
+    override var isDocumentEdited: Bool { isWritingDraft || Self.isQuitting }
+
+    /// True from the moment a quit starts (KorporaApplication.terminate): AppKit closes every untitled document that
+    /// says it has no edits before it asks the app delegate anything, and an untitled concordance would be gone
+    /// with its window; saying it is edited keeps it, with its draft.
+    nonisolated(unsafe) static var isQuitting = false
 
     private var isWritingDraft = false
     private var draftWork: DispatchWorkItem?
@@ -409,7 +414,9 @@ final class ConcordanceDocument: NSDocument {
         isWritingDraft = true
         updateChangeCount(.changeDone)
         autosave(withImplicitCancellability: false) { [weak self] error in
-            DispatchQueue.main.async {
+            // On the common run-loop modes: while the app waits to quit ("terminate later") AppKit runs the loop in a
+            // mode where a plain DispatchQueue.main.async never runs, and the quit would hang.
+            RunLoop.main.perform(inModes: [.common]) {
                 self?.isWritingDraft = false
                 if let error { NSLog("Korpora: could not write the draft: \(error.localizedDescription)") }
                 completion?()
@@ -440,7 +447,18 @@ final class ConcordanceDocument: NSDocument {
             // `showWindows()` right after this method returns, whether the
             // document was created via our own code or its own automatic
             // untitled-document-at-launch path).
-            DispatchQueue.main.async { [weak self] in self?.presentNewConcordanceSheet() }
+            LaunchRestoration.afterRestoration { [weak self] duringLaunch in
+                guard let self else { return }
+                // A concordance of the last session came back: this empty one, opened by the launch, isn't needed.
+                let cameBack = NSDocumentController.shared.documents.contains {
+                    ($0 as? ConcordanceDocument).map { $0 !== self && !$0.initialQuery.isEmpty } ?? false
+                }
+                if duringLaunch && cameBack {
+                    close()
+                } else {
+                    presentNewConcordanceSheet()
+                }
+            }
         } else {
             replay()
         }
