@@ -27,6 +27,7 @@
 		2A4E2002EDDF6EA61BE77E75 /* CQLPatterns.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3BE7AC76198AF6B7E6BE406 /* CQLPatterns.swift */; };
 		2B2B70AE01B0E3943F49F804 /* QueryHistoryStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3253FB4AE0CC8DDD22A9B12 /* QueryHistoryStoreTests.swift */; };
 		2C2DBAEE4CA8A8AA5B831246 /* KorporaDocumentController.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC667DAE0261FA8BD9966E36 /* KorporaDocumentController.swift */; };
+		2CC891D805417D0487B4E7BF /* AnalysisRestorationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57D0BAE78DC9E3A2919FFBA0 /* AnalysisRestorationTests.swift */; };
 		319D9C33DB962719BA07A843 /* CollocationComposerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01DFE13D80A39C2D7DE93D2F /* CollocationComposerTests.swift */; };
 		332D394CACC2683A315A91C0 /* ConcordanceViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E0DDF2767D8F85B6A2A9DAF /* ConcordanceViewController.swift */; };
 		3386A9FFA511EDF255708B25 /* FrequencyComposerModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 92A4101729D39BBFA3F92403 /* FrequencyComposerModelTests.swift */; };
@@ -46,6 +47,7 @@
 		6277F53E976159C5958D88C6 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2244ED579AEB14CE01DD800F /* AppDelegate.swift */; };
 		648BECFAEFA6FE5FE21E9572 /* PandoTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 892F0CB7F666BA4DDAF0C975 /* PandoTestSupport.swift */; };
 		650935436FE97247095EE3DE /* CQLPatternTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7B4A1DC93D5DF6251665F15 /* CQLPatternTests.swift */; };
+		6944B908C0FE7C28805B8021 /* AnalysisState.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBCDCFDF0D43A2DB6514BC2E /* AnalysisState.swift */; };
 		6A762E1E423B189ABF712D47 /* ConcordanceOperationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F2DB228AD53B0694A7A7C2C /* ConcordanceOperationTests.swift */; };
 		6CDEB59F2FF4FA28D2BBBD5D /* KWICFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10EEF40040FBFD9EF32A2353 /* KWICFormatter.swift */; };
 		7493A2B00E35294C4A83B5DF /* SubcorpusValuePickerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD2EE2396662652C35562289 /* SubcorpusValuePickerModel.swift */; };
@@ -149,6 +151,7 @@
 		50429E54926CEE548BDD9820 /* UnicodeScriptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnicodeScriptTests.swift; sourceTree = "<group>"; };
 		548B42C845A6C7B07CCE870F /* HistoryPopoverController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryPopoverController.swift; sourceTree = "<group>"; };
 		54A99C5F88D490DDA3B9D49F /* WindowPrinting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowPrinting.swift; sourceTree = "<group>"; };
+		57D0BAE78DC9E3A2919FFBA0 /* AnalysisRestorationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisRestorationTests.swift; sourceTree = "<group>"; };
 		580379B16410CA4C2D7CA4D0 /* CorpusListSettingsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CorpusListSettingsTests.swift; sourceTree = "<group>"; };
 		5CB085B52C1CC64F2C18D6D2 /* ConcordanceExporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConcordanceExporterTests.swift; sourceTree = "<group>"; };
 		5D6B7C9CED354613F83E8A50 /* SettingsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowController.swift; sourceTree = "<group>"; };
@@ -194,6 +197,7 @@
 		BF875F2D06EDE10A114C5335 /* UpdatesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdatesTests.swift; sourceTree = "<group>"; };
 		C3BE7AC76198AF6B7E6BE406 /* CQLPatterns.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CQLPatterns.swift; sourceTree = "<group>"; };
 		CA5B7A3F4ED9EF879F25E81A /* CollocationWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CollocationWindowController.swift; sourceTree = "<group>"; };
+		CBCDCFDF0D43A2DB6514BC2E /* AnalysisState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalysisState.swift; sourceTree = "<group>"; };
 		CF1FD3479E35618789EA56FC /* CQLQueryField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CQLQueryField.swift; sourceTree = "<group>"; };
 		D0F115CEAC930466168A9217 /* SortableTableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SortableTableView.swift; sourceTree = "<group>"; };
 		D1CEB379EAD1C7D1F10F792C /* AppSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettings.swift; sourceTree = "<group>"; };
@@ -303,6 +307,7 @@
 		779D82994C6A303E2DDC3D8B /* KorporaTests */ = {
 			isa = PBXGroup;
 			children = (
+				57D0BAE78DC9E3A2919FFBA0 /* AnalysisRestorationTests.swift */,
 				65D6B6A3CFABE26AD74F85D5 /* BarChartTests.swift */,
 				01DFE13D80A39C2D7DE93D2F /* CollocationComposerTests.swift */,
 				F194B5057DE1CD8400800B9E /* ConcordanceDocumentCancelTests.swift */,
@@ -397,6 +402,7 @@
 		E35D1AF2A62F3C261539018C /* Documents */ = {
 			isa = PBXGroup;
 			children = (
+				CBCDCFDF0D43A2DB6514BC2E /* AnalysisState.swift */,
 				8BA396783428D5410E30C0F8 /* ConcordanceDocument.swift */,
 				6EE043A10DE130AB36BA0F1C /* ConcordanceExporter.swift */,
 				DA5BD468A9C191CD0CB9A323 /* ConcordanceOperation.swift */,
@@ -526,6 +532,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2CC891D805417D0487B4E7BF /* AnalysisRestorationTests.swift in Sources */,
 				AEAACF157ADF3C9E631B3A24 /* BarChartTests.swift in Sources */,
 				FE3E752BE968D4DE9C1779B1 /* CQLAutoPairingTests.swift in Sources */,
 				C6212C93C0C81D9DD271EBD5 /* CQLCompletionContextTests.swift in Sources */,
@@ -568,6 +575,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D2292F83A25C875C1174CC94 /* ActiveImportTracker.swift in Sources */,
+				6944B908C0FE7C28805B8021 /* AnalysisState.swift in Sources */,
 				6277F53E976159C5958D88C6 /* AppDelegate.swift in Sources */,
 				29B81AF1A74883E0E7A12393 /* AppSettings.swift in Sources */,
 				A1626887D340E9D9566D6217 /* AppearanceSettingsViewController.swift in Sources */,

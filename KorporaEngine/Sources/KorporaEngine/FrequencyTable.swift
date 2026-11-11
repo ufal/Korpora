@@ -2,7 +2,7 @@ import Foundation
 
 /// One column of a frequency over the nodes of a query (docs/frequency-composer.md): an attribute of one
 /// node (`a.lemma`), or a text or document property that belongs to no token (`doc.genre`).
-public struct FrequencyField: Sendable, Equatable, Hashable {
+public struct FrequencyField: Sendable, Equatable, Hashable, Codable {
     /// The node's name in the query (the user's, or the one `QueryNodes` chose); nil for a text or document
     /// property.
     public var node: String?

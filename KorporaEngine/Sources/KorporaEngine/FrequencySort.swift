@@ -1,8 +1,8 @@
 import Foundation
 
 /// One level of the order of a frequency table.
-public struct FrequencySortKey: Sendable, Equatable {
-    public enum Column: Sendable, Equatable {
+public struct FrequencySortKey: Sendable, Equatable, Codable {
+    public enum Column: Sendable, Equatable, Codable {
         /// The values of field `n` (an index into `FrequencyTable.fields`).
         case field(Int)
         case count

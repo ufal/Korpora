@@ -401,6 +401,25 @@ final class ConcordanceDocument: NSDocument {
     /// with its window; saying it is edited keeps it, with its draft.
     nonisolated(unsafe) static var isQuitting = false
 
+    // MARK: Analysis windows that come back
+
+    /// The analysis windows the concordance had open when it was saved: opened again once its results are in
+    /// (`onRestoreAnalyses`, set by the view controller).
+    private(set) var restoredAnalyses: [AnalysisState] = []
+    var onRestoreAnalyses: (([AnalysisState]) -> Void)?
+    /// What the window of this concordance has open now (the view controller answers), saved with every draft.
+    var analysisStatesProvider: (() -> [AnalysisState])?
+
+    /// An analysis window was opened or closed: the draft is written again soon.
+    func analysesChanged() { scheduleDraft() }
+
+    private func deliverRestoredAnalyses() {
+        guard !restoredAnalyses.isEmpty, liveConcordance != nil, let onRestoreAnalyses else { return }
+        let states = restoredAnalyses
+        restoredAnalyses = []
+        onRestoreAnalyses(states)
+    }
+
     private var isWritingDraft = false
     private var draftWork: DispatchWorkItem?
 
@@ -418,6 +437,9 @@ final class ConcordanceDocument: NSDocument {
             // mode where a plain DispatchQueue.main.async never runs, and the quit would hang.
             RunLoop.main.perform(inModes: [.common]) {
                 self?.isWritingDraft = false
+                // The window took "edited" while the draft was written; the document has no edits.
+                self?.updateChangeCount(.changeCleared)
+                self?.windowControllers.forEach { $0.setDocumentEdited(false) }
                 if let error { NSLog("Korpora: could not write the draft: \(error.localizedDescription)") }
                 completion?()
             }
@@ -722,6 +744,7 @@ final class ConcordanceDocument: NSDocument {
             }
             isSearching = false
             onResultsChanged?(true)
+            deliverRestoredAnalyses()
         }
     }
 
@@ -885,6 +908,8 @@ final class ConcordanceDocument: NSDocument {
         // Optional: a document saved before the view switch came back has none (read as KWIC).
         var viewMode: ConcordanceViewMode?
         var operations: [ConcordanceOperation]
+        // Optional: a document saved before the analysis windows came back has none.
+        var analyses: [AnalysisState]?
     }
 
     override func data(ofType typeName: String) throws -> Data {
@@ -893,7 +918,8 @@ final class ConcordanceDocument: NSDocument {
             corpusName: corpusName, subcorpus: subcorpus, initialQuery: initialQuery,
             leftContext: leftContext, rightContext: rightContext, kwicAttr: kwicAttr,
             inlineAttributes: inlineAttributes, tooltipAttributes: tooltipAttributes,
-            structuralAttributeToShow: structuralAttributeToShow, viewMode: viewMode, operations: operations)
+            structuralAttributeToShow: structuralAttributeToShow, viewMode: viewMode, operations: operations,
+            analyses: analysisStatesProvider?() ?? restoredAnalyses)
         return try JSONEncoder().encode(state)
     }
 
@@ -922,6 +948,7 @@ final class ConcordanceDocument: NSDocument {
         structuralAttributeToShow = state.structuralAttributeToShow
         viewMode = state.viewMode ?? .kwic
         operations = state.operations
+        restoredAnalyses = state.analyses ?? []
     }
 }
 

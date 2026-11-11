@@ -91,12 +91,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
     /// alert only decides whether that's allowed to happen at all.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard ActiveImportTracker.shared.isImporting else { return .terminateNow }
+        // The user may take their time over this question: no watchdog while it is up.
+        (NSApp as? KorporaApplication)?.stopQuitWatchdog()
         let alert = NSAlert()
         alert.messageText = "A corpus import is in progress"
         alert.informativeText = "Quitting now will stop the compile. It can’t be resumed - you’ll need to start over."
         alert.addButton(withTitle: "Quit")
         alert.addButton(withTitle: "Cancel")
-        if alert.runModal() == .alertFirstButtonReturn { return .terminateNow }
+        if alert.runModal() == .alertFirstButtonReturn {
+            (NSApp as? KorporaApplication)?.startQuitWatchdog()
+            return .terminateNow
+        }
         (NSApp as? KorporaApplication)?.quitWasCancelled()
         return .terminateCancel
     }

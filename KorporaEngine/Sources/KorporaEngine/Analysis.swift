@@ -22,7 +22,7 @@ public enum AssociationMeasure: Character, Sendable, Codable, CaseIterable {
 /// Parameters for `ConcordanceHandle.collocations(_:)` - mirrors KonText's own
 /// collocation form (`cattr`/`csortfn`/`cfromw`/`ctow`), plus the two
 /// frequency thresholds a collocate must reach.
-public struct CollocationSpec: Sendable, Codable {
+public struct CollocationSpec: Sendable, Codable, Equatable {
     /// Positional attribute the collocate candidates are drawn from and
     /// reported in (e.g. "word", "lemma") - not necessarily the attribute
     /// the query itself matched on.

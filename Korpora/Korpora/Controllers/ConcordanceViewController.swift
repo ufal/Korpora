@@ -30,6 +30,8 @@ final class ConcordanceViewController: NSViewController {
     // else keeps them alive while shown, so this array does. Entries remove
     // themselves on close (see `show(_:)` below).
     private var auxiliaryWindowControllers: [NSWindowController] = []
+    /// What each analysis window shows, to save with the concordance (see `AnalysisState`).
+    private var auxiliaryStates: [ObjectIdentifier: AnalysisState] = [:]
 
     // Inline "Extended Context" (`AppSettings.extendedContextDisplayMode
     // == .inline`) - transient UI state, not part of `ConcordanceDocument`,
@@ -141,6 +143,8 @@ final class ConcordanceViewController: NSViewController {
         queryField.onSubmit = { [weak self] in self?.runQuery() }
         updateCompletionProvider()
 
+        document.analysisStatesProvider = { [weak self] in self?.currentAnalysisStates() ?? [] }
+        document.onRestoreAnalyses = { [weak self] states in self?.restoreAnalyses(states) }
         document.onResultsChanged = { [weak self] animated in self?.refresh(animated: animated) }
         document.onRowsLoaded = { [weak self] range in self?.rowsArrived(range) }
         // The corpus's row height and language (docs/typography.md): known once its word list has been read.
@@ -375,7 +379,8 @@ final class ConcordanceViewController: NSViewController {
             Task { @MainActor in
                 do {
                     let items = try await self.document.collocations(spec)
-                    self.show(CollocationWindowController(spec: spec, items: items, context: self.document.printContext("Collocations")))
+                    self.show(CollocationWindowController(spec: spec, items: items, context: self.document.printContext("Collocations")),
+                              state: .collocation(spec))
                 } catch {
                     self.showErrorAlert(error)
                 }
@@ -402,7 +407,8 @@ final class ConcordanceViewController: NSViewController {
                 do {
                     let table = try await self.document.frequencyTable(fields, minFrequency: minFrequency)
                     self.show(FrequencyWindowController(table: table, sortKeys: sortKeys, minFrequency: minFrequency, nodes: nodes,
-                                                        context: self.document.printContext("Frequencies")))
+                                                        context: self.document.printContext("Frequencies")),
+                              state: .frequency(fields: fields, sortKeys: sortKeys, minFrequency: minFrequency))
                 } catch {
                     self.showErrorAlert(error)
                 }
@@ -416,7 +422,8 @@ final class ConcordanceViewController: NSViewController {
         Task { @MainActor in
             do {
                 let distribution = try await document.hitDistribution()
-                show(DispersionWindowController(query: document.initialQuery, distribution: distribution, context: document.printContext("Dispersion")))
+                show(DispersionWindowController(query: document.initialQuery, distribution: distribution, context: document.printContext("Dispersion")),
+                     state: .dispersion)
             } catch {
                 showErrorAlert(error)
             }
@@ -500,16 +507,69 @@ final class ConcordanceViewController: NSViewController {
 
     /// Shows a disposable auxiliary results window and keeps it alive (see
     /// `auxiliaryWindowControllers`) until it's closed.
-    private func show(_ windowController: NSWindowController) {
+    private func show(_ windowController: NSWindowController, state: AnalysisState? = nil, frame: NSRect? = nil) {
         auxiliaryWindowControllers.append(windowController)
+        // The system's window restoration is for the concordance; its analysis windows are opened again by the
+        // concordance (`restoreAnalyses`). Left restorable, AppKit's saved-state writer hung a quit that had them open.
+        windowController.window?.isRestorable = false
+        if let state { auxiliaryStates[ObjectIdentifier(windowController)] = state }
+        if let frame { windowController.window?.setFrame(frame, display: false) }
         NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: windowController.window, queue: .main
         ) { [weak self, weak windowController] _ in
             guard let self, let windowController else { return }
             auxiliaryWindowControllers.removeAll { $0 === windowController }
+            auxiliaryStates[ObjectIdentifier(windowController)] = nil
+            // Closed by the user: it is not to come back. (At a quit the windows are not closed one by one.)
+            document.analysesChanged()
         }
         windowController.showWindow(nil)
         windowController.window?.makeKeyAndOrderFront(nil)
+        if state != nil { document.analysesChanged() }
+    }
+
+    /// The analysis windows open now, with where they are.
+    func currentAnalysisStates() -> [AnalysisState] {
+        auxiliaryWindowControllers.compactMap { controller in
+            guard var state = auxiliaryStates[ObjectIdentifier(controller)] else { return nil }
+            state.frame = controller.window.map { NSStringFromRect($0.frame) }
+            return state
+        }
+    }
+
+    /// Opens again the analysis windows the concordance had (its results are in): each is made again from what was
+    /// asked, so it shows the current corpus, and goes back where it was. One that can't be made (a corpus that has
+    /// changed) is left out.
+    func restoreAnalyses(_ states: [AnalysisState]) {
+        Task { @MainActor in
+            for state in states {
+                do {
+                    switch state.kind {
+                    case .frequency:
+                        guard let fields = state.fields, !fields.isEmpty else { continue }
+                        let minimum = state.minFrequency ?? 1
+                        let sortKeys = state.sortKeys ?? []
+                        let table = try await document.frequencyTable(fields, minFrequency: minimum)
+                        show(FrequencyWindowController(table: table, sortKeys: sortKeys, minFrequency: minimum,
+                                                       nodes: QueryNodes(document.initialQuery),
+                                                       context: document.printContext("Frequencies")),
+                             state: state, frame: state.visibleFrame)
+                    case .collocation:
+                        guard let spec = state.collocation else { continue }
+                        let items = try await document.collocations(spec)
+                        show(CollocationWindowController(spec: spec, items: items, context: document.printContext("Collocations")),
+                             state: state, frame: state.visibleFrame)
+                    case .dispersion:
+                        let distribution = try await document.hitDistribution()
+                        show(DispersionWindowController(query: document.initialQuery, distribution: distribution,
+                                                        context: document.printContext("Dispersion")),
+                             state: state, frame: state.visibleFrame)
+                    }
+                } catch {
+                    continue
+                }
+            }
+        }
     }
 
     private func showErrorAlert(_ error: Error) {

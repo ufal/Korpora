@@ -30,9 +30,30 @@ final class KorporaApplication: NSApplication {
         }
     }
 
-    /// AppKit's own quit, which comes after ours.
+    /// AppKit's own quit, which comes after ours. It first writes the system's saved window state and waits for the
+    /// system to say it is done; scripted runs here saw that wait never end (every thread idle, the main one waiting
+    /// on a reply). The drafts are written by now, so after `quitWatchdogSeconds` the app quits anyway.
     private func terminateByAppKit(_ sender: Any?) {
+        startQuitWatchdog()
         super.terminate(sender)
+    }
+
+    static let quitWatchdogSeconds: TimeInterval = 10
+    private var watchdog: Timer?
+
+    func startQuitWatchdog() {
+        watchdog?.invalidate()
+        let timer = Timer(timeInterval: Self.quitWatchdogSeconds, repeats: false) { _ in
+            NSLog("Korpora: the quit did not finish in \(Int(Self.quitWatchdogSeconds)) s; quitting")
+            exit(0)
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        watchdog = timer
+    }
+
+    func stopQuitWatchdog() {
+        watchdog?.invalidate()
+        watchdog = nil
     }
 
     private func prepareToQuit(then proceed: @escaping () -> Void) {
@@ -60,6 +81,7 @@ final class KorporaApplication: NSApplication {
 
     /// The quit was cancelled (an import is running and the user said no): documents are not about to go.
     func quitWasCancelled() {
+        stopQuitWatchdog()
         ConcordanceDocument.isQuitting = false
     }
 }
