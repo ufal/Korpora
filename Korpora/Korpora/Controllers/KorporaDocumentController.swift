@@ -12,6 +12,12 @@ import Cocoa
 /// CoNLL-U files are declared as a document type so that they can be dropped on the app icon, but they are not
 /// documents: they start the corpus import instead (`ConlluDrop`).
 final class KorporaDocumentController: NSDocumentController {
+    /// A concordance the user asked for (⌘N, File > New): the first-launch cleanup of empty ones leaves it alone.
+    override func newDocument(_ sender: Any?) {
+        MainActor.assumeIsolated { LaunchRestoration.userRequestedNew = true }
+        super.newDocument(sender)
+    }
+
     override func openDocument(
         withContentsOf url: URL, display displayDocument: Bool,
         completionHandler: @escaping (NSDocument?, Bool, Error?) -> Void

@@ -383,23 +383,26 @@ final class ConcordanceDocument: NSDocument {
 
     override class var autosavesInPlace: Bool { true }
 
-    /// A concordance is disposable scratch state by default - like a
-    /// KonText tab, not a file the user must explicitly keep or discard.
-    /// NSDocument's default `isDocumentEdited` tracks the undo manager, and
-    /// every `setOperations` call (sort/filter/shuffle/sample/line-group)
-    /// registers an undo action - so without this override, touching any
-    /// toolbar control would dirty the document and closing/quitting would
-    /// prompt to Save/Delete/Cancel. Explicit File > Save still works (see
-    /// `validateUserInterfaceItem` below), independent of this override.
-    ///
-    /// Except while a draft is being written (`writeDraft`): AppKit's autosave writes nothing for a document that
-    /// says it has no edits (spike, 2026-11-11), and a draft is what it reopens after a quit.
-    override var isDocumentEdited: Bool { isWritingDraft || Self.isQuitting }
+    /// The standard document model (docs/project-plan.md, "Document persistence model"): a concordance with a
+    /// query counts as edited, AppKit autosaves it as a draft every few seconds and at a quit, and puts it back
+    /// after a relaunch. Closing its window is the one place the app decides: it discards the concordance without
+    /// asking (`canClose`), because a concordance is a search to throw away, not a file to keep. File > Save still
+    /// works (see `validateUserInterfaceItem`).
+    override func canClose(withDelegate delegate: Any, shouldClose shouldCloseSelector: Selector?,
+                           contextInfo: UnsafeMutableRawPointer?) {
+        // Answer yes, the way NSDocument answers once the user has chosen: delegate.shouldCloseSelector(self, true, context).
+        guard let shouldCloseSelector else { return }
+        let target = delegate as AnyObject
+        typealias Callback = @convention(c) (AnyObject, Selector, AnyObject, Bool, UnsafeMutableRawPointer?) -> Void
+        let callback = unsafeBitCast(target.method(for: shouldCloseSelector), to: Callback.self)
+        callback(target, shouldCloseSelector, self, true, contextInfo)
+    }
 
-    /// True from the moment a quit starts (KorporaApplication.terminate): AppKit closes every untitled document that
-    /// says it has no edits before it asks the app delegate anything, and an untitled concordance would be gone
-    /// with its window; saying it is edited keeps it, with its draft.
-    nonisolated(unsafe) static var isQuitting = false
+    /// The document has changed: AppKit schedules its autosave.
+    func markChanged() {
+        guard !initialQuery.isEmpty else { return }
+        updateChangeCount(.changeDone)
+    }
 
     // MARK: Analysis windows that come back
 
@@ -410,8 +413,8 @@ final class ConcordanceDocument: NSDocument {
     /// What the window of this concordance has open now (the view controller answers), saved with every draft.
     var analysisStatesProvider: (() -> [AnalysisState])?
 
-    /// An analysis window was opened or closed: the draft is written again soon.
-    func analysesChanged() { scheduleDraft() }
+    /// An analysis window was opened or closed: it is part of what is saved.
+    func analysesChanged() { markChanged() }
 
     private func deliverRestoredAnalyses() {
         guard !restoredAnalyses.isEmpty, liveConcordance != nil, let onRestoreAnalyses else { return }
@@ -420,39 +423,6 @@ final class ConcordanceDocument: NSDocument {
         onRestoreAnalyses(states)
     }
 
-    private var isWritingDraft = false
-    private var draftWork: DispatchWorkItem?
-
-    /// Writes the document's state as AppKit's autosave draft, which window restoration reopens after a quit
-    /// (docs/project-plan.md, "Document persistence model"). Closing a window deletes its draft, so a closed
-    /// concordance is not resumed, and nothing asks to save. A document with no query yet (the New Concordance
-    /// sheet is still open) has nothing to resume and writes none. `completion` runs on the main thread.
-    func writeDraft(completion: (() -> Void)? = nil) {
-        draftWork?.cancel()
-        guard !initialQuery.isEmpty else { completion?(); return }
-        isWritingDraft = true
-        updateChangeCount(.changeDone)
-        autosave(withImplicitCancellability: false) { [weak self] error in
-            // On the common run-loop modes: while the app waits to quit ("terminate later") AppKit runs the loop in a
-            // mode where a plain DispatchQueue.main.async never runs, and the quit would hang.
-            RunLoop.main.perform(inModes: [.common]) {
-                self?.isWritingDraft = false
-                // The window took "edited" while the draft was written; the document has no edits.
-                self?.updateChangeCount(.changeCleared)
-                self?.windowControllers.forEach { $0.setDocumentEdited(false) }
-                if let error { NSLog("Korpora: could not write the draft: \(error.localizedDescription)") }
-                completion?()
-            }
-        }
-    }
-
-    /// A draft soon after a change, so that even a crash resumes close to where the user was.
-    private func scheduleDraft() {
-        draftWork?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.writeDraft() }
-        draftWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5, execute: work)
-    }
 
     override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
         if item.action == #selector(NSDocument.save(_:)) { return true }
@@ -518,7 +488,7 @@ final class ConcordanceDocument: NSDocument {
         QueryHistoryStore.record(
             corpusName: corpusName, subcorpusName: subcorpus?.name, query: cql, defaults: historyDefaults)
         replay()
-        scheduleDraft()
+        markChanged()
     }
 
     // MARK: - Operations (each undoable - see `ConcordanceOperation`)
@@ -590,7 +560,7 @@ final class ConcordanceDocument: NSDocument {
         }
         operations = newOperations
         replay()
-        scheduleDraft()
+        markChanged()
     }
 
     // MARK: - Query execution

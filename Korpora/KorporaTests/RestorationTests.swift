@@ -4,32 +4,35 @@ import Testing
 @testable import Korpora
 
 @MainActor @Suite(.serialized) struct RestorationTests {
-    /// Quitting keeps a concordance (its draft is written, which the system reopens); closing its window discards it
-    /// (the draft is deleted) and neither asks anything.
-    @Test func aDraftIsWrittenOnRequestAndClosingDeletesIt() async throws {
+    /// The standard model: a concordance with a query counts as edited, so AppKit autosaves it as a draft (which the
+    /// next launch reopens); closing it discards it, draft included, and never asks.
+    @Test func aConcordanceWithAQueryIsAutosavedAndClosingDiscardsItWithoutAsking() async throws {
         let doc = ConcordanceDocument()
         doc.corpusName = "draft-test"
         doc.initialQuery = #"[lemma="a"]"#
         NSDocumentController.shared.addDocument(doc)
-        #expect(!doc.isDocumentEdited, "no save prompt, ever, outside the moment a draft is written")
-        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in doc.writeDraft { c.resume() } }
+        #expect(!doc.isDocumentEdited, "nothing has changed yet")
+        doc.markChanged()
+        #expect(doc.isDocumentEdited)
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in
+            doc.autosave(withImplicitCancellability: false) { _ in c.resume() }
+        }
         let url = try #require(doc.autosavedContentsFileURL)
         #expect(FileManager.default.fileExists(atPath: url.path))
         let text = try String(contentsOf: url, encoding: .utf8)
         #expect(text.contains("draft-test") && text.contains("lemma"))
-        #expect(!doc.isDocumentEdited)
+        // Closing the window asks the document whether it may close: yes, at once, with no sheet.
+        let asked = CloseAsker()
+        doc.canClose(withDelegate: asked, shouldClose: #selector(CloseAsker.document(_:shouldClose:contextInfo:)), contextInfo: nil)
+        #expect(asked.answers == [true])
         doc.close()
         #expect(!FileManager.default.fileExists(atPath: url.path), "a closed concordance is not resumed")
     }
 
-    @Test func aDocumentWithNoQueryYetWritesNoDraft() async {
+    @Test func aDocumentWithNoQueryYetIsNotMarkedChanged() {
         let doc = ConcordanceDocument()
-        NSDocumentController.shared.addDocument(doc)
-        var done = false
-        doc.writeDraft { done = true }
-        #expect(done)
-        #expect(doc.autosavedContentsFileURL == nil)
-        doc.close()
+        doc.markChanged()
+        #expect(!doc.isDocumentEdited, "the New Concordance sheet was never answered: nothing to keep")
     }
 
     private func sandbox() -> (UserDefaults, URL, () -> Void) {
@@ -67,31 +70,37 @@ import Testing
         #expect(url.path.hasSuffix("Library/Saved Application State/cz.cuni.mff.ufal.korpora.savedState"))
     }
 
-    /// AppKit closes every untitled document that says it has no edits before it asks the app delegate anything, so
-    /// a concordance has to say it is edited from the moment a quit starts (and only then).
-    @Test func aConcordanceSaysItIsEditedOnlyWhileAQuitGoesOn() {
-        let doc = ConcordanceDocument()
-        #expect(!doc.isDocumentEdited)
-        ConcordanceDocument.isQuitting = true
-        #expect(doc.isDocumentEdited)
-        (NSApp as? KorporaApplication)?.quitWasCancelled()
-        #expect(!doc.isDocumentEdited)
-    }
-
     @Test func theApplicationObjectIsOursSoAQuitGoesThroughIt() {
         #expect(NSApp is KorporaApplication)
     }
 
-    /// The first sheet of a launch waits for the system to put the windows back; one asked for later does not.
-    @Test func theFirstSheetOfALaunchWaitsForTheRestorationAndALaterOneDoesNot() async {
-        LaunchRestoration.begin(timeout: 0.2)
+    /// A concordance the app opens by itself in the first seconds of a launch waits for the restored ones; one the
+    /// user asks for, or any later one, does not.
+    @Test func aConcordanceOpenedByTheLaunchWaitsAndOneAskedForDoesNot() async {
+        LaunchRestoration.grace = 0.2
+        LaunchRestoration.launchWindow = 5
+        defer { LaunchRestoration.grace = 1; LaunchRestoration.launchWindow = 4 }
+        LaunchRestoration.begin()
         var told: [Bool] = []
         LaunchRestoration.afterRestoration { told.append($0) }
-        #expect(told.isEmpty, "still restoring")
+        #expect(told.isEmpty, "waiting for the restored concordances")
         try? await Task.sleep(for: .milliseconds(500))
-        #expect(told == [true], "it waited, so it is part of the launch")
+        #expect(told == [true], "it waited, so it is the launch's own")
+        LaunchRestoration.userRequestedNew = true
         LaunchRestoration.afterRestoration { told.append($0) }
         try? await Task.sleep(for: .milliseconds(100))
-        #expect(told == [true, false], "asked for after the launch: not held back")
+        #expect(told == [true, false], "asked for by the user: not held back, not closed")
+        LaunchRestoration.launchWindow = 0
+        LaunchRestoration.afterRestoration { told.append($0) }
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(told == [true, false, false], "after the launch window: not the launch's own")
+    }
+}
+
+/// Stands in for the window that asks a document whether it may close.
+final class CloseAsker: NSObject {
+    var answers: [Bool] = []
+    @objc func document(_ document: NSDocument, shouldClose: Bool, contextInfo: UnsafeMutableRawPointer?) {
+        answers.append(shouldClose)
     }
 }

@@ -53,7 +53,7 @@ final class ConcordanceWindowController: NSWindowController, NSToolbarDelegate {
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         window.tabbingMode = .preferred
         // The system puts the windows back after a quit or a relaunch (an update, say): the document's autosave
-        // draft (ConcordanceDocument.writeDraft) is what it reopens. A launch that fails while doing so is caught by
+        // autosave draft is what it reopens. A launch that fails while doing so is caught by
         // RestorationGuard, which drops the saved state.
         window.isRestorable = true
         self.init(window: window)

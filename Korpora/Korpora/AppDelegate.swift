@@ -69,26 +69,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
         true
     }
 
-    /// The app must be closable at any time - by the user, by a script, by
-    /// the system at logout/shutdown - with no alert and nothing left
-    /// pending. `ConcordanceDocument.isDocumentEdited` already reports false
-    /// unconditionally (concordances are disposable scratch state, not
-    /// files the user must keep or discard - see docs/project-plan.md's
-    /// "Document persistence model" note), so AppKit's default unsaved-
-    /// document review has nothing to prompt about - but this makes that
-    /// guarantee explicit and unconditional rather than a side effect of
-    /// document state, so it can't regress if that state ever changes
-    /// without this being revisited too. Revisit both together per the
-    /// pre-release persistence TODO in the project plan.
+    /// The app must be closable at any time - by the user, by a script, by the system at logout or shutdown - with no
+    /// alert and nothing left pending. A concordance never asks to be saved (`ConcordanceDocument.canClose` answers
+    /// yes) and AppKit autosaves the ones with a query as drafts, which come back at the next launch.
     ///
-    /// One deliberate exception: a running corpus import (see
-    /// `ActiveImportTracker`) can represent hours of compile work on a real
-    /// corpus - quitting through it silently, the same way every other
-    /// window does, would be a much worse surprise than one confirmation
-    /// dialog. `CorpusImportSheetController` already cancels its own import
-    /// (terminating the `pando-index` subprocess cleanly) on
-    /// `willTerminateNotification` regardless of the answer here - this
-    /// alert only decides whether that's allowed to happen at all.
+    /// One deliberate exception: a running corpus import (see `ActiveImportTracker`) can represent hours of compile
+    /// work on a real corpus - quitting through it silently, the same way every other window does, would be a much
+    /// worse surprise than one confirmation dialog. `CorpusImportSheetController` already cancels its own import
+    /// (terminating the `pando-index` subprocess cleanly) on `willTerminateNotification` regardless of the answer
+    /// here - this alert only decides whether that's allowed to happen at all.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard ActiveImportTracker.shared.isImporting else { return .terminateNow }
         // The user may take their time over this question: no watchdog while it is up.
@@ -102,7 +91,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, SPUUpdaterDelegate {
             (NSApp as? KorporaApplication)?.startQuitWatchdog()
             return .terminateNow
         }
-        (NSApp as? KorporaApplication)?.quitWasCancelled()
+        (NSApp as? KorporaApplication)?.stopQuitWatchdog()
         return .terminateCancel
     }
 

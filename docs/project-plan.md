@@ -254,36 +254,44 @@ Confirmed product decisions (from earlier in this project):
   — superseded as a *plan* by the "Goal — Ship a signed GitHub release"
   section below, which is the separate, tracked goal for that work. It
   remains true as a description of current state until that goal starts.
-- **Document persistence model: windows and concordances come back after a quit (built 2026-11-12, to be tried by hand).**
+- **Document persistence model: windows and concordances come back after a quit (built 2026-11-12, the standard way).**
   Was a dev-only choice (`isDocumentEdited` hard-coded false, window restoration off, because stale state once made a
-  launch fail silently). Now: a quit (or a Sparkle relaunch) keeps every concordance with a query and the system puts the windows
-  back; closing a window discards its concordance and asks nothing; nothing ever prompts to save. How, and what the
-  spike (2026-11-11) showed:
-  - AppKit's autosave writes no draft for a document that says it has no edits. So `ConcordanceDocument.isDocumentEdited` is true
-    only while a draft is written (`writeDraft`, 1.5 s after a change and at quit) and while a quit goes on.
+  launch fail silently). Now it is AppKit's own document model, with two deliberate bends: a concordance with a query counts as
+  edited (`markChanged()` after a query, an operation, an analysis window opening or closing), so AppKit autosaves it as a draft
+  every few seconds and at a quit and the system puts the window back at the next launch; and closing a window discards the
+  concordance without asking (`ConcordanceDocument.canClose` answers yes, so its draft goes too). Nothing ever prompts to save.
+  The title shows "- Edited" on a draft, as in TextEdit. What the spike (2026-11-11) and the first, non-standard version showed:
+  - AppKit's autosave writes no draft for a document that says it has no edits, and its quit sequence closes every
+    untitled document with no edits before it asks the app delegate anything. That is why the first version, which kept
+    `isDocumentEdited` false, needed hand-written drafts and an "edited while quitting" flag; the standard model needs neither.
   - **A quit goes through `KorporaApplication.terminate` first** (the app object is ours, set in `main.swift` and `Info.plist`):
     AppKit refuses to quit while a sheet is open ("App termination blocked by modal sheet", silently), and the app always has one at
     launch (New Concordance), so ⌘Q did nothing and a Sparkle relaunch stalled. The sheets are closed first. A quit sent as an Apple
     Event (Dock, log-out) is handled by AppKit itself and ignored under a sheet, so `AppDelegate` takes that event over too.
-  - AppKit's quit sequence closes every untitled document that says it has no edits *before* it asks the delegate anything
-    (`_shouldTerminate` -> `_closeAllDocuments`), so the drafts are written, and `isQuitting` is set, in `terminate`, not in
-    `applicationShouldTerminate`. A concordance with no query yet (the sheet was never answered) is closed: nothing to resume.
-  - While AppKit waits to quit ("terminate later"), the run loop is in a mode where `DispatchQueue.main.async` and GCD timers
-    do not run: use `RunLoop.main.perform(inModes: [.common])` and a `Timer` added for `.common`.
-  - At launch AppKit may open an untitled concordance before the old windows are back: the first New Concordance sheet of a
-    launch waits for `NSApplication.didFinishRestoringWindowsNotification` (2 s at most) and, if a concordance came back, the empty
-    one closes (`LaunchRestoration`).
+  - **A quit watchdog**: in scripted runs on this Mac AppKit's own quit sometimes never finished (`terminate:` waiting in
+    `NSPersistentUIManager _waitForPendingChangesToFinish`, every thread idle, the main one waiting on a reply from a system
+    service; it came and went between identical runs and may be caused by the test loop's `kill -9` and `-n` launches). Ten seconds after
+    the quit has begun the app exits anyway (its documents are autosaved by then); no watchdog while the import question is up.
+  - Run-loop modes: while AppKit waits to quit, `DispatchQueue.main.async` and GCD timers don't run; use
+    `RunLoop.main.perform(inModes: [.common])` and a `Timer` added for `.common`.
+  - **The analysis windows** (frequencies, collocations, dispersion) are not documents: each concordance saves what it has open
+    (`AnalysisState`: what was counted and in which order, the collocation form, the window's frame) in its draft and opens them
+    again, results made again, once its own results are in. They are `isRestorable = false`.
+  - At launch AppKit opens an untitled concordance of its own before the old ones are back: one opened by the app in the first
+    4 seconds waits 1 s and closes if a restored concordance is there (`LaunchRestoration`); one the user asks for (⌘N) is never
+    touched (`KorporaDocumentController.newDocument`).
   - `RestorationGuard`: a launch that never gets as far as showing windows (8 s) or quitting cleanly makes the next launch delete
     the system's saved window state (`~/Library/Saved Application State/<id>.savedState`) before AppKit reads it, so one bad state
     can't fail every launch (the old bug).
   - `window.isRestorable` is true again and `NSQuitAlwaysKeepsWindows` is gone from `Info.plist`, so the system's own setting decides:
     System Settings > Desktop & Dock > **"Close windows when quitting an application" must be off**, or macOS reopens no app's
-    windows (it was on in the user's Mac, which hid the first test).
-  - Drafts are AppKit's own, a few hundred bytes each, in its autosave location (not next to a corpus). Tested: draft written and deleted on
-    close, the guard, the sheet closing, the lazy first sheet. Tried by script on this Mac: a file concordance and an untitled one with
-    a query both came back after a quit; a launch with nothing to restore shows the sheet; the empty window is not restored.
-  - Not done: re-running searches lazily on restore (all re-run at once now), restoring the frequency, collocation and dispersion
-    windows, the selected row and scroll position.
+    windows (it was on on the user's Mac, which hid the first test).
+  - Drafts are AppKit's own, a few hundred bytes each, in `~/Library/Autosave Information` (not next to a corpus; protected from a
+    sandboxed shell). `open -F` keeps untitled drafts, so test loops pile concordances up.
+  - Tested by script on this Mac: a file concordance, an untitled one with a query, and a file with three analysis windows (at their
+    saved frames, the frequency sort kept) all came back; quits finished in most runs. Not seen by script: the empty "Untitled"
+    window with its sheet being dropped when something is restored (no clean slate: the drafts folder can't be cleared from here).
+  - Not done: re-running searches lazily on restore (all re-run at once now), the selected row and scroll position.
 - **Tests**: ManateeKit's tests are XCTest, not this workspace's usual Swift
   Testing convention — a known divergence, not something to rewrite
   speculatively.
