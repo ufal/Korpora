@@ -106,7 +106,7 @@ height but not the language); when both are typed it does not run.
 `NLLanguageRecognizer` on a sample of sentences. When it is unsure the language stays automatic, which is today's
 behaviour. A corpus that mixes Chinese, Japanese and Korean (UD) has no single language; then
 every line is told its own. The corpus's own language code comes first when it has one (`text.langcode`,
-`doc.langcode`, `text.lang` or `doc.lang`: for UD it comes from the file names): `ja` and `ko` are used as they are,
+`doc.langcode`, `text.lang` or `doc.lang`: for UD it comes from the file names, but only in an index built with pando's `scripts/build_ud_corpus.py`, which writes `text.*` from them; see "UD metadata at import" in docs/project-plan.md): `ja` and `ko` are used as they are,
 `lzh` (Classical Chinese) is `zh-Hant`, `yue` is `zh-HK`, and `zh` does not say Simplified or Traditional, so the
 text does, except for the one UD treebank known to be Simplified, `zh_gsdsimp`, and for the two Hong Kong treebanks `zh_hk` and `yue_hk`, which are Traditional in Hong Kong's forms
 (a small table,
