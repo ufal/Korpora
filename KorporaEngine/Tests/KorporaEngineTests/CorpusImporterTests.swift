@@ -164,3 +164,75 @@ private final class Seen: @unchecked Sendable {
     func add(_ p: CorpusImporter.Progress) { lock.lock(); list.append(p); lock.unlock() }
     var all: [CorpusImporter.Progress] { lock.lock(); defer { lock.unlock() }; return list }
 }
+
+final class UDMetadataTests: XCTestCase {
+    func testTheLanguageAndTheTreebankComeFromTheFileName() {
+        XCTAssertEqual(UDMetadata.parse(fileName: "cs_pdt-ud-train.conllu")?.language, "cs")
+        XCTAssertEqual(UDMetadata.parse(fileName: "cs_pdt-ud-train.conllu")?.treebank, "pdt")
+        XCTAssertEqual(UDMetadata.parse(fileName: "gsw_UZH-ud-test.conllu")?.treebank, "uzh")
+        XCTAssertEqual(UDMetadata.parse(fileName: "zh_gsdsimp-ud-dev.conllu")?.language, "zh")
+        XCTAssertEqual(UDMetadata.parse(fileName: "yue_hk-ud-test.conllu")?.treebank, "hk")
+        for name in ["tiny.conllu", "cs_pdt.conllu", "pdt-ud-train.conllu", "_x-ud-test.conllu", "cs_-ud-test.conllu", "cs_pdt-ud-train.txt"] {
+            XCTAssertNil(UDMetadata.parse(fileName: name), name)
+        }
+        XCTAssertEqual(UDMetadata.header(forFileName: "en_ewt-ud-dev.conllu"),
+                       "# newregion text\n# text_id = en_ewt-ud-dev.conllu\n# text_langcode = en\n# text_treebank = ewt\n")
+    }
+
+    private func write(_ text: String, as name: String, in box: TestPando.Sandbox) throws -> URL {
+        let url = box.root.appendingPathComponent("in/\(name)")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    func testAFileThatAlreadyOpensATextRegionIsLeftAlone() throws {
+        let box = try TestPando.Sandbox()
+        let prepared = try write("# newregion text\n# text_id = x\n" + TestPando.tinyConllu, as: "cs_pdt-ud-train.conllu", in: box)
+        let plain = try write(TestPando.tinyConllu, as: "en_ewt-ud-dev.conllu", in: box)
+        XCTAssertTrue(UDMetadata.hasTextHeader(prepared))
+        XCTAssertFalse(UDMetadata.hasTextHeader(plain))
+        XCTAssertFalse(UDMetadata.needsHeaders([prepared]))
+        XCTAssertTrue(UDMetadata.needsHeaders([prepared, plain]))
+    }
+
+    private func tool() throws -> URL {
+        _ = try TestPando.library()
+        let path = try XCTUnwrap(TestPando.libraryPath)
+        return URL(fileURLWithPath: path).deletingLastPathComponent().appendingPathComponent("pando-index")
+    }
+
+    func testImportingUDFilesGivesTextAttributesAndLeavesTheFilesAlone() async throws {
+        let tool = try tool()
+        let box = try TestPando.Sandbox()
+        let cs = try write(TestPando.tinyConllu, as: "UD_Czech-PDT/cs_pdt-ud-train.conllu", in: box)
+        let en = try write(TestPando.tinyConllu, as: "UD_English-EWT/en_ewt-ud-dev.conllu", in: box)
+        let before = try Data(contentsOf: cs)
+        let folder = box.root.appendingPathComponent("in")
+        try await CorpusImporter.importCorpus(name: "UD", inputs: [folder], tool: tool)
+
+        XCTAssertEqual(try Data(contentsOf: cs), before, "the user's file is not changed")
+        XCTAssertFalse(try String(contentsOf: en, encoding: .utf8).contains("newregion"))
+        let engine = PandoEngine(library: try TestPando.library())
+        let corpus = try await engine.openCorpus(name: "UD")
+        let codes = try await corpus.attributeValues(attribute: "text.langcode")
+        let treebanks = try await corpus.attributeValues(attribute: "text.treebank")
+        let ids = try await corpus.attributeValues(attribute: "text.id")
+        XCTAssertEqual(codes, ["cs", "en"])
+        XCTAssertEqual(treebanks, ["ewt", "pdt"])
+        XCTAssertEqual(ids, ["cs_pdt-ud-train.conllu", "en_ewt-ud-dev.conllu"])
+        XCTAssertEqual(CorpusLibrary.entries().first?.tokens, 16)
+        let leftovers = try FileManager.default.contentsOfDirectory(atPath: box.corpora.path)
+        XCTAssertEqual(leftovers, ["UD"], "the staged copies are gone")
+    }
+
+    func testFilesWithOtherNamesAreImportedAsBefore() async throws {
+        let tool = try tool()
+        let box = try TestPando.Sandbox()
+        let file = try write(TestPando.tinyConllu, as: "tiny.conllu", in: box)
+        try await CorpusImporter.importCorpus(name: "Tiny", inputs: [file], tool: tool)
+        let engine = PandoEngine(library: try TestPando.library())
+        let values = try? await engine.openCorpus(name: "Tiny").attributeValues(attribute: "text.langcode")
+        XCTAssertTrue(values == nil || values == [] || values == ["_"], "no language invented: \(String(describing: values))")
+    }
+}

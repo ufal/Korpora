@@ -327,15 +327,16 @@ All Swift/C++ code builds cleanly and all tests pass (`swift test` in
   checks that disagree about quotes and `/regex/`) are rebuilt on it. Gains: `a.` after `::` completes the attributes of node `a`,
   no completion inside strings and regexes, region-tag attributes, query colouring and error underlines. Its own commit, with the
   existing completion and pairing tests passing unchanged first.
-- **UD metadata at import** (diagnosed 2026-11-11, not fixed; needs pando). A UD corpus imported in Korpora has no language
-  metadata, while the one built with pando's `scripts/build_ud_corpus.py` (`pando-spike.sh ud`) has it. Why: `pando-index` records
-  only what the comments say. Raw UD files give `doc.id` (from `# newdoc id`) and `doc.lang`/`doc.langcode`, which pando creates as
-  placeholders and which are `_` for every document (also in the corpus built here); there is no `text` structure. The script
-  copies each file with `# newregion text` and `# text_id/text_lang/text_langcode/text_treebank` prepended, taken from the file name
-  (`cs_pdt-ud-train.conllu`), so the real values are `text.langcode`, `text.lang`, `text.treebank`, `text.id`. Checked with the
-  bundled `pando-index` on `wo_wtb-ud-test.conllu`. Options: a pando-index option or default that derives them from UD file names
-  (to ask for), or Korpora injecting the same lines into copies of the files (doubles the disk use during the import). Meanwhile
-  a corpus built with the script can be added with "+ > index folder".
+- **UD metadata at import: done 2026-11-11** (`UDMetadata.swift`). A UD corpus imported in Korpora had no language metadata,
+  while the one built with pando's `scripts/build_ud_corpus.py` (`pando-spike.sh ud`, the linked "Universal Dependencies 2.18")
+  has it. Why: `pando-index` records only what the comments say; UD files carry the language and the treebank only in the file
+  name (`cs_pdt-ud-train.conllu`). Raw UD files give `doc.id` (from `# newdoc id`) and `doc.lang`/`doc.langcode`, which pando creates as
+  placeholders and which are `_` for every document; there is no `text` structure. The script prepends `# newregion text` and
+  `# text_id` (the file name), `# text_langcode`, `# text_treebank`. The importer now does the same, on copies in its
+  visible "Importing ..." folder (the files picked are never changed; a file that already opens a `text` region, or whose name is
+  not a UD one, is linked as it was): `text.langcode`, `text.treebank`, `text.id`. Costs the disk space of the copies while the
+  import runs (about the size of the treebanks). A corpus imported before has to be imported again. Still wanted from pando:
+  doing this natively in `pando-index`, which would save the copies.
 - **Sparkle 2 for updates: built 2026-11-09, see `docs/sparkle.md`; the release steps are untried until 0.5 is built.** (Plan, evaluated 2026-11-08, Sparkle 2.10.1: judged easy enough.) Korpora is
   non-sandboxed, hardened runtime, Developer ID, notarized: the plain Sparkle 2 case. Work: add the Swift package
   in `project.yml`; `SUFeedURL` and `SUPublicEDKey` in Info.plist; a "Check for Updates..." item (an

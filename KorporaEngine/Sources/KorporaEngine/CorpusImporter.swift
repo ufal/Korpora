@@ -81,7 +81,19 @@ public enum CorpusImporter {
             CorpusLibrary.clearUnfinishedWork(in: base)
         }
         let source: URL
-        if inputs.count == 1 {
+        let udFiles = kind(of: inputs) == .conllu ? UDMetadata.conlluFiles(in: inputs) : []
+        if UDMetadata.needsHeaders(udFiles) {
+            // UD files carry their language and treebank in the file name only: index copies that say it
+            // (text.langcode, text.treebank, text.id), as pando's own UD script does. The originals stay as they are.
+            let staging = work.appendingPathComponent("input", isDirectory: true)
+            try fm.createDirectory(at: staging, withIntermediateDirectories: true)
+            try await UDMetadata.stage(udFiles, in: staging) { done, total in
+                try Task.checkCancellation()
+                onProgress(Progress(phase: .starting, fraction: nil, currentFile: nil, tokens: 0,
+                                    line: "Adding the language of each file (\(done)/\(total))"))
+            }
+            source = staging
+        } else if inputs.count == 1 {
             source = inputs[0]
         } else {
             let staging = work.appendingPathComponent("input", isDirectory: true)
