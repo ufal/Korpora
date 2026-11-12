@@ -101,6 +101,32 @@ print("hits", page["total"])
 PY
 grep -q "^hits 2" /tmp/lib.log && ok "libpando loads and answers a query" || { cat /tmp/lib.log; bad "libpando did not answer"; }
 
+# Regular expressions read characters, not bytes (RE2 in the bundled pando): 你 shares a byte with 不 and 沒,
+# so a build that reads bytes finds it with [不沒]; `..` is two characters; \p{Han} is a script.
+python3 - <<'PY' > "$W/zh.conllu"
+words = ["不如", "沒有", "你", "好嘅", "па"]
+print("# sent_id = z1")
+for i, w in enumerate(words, 1):
+    print("\t".join([str(i), w, w, "X", "_", "_", "0" if i == 1 else "1", "root" if i == 1 else "dep", "_", "_"]))
+print("\n")
+PY
+"$H/pando-index" "$W/zh.conllu" "$W/zh-idx" > /tmp/zh-idx.log 2>&1 || bad "pando-index failed on the Chinese sample"
+cat > /tmp/zh-query.py <<'PY'
+import ctypes, json, sys
+lib = ctypes.CDLL(sys.argv[1])
+lib.pando_open.restype = ctypes.c_void_p
+lib.pando_open.argtypes = [ctypes.c_char_p, ctypes.c_int]
+lib.pando_query.restype = ctypes.c_void_p
+lib.pando_query.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_char_p]
+h = lib.pando_open(sys.argv[2].encode(), 0)
+r = lib.pando_query(h, sys.argv[3].encode(), b'{"total":true,"limit":20}')
+print(json.loads(ctypes.string_at(r))["result"]["page"]["total"])
+PY
+zh() { python3 /tmp/zh-query.py "$APP/Contents/Frameworks/libpando.dylib" "$W/zh-idx" "$1" 2>&1; }
+[ "$(zh '[form="[無非毋不沒莫].+"]')" = 2 ] && ok "regex: a class of Chinese characters matches characters (2 of 5)" || bad "regex: class of Chinese characters is read as bytes"
+[ "$(zh '[form=".."]')" = 4 ] && ok "regex: two dots are two characters" || bad "regex: dot is not one character"
+[ "$(zh '[form="\p{Han}+"]')" = 4 ] && ok "regex: \\p{Han} works" || bad "regex: \\p{Han} does not work"
+
 echo "== App relaunch in the GUI session (after the manual first launch)"
 sudo launchctl asuser "$(id -u)" sudo -u "$(id -un)" open -a "$APP"
 sleep 6

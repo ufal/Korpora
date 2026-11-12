@@ -4588,6 +4588,19 @@ Smoke test on `korpora-smoke-052`, a clone of `korpora-smoke-base` (macOS 15.7.7
 "Notarized Developer ID", it started and restored its windows. 0.5.1 still lacks the sheet fix, so that update only worked because
 no sheet was in the way; from 0.5.2 on an update relaunches with a sheet open.
 
+### Release 0.5.3 - published 2026-11-12
+
+`Korpora 0.5.3 (9)` (v0.5.3, from a9abdf4): regular expressions in queries read characters, not bytes (pando built with RE2, next section).
+Built with `scripts/make-release.sh` (pando a7dbe56 bundled, with abseil 20260817.0 and RE2 2025-11-05 static inside), which ran
+`UnicodeRegexTests` against the bundled library (8/8); notarized and stapled (submissions `986362d2-...` app, `618e6707-...` DMG),
+appcast signed. `Korpora-0.5.3.dmg` SHA-256 `f5b20a5e...802eb`. GitHub release with the DMG, `.sha256`, dSYM zip and `appcast.xml`.
+
+Smoke test on `korpora-smoke-053` (clone of `korpora-smoke-base`): install checks 8/8 (stapler validate timed out at 60 s in the VM and
+was skipped; the host build had validated it), exec checks 9/9, now with three regex checks on a Chinese sample run through the bundled
+`libpando.dylib` (`scripts/release-smoke-vm.sh`). **Sparkle update 0.5.2 to 0.5.3 with the New Concordance sheet open**, the first real
+test of the sheet fix: it updated and relaunched as 0.5.3 (9) without a second click or closing the sheet; codesign ok, Gatekeeper
+"Notarized Developer ID". So the sheet fix is proven from 0.5.2 on.
+
 ### Regular expressions read bytes without RE2 (found 2026-11-12)
 
 A user's query `[form="[無非毋不沒莫]+.+"]` on a Chinese corpus returned words without any of those characters. Cause: pando's
@@ -4597,7 +4610,7 @@ need eight dots, Chinese twelve), and a class is a set of bytes, so 你 and 搵 
 no `\p{Han}`. Reproduced with the pando CLI on the UD index; fixed by an RE2 build: `[form="[無非毋不沒莫].+"]` now finds only
 the right words, `\p{Han}`, `\p{Cyrillic}`, `[а-я]`, `(?i)` on Cyrillic all work.
 
-What changed (not yet released; goes into 0.5.3):
+What changed (released in 0.5.3):
 - `scripts/build-re2.sh` builds abseil 20260817.0 and RE2 2025-11-05 from pinned tags as static, position-independent libraries into a
   private prefix (no Homebrew copies: those are dynamic and built for the newest macOS). Used by both builds, so dev and release
   have the same engine.
