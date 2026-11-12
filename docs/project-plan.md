@@ -4623,10 +4623,11 @@ What changed (released in 0.5.3):
   build without RE2 (checked against `build-std`), all pass on the RE2 build and on the release-built library.
   `scripts/make-release.sh` runs them against the library it is about to bundle and stops when they fail or are skipped.
 
-Still open, for pando (the user files it): RE2 has no lookaround or backreferences, and a pattern that uses them falls back to
-`std::regex`, which reads bytes again. A PCRE2 backend (UTF and UCP modes) would give both and `\p{...}` everywhere; the release
-has built pcre2 statically before. Proposal first, then a patch if wanted. The release's `pando-analysis.md` note that RE2 "has to be
-built from source like pcre2 was" is now done.
+Decision: RE2 is the regular expression engine, for its value and speed (linear time over a whole lexicon); no PCRE backend is planned.
+RE2 has no lookaround or backreferences. "The same as an earlier token" is a CQL condition, not a regex: `a:[..] b:[..] :: a.form = b.form`
+(`strlen(a.form) = 2` counts characters). pando falls back to `std::regex` for a pattern RE2 rejects (its wiki documents this), and that
+reads bytes; failing with RE2's error instead would be clearer, which could be proposed to pando if it ever matters. The note in
+`pando-analysis.md` that RE2 "has to be built from source like pcre2 was" is done (`scripts/build-re2.sh`).
 
 ### Smoke tests with `tart exec` (set up 2026-11-11)
 
