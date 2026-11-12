@@ -4,9 +4,13 @@
 # corpora), compiled at the release deployment floor ($FLOOR) from a pinned ref. Nothing from the
 # dev build in ~/Developer/pando-work is reused, so the release never depends on a local checkout.
 #
-# pando has no third-party runtime dependency beyond the system C++ runtime (regular expressions run
-# on the standard library: RE2 is left off, which makes regex queries over a very large vocabulary
-# slower than a build with it; see docs/pando-analysis.md).
+# pando's regular expressions need RE2: only with it is a pattern read as UTF-8 text (`.` is one
+# character, `[無非毋]` a class of characters, `\p{Han}` works); the standard library's engine reads
+# bytes and gets every non-ASCII pattern wrong. So abseil and RE2 are built here from pinned tags, as
+# static libraries at the same deployment floor, into release-deps/prefix, and pando links them in:
+# the app still has no third-party runtime dependency beyond the system C++ runtime. Homebrew's copies
+# (dynamic, built for the newest macOS) are never used. The script fails unless the result reports
+# "regex": "re2" and links nothing outside the system.
 #
 # Usage:
 #   scripts/build-release-deps.sh              # pando as pinned in scripts/PANDO_REF, FLOOR=15.0 ARCH=arm64
@@ -24,6 +28,7 @@ PANDO_REF="${PANDO_REF:-$(grep -v '^#' "$SCRIPT_DIR/PANDO_REF" | grep -v '^$' | 
 [ -n "$PANDO_REF" ] || { echo "ERROR: no pando ref in $SCRIPT_DIR/PANDO_REF" >&2; exit 1; }
 PANDO_URL="${PANDO_URL:-https://github.com/ufal/pando.git}"
 DEP="$ROOT/release-deps"
+PREFIX="$DEP/prefix"
 SRC="$DEP/pando-src"
 BUILD="$DEP/pando/build"
 NCPU="$(sysctl -n hw.ncpu)"
@@ -46,8 +51,12 @@ git -C "$SRC" checkout -q "$PANDO_REF"
 COMMIT="$(git -C "$SRC" rev-parse --short HEAD)"
 echo "==> pando $PANDO_REF ($COMMIT), deployment target $FLOOR, $ARCH"
 
+# abseil and RE2, static, at the floor (scripts/build-re2.sh, which the dev build uses too).
+"$SCRIPT_DIR/build-re2.sh" "$DEP" "$PREFIX" "$FLOOR" "$ARCH" || die "RE2 did not build"
+
 rm -rf "$BUILD"
-cmake -S "$SRC" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DPANDO_BUILD_SHARED=ON -DPANDO_USE_RE2=OFF \
+cmake -S "$SRC" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DPANDO_BUILD_SHARED=ON -DPANDO_USE_RE2=ON \
+    -DCMAKE_PREFIX_PATH="$PREFIX" -DCMAKE_IGNORE_PREFIX_PATH="/opt/homebrew;/usr/local" \
     -DCMAKE_OSX_DEPLOYMENT_TARGET="$FLOOR" -DCMAKE_OSX_ARCHITECTURES="$ARCH" > "$DEP/pando-cmake.log" 2>&1 \
     || { tail -20 "$DEP/pando-cmake.log" >&2; die "cmake failed - log: $DEP/pando-cmake.log"; }
 cmake --build "$BUILD" -j "$NCPU" > "$DEP/pando-build.log" 2>&1 \
@@ -59,6 +68,10 @@ cmake --build "$BUILD" -j "$NCPU" > "$DEP/pando-build.log" 2>&1 \
 for symbol in pando_open pando_last_error pando_cancel pando_query pando_run pando_info pando_free_string pando_close; do
     nm -gU "$BUILD/libpando.dylib" | grep -q "_$symbol\$" || die "libpando.dylib lacks $symbol"
 done
+# RE2 must be in: without it, patterns with non-ASCII text are read as bytes (a class of Chinese characters
+# matches single bytes of other characters). The app's tests check the behaviour; this stops the build.
+grep -q "regex engine: ON" "$DEP/pando-cmake.log" || die "pando was configured without RE2"
+[ "$(nm "$BUILD/libpando.dylib" 2>/dev/null | grep -c "RegexpStatus")" -gt 0 ] || die "libpando.dylib does not contain RE2"
 for binary in "$BUILD/pando-index" "$BUILD/libpando.dylib"; do
     minos="$(vtool -show-build "$binary" | awk '/minos/ {print $2}' | head -1)"
     [ "$minos" = "$FLOOR" ] || die "$(basename "$binary") has minos $minos, expected $FLOOR"
@@ -66,7 +79,7 @@ for binary in "$BUILD/pando-index" "$BUILD/libpando.dylib"; do
         die "$(basename "$binary") links a library outside the system"
     fi
 done
-echo "$COMMIT" > "$DEP/pando/.built-from"
+echo "$COMMIT" > "$DEP/pando/built-from.txt"
 touch "$DEP/pando/build-ok"
 
 echo

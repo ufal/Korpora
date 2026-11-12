@@ -4588,6 +4588,33 @@ Smoke test on `korpora-smoke-052`, a clone of `korpora-smoke-base` (macOS 15.7.7
 "Notarized Developer ID", it started and restored its windows. 0.5.1 still lacks the sheet fix, so that update only worked because
 no sheet was in the way; from 0.5.2 on an update relaunches with a sheet open.
 
+### Regular expressions read bytes without RE2 (found 2026-11-12)
+
+A user's query `[form="[無非毋不沒莫]+.+"]` on a Chinese corpus returned words without any of those characters. Cause: pando's
+`Regex` (`src/core/regex_engine.cpp`) uses RE2 in UTF-8 mode when built with it and `std::regex` otherwise, and Korpora built pando with
+`PANDO_USE_RE2=OFF` (releases up to 0.5.2, and the dev build). `std::regex` works on bytes: `.` is one byte (four Cyrillic letters
+need eight dots, Chinese twelve), and a class is a set of bytes, so 你 and 搵 matched because they share a byte with 不 and 沒. Also
+no `\p{Han}`. Reproduced with the pando CLI on the UD index; fixed by an RE2 build: `[form="[無非毋不沒莫].+"]` now finds only
+the right words, `\p{Han}`, `\p{Cyrillic}`, `[а-я]`, `(?i)` on Cyrillic all work.
+
+What changed (not yet released; goes into 0.5.3):
+- `scripts/build-re2.sh` builds abseil 20260817.0 and RE2 2025-11-05 from pinned tags as static, position-independent libraries into a
+  private prefix (no Homebrew copies: those are dynamic and built for the newest macOS). Used by both builds, so dev and release
+  have the same engine.
+- `scripts/build-release-deps.sh` builds RE2 at the 15.0 floor into `release-deps/prefix` and pando with `-DPANDO_USE_RE2=ON`; it fails
+  when pando was configured without RE2, when `libpando.dylib` has no RE2 in it, or when it links anything outside the system.
+  (It also wrote a hidden `.built-from`; now `built-from.txt`.)
+- `scripts/pando-spike.sh build` builds RE2 into `~/Developer/pando-work/prefix` and pando with it; `PANDO_USE_RE2=OFF` only for comparing.
+- `UnicodeRegexTests` (8 tests, engine): the report's query, a negated class, `.` and `{n}` count characters in Chinese, Cyrillic,
+  Greek and Latin, `\p{Han}`/`\p{Cyrillic}`/`\p{Greek}`/`\p{Lu}`, `[а-я]`, `(?i)` on Cyrillic, the `= /…/` form. All 8 fail on a
+  build without RE2 (checked against `build-std`), all pass on the RE2 build and on the release-built library.
+  `scripts/make-release.sh` runs them against the library it is about to bundle and stops when they fail or are skipped.
+
+Still open, for pando (the user files it): RE2 has no lookaround or backreferences, and a pattern that uses them falls back to
+`std::regex`, which reads bytes again. A PCRE2 backend (UTF and UCP modes) would give both and `\p{...}` everywhere; the release
+has built pcre2 statically before. Proposal first, then a patch if wanted. The release's `pando-analysis.md` note that RE2 "has to be
+built from source like pcre2 was" is now done.
+
 ### Smoke tests with `tart exec` (set up 2026-11-11)
 
 The Cirrus vanilla image has no Tart Guest Agent, so commands could only reach the VM over SSH. `scripts/smoke/install-tart-guest-agent.sh`

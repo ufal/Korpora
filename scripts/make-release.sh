@@ -77,6 +77,15 @@ fi
 echo "==> Building Release (clean)"
 export PANDO_BUILD_DIR="$DEP/pando/build"
 mkdir -p "$OUT"
+
+# The pando being bundled must read regular expressions as text (RE2): without it a class of Chinese
+# characters matches single bytes of other characters. The engine's tests run against exactly this library.
+echo "==> Regular expressions in the bundled pando (UnicodeRegexTests)"
+UNICODE_LOG="$OUT/unicode-regex-tests.log"
+( cd "$ROOT/KorporaEngine" && KORPORA_PANDO_LIB="$PANDO_BUILD_DIR/libpando.dylib" \
+    swift test --filter UnicodeRegexTests ) > "$UNICODE_LOG" 2>&1 \
+    || { tail -30 "$UNICODE_LOG" >&2; die "the bundled pando fails UnicodeRegexTests - log: $UNICODE_LOG"; }
+grep -q "Executed 8 tests, with 0 failures" "$UNICODE_LOG" || die "UnicodeRegexTests did not run all 8 (skipped?) - log: $UNICODE_LOG"
 BUILD_LOG="$OUT/build.log"
 xcodebuild -project "$ROOT/Korpora/Korpora.xcodeproj" -scheme Korpora \
     -configuration Release -derivedDataPath "$DERIVED" clean build \

@@ -12,8 +12,10 @@
 #   scripts/pando-spike.sh pin [REF]  # make REF (default: pando's newest commit) the one releases are built with
 #
 # Needs git, Python 3, Xcode. cmake and ninja are taken from a private venv in the work
-# directory if they aren't installed (nothing is installed system-wide). Regex runs without
-# RE2 (slow on big lexicons); pass PANDO_USE_RE2=ON if you have it (brew install re2).
+# directory if they aren't installed (nothing is installed system-wide). pando is built with RE2, which
+# build-re2.sh builds (with abseil, static) into $WORK/prefix: without RE2 a regex is read as bytes (`.` is
+# one byte, a class of Chinese characters matches single bytes of other characters). PANDO_USE_RE2=OFF
+# builds without it, for comparing only; the tests then fail on purpose.
 set -euo pipefail
 
 WORK="${PANDO_WORK:-$HOME/Developer/pando-work}"
@@ -35,8 +37,11 @@ build() {
   else git clone -q https://github.com/ufal/pando.git "$SRC" && git -C "$SRC" checkout -q origin/main; fi
   echo "pando $(git -C "$SRC" describe --tags 2>/dev/null || git -C "$SRC" rev-parse --short HEAD)"
   # Deployment target 15.0: what Korpora supports; the default would be this Mac's own macOS.
+  local re2="${PANDO_USE_RE2:-ON}"
+  [ "$re2" = "ON" ] && "$ROOT/scripts/build-re2.sh" "$WORK" "$WORK/prefix" 15.0
   cmake -S "$SRC" -B "$BUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release -DPANDO_BUILD_SHARED=ON \
-    -DPANDO_USE_RE2="${PANDO_USE_RE2:-OFF}" -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 >"$WORK/cmake.log"
+    -DPANDO_USE_RE2="$re2" -DCMAKE_PREFIX_PATH="$WORK/prefix" -DCMAKE_IGNORE_PREFIX_PATH="/opt/homebrew;/usr/local" \
+    -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 >"$WORK/cmake.log"
   cmake --build "$BUILD" >"$WORK/build.log"
   ls "$BUILD"/pando "$BUILD"/pando-index "$BUILD"/libpando.dylib
 }
