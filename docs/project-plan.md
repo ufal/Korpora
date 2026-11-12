@@ -4574,6 +4574,20 @@ snag: the first "Install and Relaunch" did nothing, because the New Concordance 
 delegate and, in `shouldPostponeRelaunchForUpdate`, closes every sheet and continues (`endAllSheets`, tested). It only helps from the
 version that has it, so a 0.5 or 0.5.1 user with a sheet open still has to close the sheet or press twice. Not released yet.
 
+### Release 0.5.2 - published 2026-11-12
+
+`Korpora 0.5.2 (8)` (v0.5.2, from bc6a013): windows and concordances come back after a quit or a relaunch (the standard NSDocument
+autosave and window restoration, the analysis windows, the selection and the scroll position, searches that wait until the window is
+shown), and a quit or a relaunch works with a sheet open ("Document persistence model" above). Built with `scripts/make-release.sh`
+(pando a7dbe56 bundled), notarized and stapled (submissions `760fdde4-...` app, `ac516c61-...` DMG), appcast signed.
+`Korpora-0.5.2.dmg` SHA-256 `8e20c58a...0772`. GitHub release with the DMG, `.sha256`, dSYM zip and `appcast.xml`.
+
+Smoke test on `korpora-smoke-052`, a clone of `korpora-smoke-base` (macOS 15.7.7, Gatekeeper on) driven by `tart exec`: install checks
+9/9, exec checks 6/6. `stapler validate` hung once in the VM (about 100 s), then passed; the script now bounds it at 60 s.
+**Sparkle update 0.5.1 to 0.5.2** (the VM that had updated from 0.5): the new version is 0.5.2 (8), codesign strict ok, Gatekeeper
+"Notarized Developer ID", it started and restored its windows. 0.5.1 still lacks the sheet fix, so that update only worked because
+no sheet was in the way; from 0.5.2 on an update relaunches with a sheet open.
+
 ### Smoke tests with `tart exec` (set up 2026-11-11)
 
 The Cirrus vanilla image has no Tart Guest Agent, so commands could only reach the VM over SSH. `scripts/smoke/install-tart-guest-agent.sh`
