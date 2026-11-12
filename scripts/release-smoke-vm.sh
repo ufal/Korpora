@@ -47,7 +47,10 @@ DMG="$HOME/Downloads/$DMG_NAME"
 xattr -w com.apple.quarantine "0083;$(printf %x "$(date +%s)");Safari;$(uuidgen)" "$DMG"
 spctl --assess --type open --context context:primary-signature -vv "$DMG" 2>&1 | tee /tmp/s1
 grep -q "source=Notarized Developer ID" /tmp/s1 && ok "DMG: Notarized Developer ID" || bad "DMG Gatekeeper"
-xcrun stapler validate "$DMG" >/dev/null 2>&1 && ok "DMG ticket stapled" || echo "note: stapler needs dev tools; skipped"
+# `stapler validate` asks Apple's ticket service; from the VM that has hung (0.5.2), and the macOS here has no
+# `timeout`: bound it by 60 s with perl, and say so when it doesn't answer (make-release.sh validated it on the host).
+if perl -e 'alarm 60; exec @ARGV' xcrun stapler validate "$DMG" >/dev/null 2>&1; then ok "DMG ticket stapled"
+else echo "note: stapler did not validate in 60 s (needs dev tools, or Apple's service is slow); skipped"; fi
 
 echo "== Install: drag-equivalent copy to /Applications (ditto keeps quarantine)"
 MNT=$(mktemp -d)
